@@ -1,0 +1,20 @@
+[project]
+name = "amped-insights"
+version = "0.1.0"
+description = "Amped Insights Framework: a shared, checkable layer of research findings"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["mcp>=1.2"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+amped-mcp = "amped_insights.mcp_server:main"
+amped-web = "amped_insights.web:main"
+
+[tool.setuptools]
+packages = ["amped_insights"]
+
+[tool.setuptools.package-data]
+amped_insights = ["static/*.html"]
