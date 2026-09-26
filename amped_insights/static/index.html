@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>amped insights</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1200px; padding: 16px; color: #222; background: #fff; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  h2 { font-size: 17px; margin: 0 0 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+  .layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
+  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+  section { margin-bottom: 24px; }
+  input, select, textarea, button { font: inherit; padding: 4px 6px; }
+  textarea { width: 100%; box-sizing: border-box; }
+  button { cursor: pointer; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+  .card { border: 1px solid #bbb; padding: 10px; margin: 8px 0; }
+  .card.tier-data_point { border-left: 6px solid #6b7280; }
+  .card.tier-hypothesis { border-left: 6px dashed #d97706; }
+  .card.tier-insight    { border-left: 6px double #2563eb; }
+  .card.status-contested { background: #fff4f4; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 6px; border: 1px solid #999; margin-right: 4px; }
+  .tier-tag-data_point { background: #eee; }
+  .tier-tag-hypothesis { background: #fef3c7; }
+  .tier-tag-insight { background: #dbeafe; }
+  .st-proposed { background: #fff; }
+  .st-validated { background: #dcfce7; }
+  .st-contested { background: #fecaca; }
+  .muted { color: #666; font-size: 13px; }
+  .statement { font-size: 15px; margin: 6px 0; }
+  ul { margin: 4px 0; padding-left: 20px; }
+  .versions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .versions > div { border: 1px solid #e99; padding: 6px; background: #fff; }
+  .warn { color: #92400e; }
+  .err { color: #b91c1c; }
+  .feed li { margin-bottom: 4px; }
+  a { color: #1d4ed8; }
+</style>
+</head>
+<body>
+<h1>amped insights</h1>
+<div class="muted">Amped Insights Framework prototype. Every action here goes through the same core functions as the MCP server.</div>
+<div class="row">
+  <label>Acting as <input id="me" placeholder="your name"></label>
+  <span id="msg"></span>
+</div>
+
+<div class="layout">
+<div>
+  <section>
+    <h2>Propose a finding</h2>
+    <textarea id="p-statement" rows="2" placeholder="What did you find?"></textarea>
+    <div class="row">
+      <select id="p-tier">
+        <option value="data_point">data point</option>
+        <option value="hypothesis">hypothesis</option>
+        <option value="insight">insight</option>
+      </select>
+      <input id="p-evidence" placeholder="evidence ids, e.g. 1, 3" size="18">
+      <button id="p-check">Check for conflicts</button>
+      <button id="p-submit">Propose</button>
+    </div>
+    <div id="p-result"></div>
+  </section>
+
+  <section>
+    <h2>Findings</h2>
+    <div class="row">
+      <input id="f-q" placeholder="topic or question">
+      <select id="f-tier"><option value="">any tier</option><option value="data_point">data point</option><option value="hypothesis">hypothesis</option><option value="insight">insight</option></select>
+      <select id="f-status"><option value="">any status</option><option>proposed</option><option>validated</option><option>contested</option></select>
+    </div>
+    <div id="findings"></div>
+  </section>
+</div>
+
+<div>
+  <section>
+    <h2>Validation queue</h2>
+    <div id="queue"></div>
+  </section>
+  <section>
+    <h2>Recent activity</h2>
+    <ul class="feed" id="feed"></ul>
+  </section>
+</div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const TIER = { data_point: "data point", hypothesis: "hypothesis", insight: "insight" };
+const when = (t) => t ? new Date(t).toLocaleString() : "";
+
+try { $("me").value = localStorage.getItem("amped-me") || ""; } catch (e) {}
+$("me").addEventListener("change", () => { try { localStorage.setItem("amped-me", $("me").value); } catch (e) {} });
+const me = () => {
+  const v = $("me").value.trim();
+  if (!v) { flash("Enter your name in 'Acting as' first.", true); $("me").focus(); }
+  return v;
+};
+
+function flash(text, isError) {
+  $("msg").className = isError ? "err" : "warn";
+  $("msg").textContent = text || "";
+}
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) } : {});
+  const data = await res.json();
+  if (!res.ok) { flash(data.error || "request failed", true); throw new Error(data.error); }
+  flash((data.warnings || []).join("; "));
+  return data;
+}
+
+const tags = (f) =>
+  `<span class="tag tier-tag-${f.tier}">${TIER[f.tier]}</span><span class="tag st-${f.status}">${f.status}</span>`;
+const ref = (f) => `<a href="#f${f.id}">#${f.id}</a> ${tags(f)} ${esc(f.statement)} <span class="muted">(${esc(f.owner)})</span>`;
+
+function card(f) {
+  const vals = f.validations.length
+    ? `<ul>${f.validations.map(v => `<li>${esc(v.validated_by)} <span class="muted">${when(v.validated_at)}</span>${v.note ? ` : ${esc(v.note)}` : ""}</li>`).join("")}</ul>`
+    : `<div class="muted">No validations yet.</div>`;
+  const ev = f.evidence.length
+    ? `<ul>${f.evidence.map(e => `<li>${ref(e)}</li>`).join("")}</ul>` : `<div class="muted">No evidence linked.</div>`;
+  const cited = f.cited_by.length
+    ? `<div><b>Supports</b><ul>${f.cited_by.map(e => `<li>${ref(e)}</li>`).join("")}</ul></div>` : "";
+  const conflicts = f.conflicts.map(c => `
+    <div><b>Conflict</b> <span class="muted">flagged by ${esc(c.flagged_by)} ${when(c.flagged_at)}${c.note ? ` : ${esc(c.note)}` : ""}</span>
+      <div class="versions">
+        <div><b>This version (#${f.id})</b><br>${esc(f.statement)}<br><span class="muted">${esc(f.owner)}</span></div>
+        <div><b>Conflicting version (<a href="#f${c.with.id}">#${c.with.id}</a>)</b> ${tags(c.with)}<br>${esc(c.with.statement)}<br><span class="muted">${esc(c.with.owner)}</span></div>
+      </div></div>`).join("");
+  const co = f.checked_out_by
+    ? `<div class="warn">Checked out by ${esc(f.checked_out_by)} since ${when(f.checked_out_at)}</div>` : "";
+  return `<div class="card tier-${f.tier} status-${f.status}" id="f${f.id}">
+    <div>#${f.id} ${tags(f)} <span class="muted">stated by ${esc(f.owner)}, ${when(f.created_at)}</span></div>
+    <div class="statement">${esc(f.statement)}</div>
+    ${co}
+    <div><b>Evidence</b>${ev}</div>
+    ${cited}
+    <div><b>Validated by (${f.validations.length})</b>${vals}</div>
+    ${conflicts}
+    <div class="row">
+      <button data-act="validate" data-id="${f.id}">Validate</button>
+      ${f.checked_out_by ? `<button data-act="release" data-id="${f.id}">Release</button>` : `<button data-act="checkout" data-id="${f.id}">Check out</button>`}
+      <button data-act="conflicts" data-id="${f.id}">Check conflicts</button>
+      <button data-act="history" data-id="${f.id}">History</button>
+    </div>
+    <div id="extra-${f.id}"></div>
+  </div>`;
+}
+
+function candidatesHtml(result, fromId) {
+  if (!result.candidates.length) return `<div class="muted">No validated findings on a similar topic.</div>`;
+  return `<div><b>Validated findings on a similar topic</b> (a human decides if these truly conflict)</div>` +
+    result.candidates.map(c => `<div class="card tier-${c.finding.tier}">
+      ${ref(c.finding)}
+      <div class="muted">similarity ${c.similarity}, shared words: ${esc(c.shared_words.join(", "))}</div>
+      <div class="${c.likely_conflict ? "err" : "muted"}">${c.signals.length ? "Signals: " + esc(c.signals.join("; ")) : "No contradiction signals, may be a duplicate or related."}</div>
+      ${fromId ? `<button data-act="confirm" data-id="${fromId}" data-other="${c.finding.id}">Confirm real conflict</button>` : ""}
+    </div>`).join("");
+}
+
+async function refresh() {
+  const params = new URLSearchParams({ q: $("f-q").value, tier: $("f-tier").value, status: $("f-status").value });
+  const [findings, queue, feed] = await Promise.all([
+    api("/api/findings?" + params), api("/api/findings?status=proposed"), api("/api/activity?limit=40"),
+  ]);
+  $("findings").innerHTML = findings.map(card).join("") || `<div class="muted">No findings match.</div>`;
+  $("queue").innerHTML = queue.map(f => `<div class="card tier-${f.tier}">
+      ${ref(f)}<div class="muted">${f.evidence_links.length} evidence link(s)</div>
+      <button data-act="validate" data-id="${f.id}">Validate</button></div>`).join("")
+    || `<div class="muted">Nothing waiting for validation.</div>`;
+  $("feed").innerHTML = feed.map(e => {
+    let what = e.kind.replace("_", " ");
+    if (e.kind === "status_changed") what = `moved ${e.detail.from} to ${e.detail.to}`;
+    if (e.kind === "contested") what = `contested (conflicts with #${e.detail.conflicts_with})`;
+    return `<li><span class="muted">${when(e.at)}</span> <b>${esc(e.actor)}</b> ${esc(what)} <a href="#f${e.finding_id}">#${e.finding_id}</a> <span class="muted">${esc((e.statement || "").slice(0, 70))}</span></li>`;
+  }).join("");
+}
+
+function evidenceIds() {
+  return $("p-evidence").value.split(/[\s,]+/).filter(Boolean).map(Number);
+}
+
+$("p-check").onclick = async () => {
+  const r = await api("/api/check_conflict", { statement: $("p-statement").value });
+  $("p-result").innerHTML = candidatesHtml(r, null);
+};
+
+$("p-submit").onclick = async () => {
+  const owner = me(); if (!owner) return;
+  const r = await api("/api/propose", { statement: $("p-statement").value, tier: $("p-tier").value, owner, evidence_links: evidenceIds() });
+  $("p-statement").value = ""; $("p-evidence").value = "";
+  $("p-result").innerHTML = `<div>Proposed <a href="#f${r.finding.id}">#${r.finding.id}</a>.</div>` +
+    (r.possible_conflicts.length ? candidatesHtml({ candidates: r.possible_conflicts }, r.finding.id) : "");
+  refresh();
+};
+
+document.addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-act]"); if (!b) return;
+  const id = Number(b.dataset.id);
+  const act = b.dataset.act;
+  if (act === "conflicts") {
+    const r = await api("/api/check_conflict", { finding_id: id });
+    $("extra-" + id).innerHTML = candidatesHtml(r, id);
+    return;
+  }
+  if (act === "history") {
+    const h = await api(`/api/findings/${id}/history`);
+    $("extra-" + id).innerHTML = `<ul>${h.map(e => `<li><span class="muted">${when(e.at)}</span> ${esc(e.actor)} ${esc(e.kind)} <span class="muted">${esc(JSON.stringify(e.detail))}</span></li>`).join("")}</ul>`;
+    return;
+  }
+  const who = me(); if (!who) return;
+  if (act === "validate") await api("/api/validate", { finding_id: id, validated_by: who });
+  if (act === "checkout") await api("/api/checkout", { finding_id: id, who });
+  if (act === "release") await api("/api/release", { finding_id: id, who });
+  if (act === "confirm") {
+    const note = prompt("Why do these conflict? (optional)") ?? "";
+    await api("/api/confirm_conflict", { finding_id: id, conflicting_id: Number(b.dataset.other), confirmed_by: who, note });
+    b.closest(".card").remove();
+  }
+  refresh();
+});
+
+for (const id of ["f-q", "f-tier", "f-status"]) $(id).addEventListener("input", refresh);
+refresh();
+// Pick up changes made through MCP, unless a history or conflict panel is open.
+setInterval(() => { if (!document.querySelector('[id^="extra-"]:not(:empty)')) refresh(); }, 10000);
+</script>
+</body>
+</html>
