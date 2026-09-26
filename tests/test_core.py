@@ -1,6 +1,6 @@
 import pytest
 
-from amped_insights.core import CoreError, Store
+from anchor.core import CoreError, Store
 
 
 @pytest.fixture

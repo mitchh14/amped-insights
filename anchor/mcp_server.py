@@ -1,7 +1,7 @@
 """MCP server: a thin wrapper that exposes the core Store as tools.
 
-Run with:  python -m amped_insights.mcp_server
-The database path comes from the AMPED_DB environment variable.
+Run with:  python -m anchor.mcp_server
+The database path comes from the ANCHOR_DB environment variable.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from .core import DEFAULT_DB_PATH, CoreError, Store
 store = Store(DEFAULT_DB_PATH)
 
 mcp = _Server(
-    "amped-insights",
+    "anchor",
     instructions=(
         "A shared layer of research findings at three tiers (data_point, hypothesis, "
         "insight) and three statuses (proposed, validated, contested). Query before "

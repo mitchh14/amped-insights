@@ -1,7 +1,7 @@
 """Web app: a small JSON API plus a single static page.
 
 Every read and write goes through the same core Store the MCP server uses.
-Run with:  python -m amped_insights.web [--port 8000]
+Run with:  python -m anchor.web [--port 8000]
 """
 
 from __future__ import annotations
@@ -83,14 +83,14 @@ def make_handler(store: Store):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="amped insights web app")
+    parser = argparse.ArgumentParser(description="ANCHOR web app")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--db", default=DEFAULT_DB_PATH)
     args = parser.parse_args()
     store = Store(args.db)
     server = ThreadingHTTPServer((args.host, args.port), make_handler(store))
-    print(f"amped insights on http://{args.host}:{args.port}  (db: {args.db})")
+    print(f"ANCHOR on http://{args.host}:{args.port}  (db: {args.db})")
     server.serve_forever()
 
 

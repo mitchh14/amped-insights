@@ -1,7 +1,7 @@
 """Load a handful of test findings that exercise the three tiers,
 multiple validators, evidence links, a checkout, and a contested pair.
 
-Usage: python scripts/seed.py [db_path]   (defaults to AMPED_DB or amped_insights.db)
+Usage: python scripts/seed.py [db_path]   (defaults to ANCHOR_DB or anchor.db)
 """
 
 import sys
@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from amped_insights.core import DEFAULT_DB_PATH, Store  # noqa: E402
+from anchor.core import DEFAULT_DB_PATH, Store  # noqa: E402
 
 path = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_DB_PATH
 if Path(path).exists():
