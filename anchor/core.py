@@ -18,7 +18,7 @@ from typing import Any, Iterator
 TIERS = ("data_point", "hypothesis", "insight")
 STATUSES = ("proposed", "validated", "contested")
 
-DEFAULT_DB_PATH = os.environ.get("AMPED_DB", "amped_insights.db")
+DEFAULT_DB_PATH = os.environ.get("ANCHOR_DB", "anchor.db")
 
 SCHEMA = f"""
 CREATE TABLE IF NOT EXISTS findings (

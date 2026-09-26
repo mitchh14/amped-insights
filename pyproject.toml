@@ -1,7 +1,7 @@
 [project]
-name = "amped-insights"
+name = "anchor"
 version = "0.1.0"
-description = "Amped Insights Framework: a shared, checkable layer of research findings"
+description = "ANCHOR (Amped Network for Credible Hypotheses, Observations, and Research): a shared, checkable layer of research findings"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 dependencies = ["mcp>=1.2"]
@@ -10,11 +10,11 @@ dependencies = ["mcp>=1.2"]
 dev = ["pytest"]
 
 [project.scripts]
-amped-mcp = "amped_insights.mcp_server:main"
-amped-web = "amped_insights.web:main"
+anchor-mcp = "anchor.mcp_server:main"
+anchor-web = "anchor.web:main"
 
 [tool.setuptools]
-packages = ["amped_insights"]
+packages = ["anchor"]
 
 [tool.setuptools.package-data]
-amped_insights = ["static/*.html"]
+anchor = ["static/*.html"]
