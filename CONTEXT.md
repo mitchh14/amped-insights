@@ -1,4 +1,6 @@
-# Project Context: Amped Insights Framework
+# Project Context: ANCHOR
+
+**A**mped **N**etwork for **C**redible **H**ypotheses, **O**bservations, and **R**esearch
 
 ## The problem
 

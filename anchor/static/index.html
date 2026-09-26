@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>amped insights</title>
+<title>ANCHOR</title>
 <style>
   body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1200px; padding: 16px; color: #222; background: #fff; }
   h1 { margin: 0 0 4px; font-size: 22px; }
@@ -39,8 +39,8 @@
 </style>
 </head>
 <body>
-<h1>amped insights</h1>
-<div class="muted">Amped Insights Framework prototype. Every action here goes through the same core functions as the MCP server.</div>
+<h1>ANCHOR</h1>
+<div class="muted">Amped Network for Credible Hypotheses, Observations, and Research. Prototype: every action here goes through the same core functions as the MCP server.</div>
 <div class="row">
   <label>Acting as <input id="me" placeholder="your name"></label>
   <span id="msg"></span>
@@ -93,8 +93,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":
 const TIER = { data_point: "data point", hypothesis: "hypothesis", insight: "insight" };
 const when = (t) => t ? new Date(t).toLocaleString() : "";
 
-try { $("me").value = localStorage.getItem("amped-me") || ""; } catch (e) {}
-$("me").addEventListener("change", () => { try { localStorage.setItem("amped-me", $("me").value); } catch (e) {} });
+try { $("me").value = localStorage.getItem("anchor-me") || ""; } catch (e) {}
+$("me").addEventListener("change", () => { try { localStorage.setItem("anchor-me", $("me").value); } catch (e) {} });
 const me = () => {
   const v = $("me").value.trim();
   if (!v) { flash("Enter your name in 'Acting as' first.", true); $("me").focus(); }

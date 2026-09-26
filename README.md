@@ -1,4 +1,6 @@
-# amped insights
+# ANCHOR
+
+**A**mped **N**etwork for **C**redible **H**ypotheses, **O**bservations, and **R**esearch
 
 An open source framework for research teams. A shared, checkable layer of research findings that people and AI agents can query before making new claims, and that stays honest about who said what and how sure anyone should be.
 
@@ -13,7 +15,7 @@ This is the first prototype slice. It proves out three things:
 ## Layout
 
 ```
-amped_insights/
+anchor/
   core.py         data store and all actions (the only write path)
   mcp_server.py   MCP tools, a thin wrapper on core
   web.py          small JSON API + static page, also a thin wrapper on core
@@ -30,20 +32,20 @@ Stack: Python 3.10+, SQLite (stdlib), the `mcp` Python SDK. The web app uses onl
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt pytest
 
-.venv/bin/python scripts/seed.py            # creates amped_insights.db with test data
-.venv/bin/python -m amped_insights.web      # http://127.0.0.1:8000
+.venv/bin/python scripts/seed.py            # creates anchor.db with test data
+.venv/bin/python -m anchor.web              # http://127.0.0.1:8000
 .venv/bin/python -m pytest
 ```
 
-The database path is `amped_insights.db` in the current folder unless you set `AMPED_DB`.
+The database path is `anchor.db` in the current folder unless you set `ANCHOR_DB`.
 
 ## Connect an AI tool over MCP
 
 The MCP server runs over stdio. For Claude Code:
 
 ```bash
-claude mcp add amped-insights -e AMPED_DB=/absolute/path/amped_insights.db -- \
-  /absolute/path/.venv/bin/python -m amped_insights.mcp_server
+claude mcp add anchor -e ANCHOR_DB=/absolute/path/anchor.db -- \
+  /absolute/path/.venv/bin/python -m anchor.mcp_server
 ```
 
 For Claude Desktop or other clients, add this to the MCP config:
@@ -51,11 +53,11 @@ For Claude Desktop or other clients, add this to the MCP config:
 ```json
 {
   "mcpServers": {
-    "amped-insights": {
+    "anchor": {
       "command": "/absolute/path/.venv/bin/python",
-      "args": ["-m", "amped_insights.mcp_server"],
+      "args": ["-m", "anchor.mcp_server"],
       "cwd": "/absolute/path/amped-insights",
-      "env": { "AMPED_DB": "/absolute/path/amped_insights.db" }
+      "env": { "ANCHOR_DB": "/absolute/path/anchor.db" }
     }
   }
 }
