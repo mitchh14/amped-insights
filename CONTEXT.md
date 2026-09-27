@@ -20,8 +20,8 @@ Researcher roles are shifting from executing every study personally to orchestra
 2. Not all findings are equal, and the system should never pretend they are. A raw data point, an unproven hypothesis, and a validated insight are different things and should look different.
 3. More than one person can validate a finding. Validations are shown individually, not merged into a single verdict, so agreement and disagreement are both visible.
 4. Contradictions get surfaced, not hidden or silently overwritten. When a new finding conflicts with a validated one, both stay visible and the conflict triggers a re-evaluation, with the history of what changed and why kept intact.
-5. Framework over system. This should be a small set of primitives (propose, validate, query, check for duplicates or conflicts) that orgs can run themselves, not a heavy platform people have to migrate into.
-6. Data stays where the org already trusts it, self-hosted by default, no required outbound calls, storage that stays boring and inspectable so nobody is locked in. See PRINCIPLES.md for the full reasoning.
+5. Framework over system. This should be a small set of primitives (propose, validate, query, check for duplicates or conflicts) that teams can run and adapt themselves, not a heavy platform people have to migrate into.
+6. Data stays where the org already trusts it, self-hosted by default, no required outbound calls, storage that stays boring and inspectable so the data always stays yours. See PRINCIPLES.md for the full reasoning.
 7. Everyone generates insights, by design. Validation is open to everyone, with varied trust: the most trusted validations come from researchers and trusted reviewers the team names. Roles inform, they never block.
 8. Fit the team, not the other way around. Teams trust different roles differently and work in their own ways. Setup bends ANCHOR to the team. Defaults are open, and the people implementing it decide how much structure to add.
 
@@ -68,6 +68,6 @@ Keep the schema and actions as small as possible:
 - Everything else (assignment, full provenance chain, links between findings) is metadata added over time, not required at creation.
 - Validation should be a single action, not a form.
 
-## Future direction (not part of this build)
+## Open source and built together
 
-Open source first, as a way to contribute to the community and open industry dialogue about this problem.
+ANCHOR is open source. It is meant to be shared, forked, adapted, and improved by the research teams who use it, and to open a wider conversation about how research findings stay trustworthy as AI makes claims faster to produce. See [docs/FLOW.md](docs/FLOW.md) for the roadmap.

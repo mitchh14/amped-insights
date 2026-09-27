@@ -2,7 +2,7 @@
 
 **A**mped **N**etwork for **C**redible **H**ypotheses, **O**bservations, and **R**esearch
 
-An open source framework for research teams. A shared, checkable layer of research findings that people and AI agents can query before making new claims, and that stays honest about who said what and how sure anyone should be.
+An open source framework for research teams. A shared, checkable layer of research findings that people and AI agents can query before making new claims, and that stays honest about who said what and how sure anyone should be. Use it, adapt it to how your team works, and help shape it. The roadmap is in [issue #47](https://github.com/mitchh14/amped-insights/issues/47).
 
 **[Try the demo](https://mitchh14.github.io/amped-insights/)** in any browser, on desktop or phone. It runs the real Python core in your browser, so nothing you type leaves your device. See [Browser demo](#browser-demo) for how it works.
 
