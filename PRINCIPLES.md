@@ -1,6 +1,8 @@
 # Principles
 
-This is the why behind Amped Insights (ANCHOR): what we believe, and why the product is built the way it is. See [CONTEXT.md](CONTEXT.md) for how it's built.
+This is the why behind Amped Insights (ANCHOR): what we believe, and why the framework is built the way it is. See [CONTEXT.md](CONTEXT.md) for how it's built.
+
+ANCHOR is an open source framework. It is meant to be used, adapted, and improved together by the people and teams who run it.
 
 ## The problem we're actually solving
 
@@ -8,15 +10,13 @@ As AI makes it fast for anyone to generate an analysis or a claim, the risk isn'
 
 This isn't new. Non-specialists picking up specialist work, PMs doing research, analysts doing strategy, has always happened. AI didn't start that drift, it just made it a lot more feasible and a lot more common, because it hands anyone the confidence to operate outside their own domain. We're not exempt from this either: this whole project is a research-minded person building software with AI's help.
 
-That drift isn't something to fight. It's an opening. Research's highest-value move right now isn't guarding who's allowed to produce findings, it's becoming the thing that makes everyone's findings trustworthy. That's not a defensive posture, it's an evolution, and it needs to happen fast, because the value research brings to the people who pay for it has to be proven, not assumed.
+That drift isn't something to fight. It's an opening. Research's highest-value move right now isn't guarding who's allowed to produce findings, it's becoming the thing that makes everyone's findings trustworthy. That's not a defensive posture, it's an evolution, and it needs to happen fast, because the value research brings to the organization it serves has to be proven, not assumed.
 
 ## Own your infrastructure, own your context
 
-Enterprise research data, interview transcripts, user quotes, survey responses, is full of the kind of information that makes a security or legal review take months. Every existing insights platform asks an org to ship that data into someone else's cloud before anyone gets real value from it.
+Research data, like interview transcripts, user quotes, and survey responses, is sensitive. It should stay where the team already trusts it. The core is a local database. The MCP server and the web app are interfaces on top of it, not a separate path the data has to travel through. A team can run the whole thing on its own machine, its own server, or inside its own infrastructure.
 
-We don't ask for that. The core is a local database. The MCP server and the web app are interfaces on top of it, not a separate path the data has to travel through. An org can run the whole thing on its own server or inside its own infrastructure, and nothing has to leave walls it already trusts.
-
-This is the same bet Obsidian made for personal notes: plain files you own, tools built on top, instead of a database that holds your content hostage. Lock-in through fear, you have three years of work in here, leaving means starting over, is a business model, not a value proposition. We would rather earn renewal every year by being useful than by being hard to leave. If we disappeared tomorrow, your findings, evidence, and validation history should still work.
+Storage stays plain and inspectable, the same idea behind tools like Obsidian: files you own, with tools built on top. Your findings, evidence, and validation history belong to you and should keep working no matter what happens to this project or any tool around it.
 
 ## An insight is a chain, not a sentence
 
@@ -30,8 +30,18 @@ Collaborative insight generation matters more than who gets credit for it. Anyon
 
 That includes working with AI. The collaboration between a person and an AI agent shouldn't happen behind closed doors either. It should be visible enough that the rest of the team can see it, question it, and add to it, the same way they would with a colleague's work.
 
+## Everyone generates insights, and trust varies
+
+Everyone generating insights is the goal, not a side effect. Researchers, people who do research, and AI agents working for them should all be able to turn what they see into insights.
+
+Validation is open in the same way. Anyone can validate, and people who do research will often check each other's work. But not every validation carries the same weight. The most trusted ones come from researchers and from trusted reviewers: people, inside or outside the research team, that the team has chosen to give that standing. The system never blocks someone because of their role. It shows who validated what, and in what role, so anyone reading can judge how much to lean on it.
+
+## Fit the team, not the other way around
+
+Teams run research differently. They trust different roles to different degrees, and they have their own habits and steps. ANCHOR should bend to that through setup instead of forcing one process on everyone. The defaults are open, and the people who implement it decide how much structure to add. It is a framework powered by the people running it.
+
 ## What this pivot is, and isn't
 
 The point of this project is a change in what research does for an organization: from being the only people allowed to produce findings, to being the people who hold and grow a shared, trustworthy layer that anyone, including AI agents, can build on. That is the whole purpose.
 
-If that also makes it easier for people outside research to do good analysis, that's a welcome side effect. It's not the goal, and it's not why this exists. The goal is research proving its value to the organizations that fund it, quickly and clearly, by becoming the thing that makes everyone's work trustworthy instead of the thing that gatekeeps who's allowed to have an opinion.
+If that also makes it easier for people outside research to do good analysis, that's a welcome side effect. It's not the goal, and it's not why this exists. The goal is research proving its value to the organizations it serves, quickly and clearly, by becoming the thing that makes everyone's work trustworthy instead of the thing that gatekeeps who's allowed to have an opinion.
