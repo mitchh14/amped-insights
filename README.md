@@ -4,7 +4,7 @@
 
 An open source framework for research teams. A shared, checkable layer of research findings that people and AI agents can query before making new claims, and that stays honest about who said what and how sure anyone should be.
 
-See [CONTEXT.md](CONTEXT.md) for the background, principles, and architecture.
+See [PRINCIPLES.md](PRINCIPLES.md) for the why, and [CONTEXT.md](CONTEXT.md) for the background and architecture.
 
 This is the first prototype slice. It proves out three things:
 
