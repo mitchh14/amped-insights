@@ -36,6 +36,15 @@
   .err { color: #b91c1c; }
   .feed li { margin-bottom: 4px; }
   a { color: #1d4ed8; }
+  .card, .statement { overflow-wrap: anywhere; }
+  /* Messages float at the bottom so they are seen wherever you tapped. Tap to dismiss. */
+  #msg:not(:empty) { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 600px; margin: 0 auto;
+    background: #fff; border: 1px solid currentColor; padding: 8px 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); z-index: 10; cursor: pointer; }
+  @media (max-width: 600px) {
+    button, select, input { min-height: 40px; }
+    .row > input, .row > select { flex: 1 1 140px; min-width: 0; }
+    .versions { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -101,6 +110,7 @@ const me = () => {
   return v;
 };
 
+$("msg").addEventListener("click", () => flash(""));
 function flash(text, isError) {
   $("msg").className = isError ? "err" : "warn";
   $("msg").textContent = text || "";

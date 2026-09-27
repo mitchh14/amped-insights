@@ -4,6 +4,8 @@
 
 An open source framework for research teams. A shared, checkable layer of research findings that people and AI agents can query before making new claims, and that stays honest about who said what and how sure anyone should be.
 
+**[Try the demo](https://mitchh14.github.io/amped-insights/)** in any browser, on desktop or phone. It runs the real Python core in your browser, so nothing you type leaves your device. See [Browser demo](#browser-demo) for how it works.
+
 See [PRINCIPLES.md](PRINCIPLES.md) for the why, and [CONTEXT.md](CONTEXT.md) for the background and architecture.
 
 This is the first prototype slice. It proves out three things:
@@ -17,10 +19,14 @@ This is the first prototype slice. It proves out three things:
 ```
 anchor/
   core.py         data store and all actions (the only write path)
+  api.py          JSON API routing as a plain function (shared by web.py and the demo)
+  seed.py         sample findings (used by scripts/seed.py and the demo)
   mcp_server.py   MCP tools, a thin wrapper on core
   web.py          small JSON API + static page, also a thin wrapper on core
   static/index.html
 scripts/seed.py   loads a handful of test findings
+scripts/build_demo.py  builds the static browser demo
+demo/             browser demo loader (Pyodide)
 tests/            core tests
 ```
 
@@ -38,6 +44,23 @@ python -m venv .venv
 ```
 
 The database path is `anchor.db` in the current folder unless you set `ANCHOR_DB`.
+
+## Browser demo
+
+The demo is the same web page and the same Python code, running inside the browser with [Pyodide](https://pyodide.org) (Python compiled to WebAssembly). `demo/demo.js` loads `core.py`, `api.py`, and `seed.py`, and answers the page's `/api/` requests in the browser instead of sending them to a server. The database is SQLite, stored in the browser's IndexedDB, so changes stay put between visits. "Reset demo" reloads the sample findings.
+
+There is no server, so there is nothing to host or secure. Each visitor has their own copy of the data.
+
+A GitHub Action (`.github/workflows/demo.yml`) runs the tests, builds the demo, and publishes it to GitHub Pages on every push to `main`. One-time setup: in the repo, go to Settings > Pages and set Source to "GitHub Actions".
+
+To build and try it locally:
+
+```bash
+python scripts/build_demo.py _site
+python -m http.server -d _site 8001   # http://127.0.0.1:8001
+```
+
+The first load downloads Pyodide (about 10 MB) from the jsDelivr CDN. Browsers cache it after that.
 
 ## Connect an AI tool over MCP
 
