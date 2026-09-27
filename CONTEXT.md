@@ -19,6 +19,26 @@ Researcher roles are shifting from executing every study personally to orchestra
 3. More than one person can validate a finding. Validations are shown individually, not merged into a single verdict, so agreement and disagreement are both visible.
 4. Contradictions get surfaced, not hidden or silently overwritten. When a new finding conflicts with a validated one, both stay visible and the conflict triggers a re-evaluation, with the history of what changed and why kept intact.
 5. Framework over system. This should be a small set of primitives (propose, validate, query, check for duplicates or conflicts) that orgs can run themselves, not a heavy platform people have to migrate into.
+6. Data stays where the org already trusts it. No new vendor should have to be trusted with sensitive research data just to get a shared source of truth working.
+
+## Why local-first is the wedge
+
+Research findings are full of the kind of data that makes enterprise procurement slow: interview transcripts, user quotes, survey responses, sometimes PII. Every existing insights SaaS platform asks an org to ship that data into someone else's cloud before anyone can even try the product. That is not just an integration step, it is a legal and security review that can take months and kill a deal before the team ever gets real value from it.
+
+ANCHOR does not have to ask for that. The core layer is a local database. The MCP server and web app are just interfaces on top of it, not a separate data path. An org can run the whole stack on its own machine, its own internal server, or inside its own VPC, and the findings, evidence, and validation history never have to leave infrastructure it already controls.
+
+This is the same bet Obsidian made for personal notes: plain files you own, on your own disk, with tools built on top instead of a database that holds your content hostage. For one person, the pitch is "own your notes." For an enterprise research team, the same shape becomes a way to skip the procurement fight, since the answer to "where does our data live" is "wherever you already run it."
+
+What this means in practice:
+
+- Self-hostable by default, not an enterprise upsell. The open source core should never need a hosted account to be useful.
+- No required outbound calls. Query, validation, and conflict-check logic run locally, so a deployment can be fully air-gapped.
+- A data format someone else can read. Storage should stay boring and inspectable, not turned into an opaque blob, so an org is never locked into ANCHOR to get its own findings back out.
+- Compliance becomes the org's own problem, solved with infrastructure and reviews it already trusts, not a new vendor's problem to convince them to trust.
+
+One tension worth naming: "local-first" for a team is not the same as "local-first" for one person on Obsidian. A single SQLite file works for a single deployment, but real teams need it running somewhere shared, like an internal server, not on one researcher's laptop. The promise is org-controlled infrastructure, not literally local disk, and the architecture should stay honest about that distinction as it scales past a single-server deployment.
+
+This does not replace the trust-layer principles above, it protects them. A shared source of truth that requires handing sensitive research data to a third party is a much harder sell than one that runs entirely inside walls the org already has.
 
 ## The two user types
 
