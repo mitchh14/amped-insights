@@ -6,7 +6,7 @@ An open source framework for research teams. A shared, checkable layer of resear
 
 **[Try the demo](https://mitchh14.github.io/amped-insights/)** in any browser, on desktop or phone. It runs the real Python core in your browser, so nothing you type leaves your device. See [Browser demo](#browser-demo) for how it works.
 
-See [PRINCIPLES.md](PRINCIPLES.md) for the why, and [CONTEXT.md](CONTEXT.md) for the background and architecture.
+See [PRINCIPLES.md](PRINCIPLES.md) for the why, [CONTEXT.md](CONTEXT.md) for the background and architecture, and [docs/FLOW.md](docs/FLOW.md) for the full research loop, who does what, how to set it up, and the roadmap.
 
 This is the first prototype slice. It proves out three things:
 

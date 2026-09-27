@@ -30,6 +30,16 @@ Collaborative insight generation matters more than who gets credit for it. Anyon
 
 That includes working with AI. The collaboration between a person and an AI agent shouldn't happen behind closed doors either. It should be visible enough that the rest of the team can see it, question it, and add to it, the same way they would with a colleague's work.
 
+## Everyone generates insights, and trust varies
+
+Everyone generating insights is the goal, not a side effect. Researchers, people who do research, and AI agents working for them should all be able to turn what they see into insights.
+
+Validation is open in the same way. Anyone can validate, and people who do research will often check each other's work. But not every validation carries the same weight. The most trusted ones come from researchers and from trusted reviewers: people, inside or outside the research team, that the team has chosen to give that standing. The system never blocks someone because of their role. It shows who validated what, and in what role, so anyone reading can judge how much to lean on it.
+
+## Fit the team, not the other way around
+
+Teams run research differently. They trust different roles to different degrees, and they have their own habits and steps. ANCHOR should bend to that through setup instead of forcing one process on everyone. The defaults are open, and the people who implement it decide how much structure to add. It is a framework powered by the people running it.
+
 ## What this pivot is, and isn't
 
 The point of this project is a change in what research does for an organization: from being the only people allowed to produce findings, to being the people who hold and grow a shared, trustworthy layer that anyone, including AI agents, can build on. That is the whole purpose.
