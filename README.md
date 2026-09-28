@@ -100,16 +100,36 @@ Point the web app and the MCP server at the same database file and changes from 
 
 ## Actions
 
-| Core function | MCP tool | Web API |
-|---|---|---|
-| `query(topic, tier, status)` | `query` | `GET /api/findings?q=&tier=&status=` |
-| `propose(statement, tier, owner, evidence_links)` | `propose` | `POST /api/propose` |
-| `validate(finding_id, validated_by, note)` | `validate` | `POST /api/validate` |
-| `check_conflict(statement or finding_id)` | `check_conflict` | `POST /api/check_conflict` |
-| `confirm_conflict(finding_id, conflicting_id, confirmed_by, note)` | `check_conflict` with `confirm_with` | `POST /api/confirm_conflict` |
-| `checkout(finding_id, who)` | `checkout` | `POST /api/checkout` |
-| `release(finding_id, who)` | `release` | `POST /api/release` |
-| `activity()`, `get(id)`, `history(id)` | (via query) | `GET /api/activity`, `/api/findings/{id}`, `/api/findings/{id}/history` |
+Every action is one core function, served by the web API and by an MCP tool with the same name, so the app and an AI tool can always do the same things. A test (`tests/test_parity.py`) fails if a core action is missing from either.
+
+In MCP, the person's name is set once per session with `set_identity` (or the `ANCHOR_USER` environment variable) and every tool acts as them.
+
+| Mode | Core function | MCP tool | Web API |
+|---|---|---|---|
+| Set up | `whoami(name)` | `whoami`, `set_identity` | `POST /api/whoami` |
+| Set up | `people()`, `person(name)` | `people`, `person` | `GET /api/people`, `/api/people/{name}` |
+| Set up | `set_role(name, role, by)` | `set_role` | `POST /api/set_role` |
+| Set up | `team_config()` | `team_config` | `GET /api/config` |
+| Plan | `start_study(title, owner, objective, decision, method, sample, status, fields)` | `start_study` | `POST /api/start_study` |
+| Plan | `update_study(study_id, by, ...)` | `update_study` | `POST /api/update_study` |
+| Plan | `get_study(id)`, `list_studies(status, owner)` | `get_study`, `list_studies` | `GET /api/studies/{id}`, `/api/studies` |
+| Analyze | `propose(statement, tier, owner, evidence_links, study_id)` | `propose` | `POST /api/propose` |
+| Insights | `promote(finding_id, by, statement, note)` | `promote` | `POST /api/promote` |
+| Explore | `query(topic, tier, status)` | `query` | `GET /api/findings?q=&tier=&status=` |
+| Explore | `get(id)`, `history(id)` | `get`, `history` | `GET /api/findings/{id}`, `/api/findings/{id}/history` |
+| Explore | `link(from_id, to_id, type, by, note)` | `link` | `POST /api/link` |
+| Explore | `check_conflict(statement or finding_id)` | `check_conflict` | `POST /api/check_conflict` |
+| Explore | `confirm_conflict(finding_id, conflicting_id, confirmed_by, note)` | `check_conflict` with `confirm_with` | `POST /api/confirm_conflict` |
+| Validate | `validate(finding_id, validated_by, note, outcome, basis)` | `validate` | `POST /api/validate` |
+| Validate | `request_validation(finding_id, requested_by, people, roles, note)` | `request_validation` | `POST /api/request_validation` |
+| Validate | `withdraw_request(request_id, by)` | `withdraw_request` | `POST /api/withdraw_request` |
+| Validate | `my_queue(who)` | `my_queue` | `GET /api/queue?who=` |
+| Validate | `checkout(finding_id, who)`, `release(finding_id, who)` | `checkout`, `release` | `POST /api/checkout`, `/api/release` |
+| Decide | `log_decision(title, made_by, finding_ids, note, outcome)` | `log_decision` | `POST /api/log_decision` |
+| Decide | `update_decision(decision_id, by, outcome, note, add_finding_ids)` | `update_decision` | `POST /api/update_decision` |
+| Decide | `get_decision(id)`, `list_decisions(made_by)` | `get_decision`, `list_decisions` | `GET /api/decisions/{id}`, `/api/decisions` |
+| Loop back | `request_research(question, requested_by, decision, from_decision_id, from_query, fields)` | `request_research` | `POST /api/request_research` |
+| All | `activity(limit)` | `activity` | `GET /api/activity` |
 
 ## Rules in this slice
 

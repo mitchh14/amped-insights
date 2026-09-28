@@ -112,6 +112,29 @@ def query(
 
 
 @mcp.tool()
+def get(finding_id: int) -> dict[str, Any]:
+    """Everything needed to judge one finding: tier, status, trust summary,
+    each review with role and how it was checked, evidence and what it
+    supports, typed links from both sides, conflicts, the study it came from,
+    promotion readiness, open review requests, and decisions it was used in."""
+    return _call(store.get, finding_id)
+
+
+@mcp.tool()
+def history(finding_id: int) -> dict[str, Any]:
+    """Every change to a finding, oldest first. Nothing is erased, so this shows
+    what used to be believed and why it changed."""
+    return _call(lambda: {"history": store.history(finding_id)})
+
+
+@mcp.tool()
+def activity(limit: int = 50) -> dict[str, Any]:
+    """Recent activity across the team, newest first: proposals, reviews,
+    conflicts, promotions, studies, decisions, and research requests."""
+    return _call(lambda: {"activity": store.activity(limit)})
+
+
+@mcp.tool()
 def propose(
     statement: str,
     tier: str,
