@@ -104,16 +104,76 @@ def query(
 
 @mcp.tool()
 def propose(
-    statement: str, tier: str, evidence_links: list[int] | None = None, owner: str | None = None
+    statement: str,
+    tier: str,
+    evidence_links: list[int] | None = None,
+    study_id: int | None = None,
+    owner: str | None = None,
 ) -> dict[str, Any]:
     """Submit a new finding. It is created with status 'proposed'.
 
     tier is one of data_point, hypothesis, insight. evidence_links are ids of
-    existing findings that support this one. The response includes any validated
-    findings that may contradict it, for a human to review. owner defaults to
-    this session's identity.
+    existing findings that support this one. study_id places it in a study so it
+    carries that study's objective and decision. The response includes any
+    validated findings that may contradict it, for a human to review. owner
+    defaults to this session's identity.
     """
-    return _call(lambda: store.propose(statement, tier, _who(owner), evidence_links))
+    return _call(lambda: store.propose(statement, tier, _who(owner), evidence_links, study_id))
+
+
+@mcp.tool()
+def start_study(
+    title: str,
+    objective: str | None = None,
+    decision: str | None = None,
+    method: str | None = None,
+    sample: str | None = None,
+    status: str = "planned",
+    fields: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Open a study: why we are looking (objective), the business decision it
+    serves, how (method), and who or what (sample). Only a title is required;
+    missing parts come back as warnings. fields holds the team's own template
+    fields (see team_config). status is planned, running, done, requested, or closed.
+    Capture findings into it with propose(study_id=...)."""
+    return _call(lambda: store.start_study(
+        title, _who(None), objective, decision, method, sample, status, fields))
+
+
+@mcp.tool()
+def update_study(
+    study_id: int,
+    title: str | None = None,
+    objective: str | None = None,
+    decision: str | None = None,
+    method: str | None = None,
+    sample: str | None = None,
+    status: str | None = None,
+    owner: str | None = None,
+    fields: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Update a study's details, move its status (requested, planned, running,
+    done, closed), or change who owns it. Only the values you pass change.
+    Previous values are kept in its history."""
+    changes = {k: v for k, v in dict(
+        title=title, objective=objective, decision=decision, method=method,
+        sample=sample, status=status, owner=owner, fields=fields,
+    ).items() if v is not None}
+    return _call(lambda: store.update_study(study_id, _who(None), **changes))
+
+
+@mcp.tool()
+def get_study(study_id: int) -> dict[str, Any]:
+    """A study's objective, the decision it serves, method, sample, template
+    fields, history, and its findings grouped by tier."""
+    return _call(store.get_study, study_id)
+
+
+@mcp.tool()
+def list_studies(status: str | None = None, owner: str | None = None) -> dict[str, Any]:
+    """Studies, newest first. Filter by status (requested, planned, running,
+    done, closed) or owner."""
+    return _call(lambda: {"studies": store.list_studies(status, owner)})
 
 
 @mcp.tool()

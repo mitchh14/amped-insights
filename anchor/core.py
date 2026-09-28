@@ -19,6 +19,10 @@ from . import config as config_mod
 
 TIERS = ("data_point", "hypothesis", "insight")
 STATUSES = ("proposed", "validated", "contested")
+# requested: someone asked for research and nobody has picked it up yet.
+# closed: ended without running, for example answered by existing findings.
+STUDY_STATUSES = ("requested", "planned", "running", "done", "closed")
+STUDY_TEXT_FIELDS = ("title", "objective", "decision", "method", "sample")
 
 DEFAULT_DB_PATH = os.environ.get("ANCHOR_DB", "anchor.db")
 
@@ -55,6 +59,24 @@ CREATE TABLE IF NOT EXISTS conflicts (
     note            TEXT
 );
 
+-- Why we looked, what decision it serves, and how it was studied. Findings
+-- captured inside a study carry this context with them.
+CREATE TABLE IF NOT EXISTS studies (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    title             TEXT NOT NULL,
+    objective         TEXT,
+    decision          TEXT,  -- the business decision this study serves
+    method            TEXT,
+    sample            TEXT,
+    status            TEXT NOT NULL CHECK (status IN {STUDY_STATUSES}),
+    owner             TEXT,  -- empty while a request waits to be picked up
+    fields            TEXT NOT NULL DEFAULT '{{}}',  -- team template fields, JSON
+    requested_by      TEXT,
+    from_decision_id  INTEGER,
+    from_query        TEXT,
+    created_at        TEXT NOT NULL
+);
+
 -- Everyone who has taken an action, with the role they hold on this team.
 -- Names are matched without regard to case, so "sam" and "Sam" are one person.
 CREATE TABLE IF NOT EXISTS people (
@@ -75,6 +97,13 @@ CREATE TABLE IF NOT EXISTS events (
 );
 """
 
+# Columns added after the first release. Applied to new and older databases
+# alike, so there is one path to the current shape.
+MIGRATIONS = (
+    ("findings", "study_id", "INTEGER REFERENCES studies(id)"),
+    ("events", "study_id", "INTEGER"),
+)
+
 
 class CoreError(ValueError):
     """Raised when an action is not allowed or the input is invalid."""
@@ -82,6 +111,21 @@ class CoreError(ValueError):
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _clean(value: Any) -> str | None:
+    """Trim free text; empty becomes None."""
+    if value is None:
+        return None
+    return str(value).strip() or None
+
+
+def _clean_fields(fields: dict[str, Any] | None) -> dict[str, Any]:
+    if fields is None:
+        return {}
+    if not isinstance(fields, dict):
+        raise CoreError("fields must be an object of template field values")
+    return {str(k): v.strip() if isinstance(v, str) else v for k, v in fields.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +240,10 @@ class Store:
         self.config = config if config is not None else config_mod.load()
         with self._conn() as conn:
             conn.executescript(SCHEMA)
+            for table, column, decl in MIGRATIONS:
+                have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+                if column not in have:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
             self._sync_people(conn)
 
     def _sync_people(self, conn) -> None:
@@ -237,11 +285,34 @@ class Store:
     # -- helpers -----------------------------------------------------------
 
     @staticmethod
-    def _log(conn, finding_id, kind, actor, **detail) -> None:
+    def _log(conn, finding_id, kind, actor, _study=None, **detail) -> None:
         conn.execute(
-            "INSERT INTO events (finding_id, kind, actor, at, detail) VALUES (?, ?, ?, ?, ?)",
-            (finding_id, kind, actor, _now(), json.dumps(detail)),
+            "INSERT INTO events (finding_id, study_id, kind, actor, at, detail) VALUES (?, ?, ?, ?, ?, ?)",
+            (finding_id, _study, kind, actor, _now(), json.dumps(detail)),
         )
+
+    @staticmethod
+    def _study_row(conn, study_id: int) -> sqlite3.Row:
+        row = conn.execute("SELECT * FROM studies WHERE id = ?", (study_id,)).fetchone()
+        if row is None:
+            raise CoreError(f"study {study_id} does not exist")
+        return row
+
+    @staticmethod
+    def _study_summary(row: sqlite3.Row) -> dict[str, Any]:
+        return {k: row[k] for k in ("id", "title", "objective", "decision", "status", "owner")}
+
+    def _study_warnings(self, study: dict[str, Any]) -> list[str]:
+        """Gentle nudges toward a complete chain. Never blocks."""
+        warnings = []
+        if study["status"] != "requested":
+            for key in ("objective", "decision"):
+                if not study.get(key):
+                    warnings.append(f"study has no {key} yet; findings are easier to trust with it")
+        for field in self.config["study"]["fields"]:
+            if field["required"] and not study["fields"].get(field["key"]):
+                warnings.append(f"study template field '{field['label']}' is empty")
+        return warnings
 
     @staticmethod
     def _row(conn, finding_id: int) -> sqlite3.Row:
@@ -343,6 +414,7 @@ class Store:
                     "note": c["note"],
                 }
             )
+        srow = conn.execute("SELECT * FROM studies WHERE id = ?", (row["study_id"],)).fetchone()
         return {
             "id": fid,
             "statement": row["statement"],
@@ -351,6 +423,7 @@ class Store:
             "owner": row["owner"],
             "owner_role": self._role_of(conn, row["owner"]),
             "created_at": row["created_at"],
+            "study": self._study_summary(srow) if srow else None,
             "evidence_links": evidence_ids,
             "evidence": evidence,
             "cited_by": cited_by,
@@ -379,6 +452,50 @@ class Store:
         with self._conn() as conn:
             name = self._person(conn, name, "name")
             return self._person_dict(name, self._role_of(conn, name))
+
+    def _study_full(self, conn, row: sqlite3.Row) -> dict[str, Any]:
+        study = dict(row)
+        study["fields"] = json.loads(row["fields"])
+        findings = [
+            self._full(conn, r)
+            for r in conn.execute("SELECT * FROM findings WHERE study_id = ? ORDER BY id", (row["id"],))
+        ]
+        study["findings_by_tier"] = {t: [f for f in findings if f["tier"] == t] for t in TIERS}
+        study["finding_count"] = len(findings)
+        study["history"] = [
+            {"kind": e["kind"], "actor": e["actor"], "at": e["at"], "detail": json.loads(e["detail"])}
+            for e in conn.execute(
+                "SELECT * FROM events WHERE study_id = ? AND finding_id IS NULL ORDER BY id", (row["id"],)
+            )
+        ]
+        return study
+
+    def get_study(self, study_id: int) -> dict[str, Any]:
+        """A study with its objective, the decision it serves, and its findings by tier."""
+        with self._conn() as conn:
+            return self._study_full(conn, self._study_row(conn, study_id))
+
+    def list_studies(self, status: str | None = None, owner: str | None = None) -> list[dict[str, Any]]:
+        if status and status not in STUDY_STATUSES:
+            raise CoreError(f"status must be one of {STUDY_STATUSES}")
+        sql, args = "SELECT * FROM studies WHERE 1=1", []
+        if status:
+            sql += " AND status = ?"
+            args.append(status)
+        if owner:
+            sql += " AND owner = ? COLLATE NOCASE"
+            args.append(owner.strip())
+        with self._conn() as conn:
+            rows = conn.execute(sql + " ORDER BY id DESC", args).fetchall()
+            out = []
+            for r in rows:
+                study = dict(r)
+                study["fields"] = json.loads(r["fields"])
+                study["finding_count"] = conn.execute(
+                    "SELECT COUNT(*) FROM findings WHERE study_id = ?", (r["id"],)
+                ).fetchone()[0]
+                out.append(study)
+        return out
 
     def get(self, finding_id: int) -> dict[str, Any]:
         with self._conn() as conn:
@@ -430,7 +547,8 @@ class Store:
     def activity(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT e.*, f.statement FROM events e LEFT JOIN findings f ON f.id = e.finding_id "
+                "SELECT e.*, f.statement, s.title AS study_title FROM events e "
+                "LEFT JOIN findings f ON f.id = e.finding_id LEFT JOIN studies s ON s.id = e.study_id "
                 "ORDER BY e.id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
@@ -438,6 +556,8 @@ class Store:
             {
                 "finding_id": r["finding_id"],
                 "statement": r["statement"],
+                "study_id": r["study_id"],
+                "study_title": r["study_title"],
                 "kind": r["kind"],
                 "actor": r["actor"],
                 "at": r["at"],
@@ -474,14 +594,85 @@ class Store:
             warnings.append(f"{name} is listed in the team config, which resets their role on restart")
         return {"person": self._person_dict(name, role), "warnings": warnings}
 
+    def start_study(
+        self,
+        title: str,
+        owner: str,
+        objective: str | None = None,
+        decision: str | None = None,
+        method: str | None = None,
+        sample: str | None = None,
+        status: str = "planned",
+        fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Open a study: why we are looking, the decision it serves, and how.
+
+        Only a title is needed to start. Missing objective, decision, or
+        required template fields come back as warnings, never errors, so a
+        team can start now and fill in details as they learn them.
+        """
+        title = self._require_name(title, "title")
+        if status not in STUDY_STATUSES:
+            raise CoreError(f"status must be one of {STUDY_STATUSES}")
+        with self._conn() as conn:
+            owner = self._person(conn, owner, "owner")
+            cur = conn.execute(
+                "INSERT INTO studies (title, objective, decision, method, sample, status, owner, fields, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (title, _clean(objective), _clean(decision), _clean(method), _clean(sample),
+                 status, owner, json.dumps(_clean_fields(fields)), _now()),
+            )
+            sid = cur.lastrowid
+            self._log(conn, None, "study_started", owner, sid, status=status)
+        study = self.get_study(sid)
+        return {"study": study, "warnings": self._study_warnings(study)}
+
+    def update_study(self, study_id: int, by: str, **changes: Any) -> dict[str, Any]:
+        """Change a study's details, status, or owner. Template fields are merged.
+
+        The previous values are kept in the study's history.
+        """
+        allowed = set(STUDY_TEXT_FIELDS) | {"status", "owner", "fields"}
+        unknown = set(changes) - allowed
+        if unknown:
+            raise CoreError(f"cannot update {sorted(unknown)}; choose from {sorted(allowed)}")
+        if "status" in changes and changes["status"] not in STUDY_STATUSES:
+            raise CoreError(f"status must be one of {STUDY_STATUSES}")
+        if "title" in changes:
+            changes["title"] = self._require_name(changes["title"], "title")
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            row = self._study_row(conn, study_id)
+            if changes.get("owner"):
+                changes["owner"] = self._person(conn, changes["owner"], "owner")
+            updates, previous = {}, {}
+            for key, value in changes.items():
+                if key == "fields":
+                    value = json.dumps({**json.loads(row["fields"]), **_clean_fields(value)})
+                elif key != "status":
+                    value = _clean(value)
+                if value != row[key]:
+                    updates[key] = value
+                    previous[key] = row[key]
+            if updates:
+                conn.execute(
+                    f"UPDATE studies SET {', '.join(f'{k} = ?' for k in updates)} WHERE id = ?",
+                    (*updates.values(), study_id),
+                )
+                self._log(conn, None, "study_updated", by, study_id,
+                          changed=sorted(updates), previous=previous)
+        study = self.get_study(study_id)
+        return {"study": study, "warnings": self._study_warnings(study)}
+
     def propose(
         self,
         statement: str,
         tier: str,
         owner: str,
         evidence_links: list[int] | None = None,
+        study_id: int | None = None,
     ) -> dict[str, Any]:
-        """Create a finding with status 'proposed'.
+        """Create a finding with status 'proposed', optionally inside a study.
 
         Also runs a conflict check so contradictions surface at the moment a
         finding enters the system. The check never blocks the proposal.
@@ -495,13 +686,15 @@ class Store:
             owner = self._person(conn, owner, "owner")
             for eid in links:
                 self._row(conn, eid)
+            if study_id is not None:
+                study_id = self._study_row(conn, int(study_id))["id"]
             cur = conn.execute(
-                "INSERT INTO findings (statement, tier, status, owner, evidence_links, created_at) "
-                "VALUES (?, ?, 'proposed', ?, ?, ?)",
-                (statement, tier, owner, json.dumps(links), _now()),
+                "INSERT INTO findings (statement, tier, status, owner, evidence_links, study_id, created_at) "
+                "VALUES (?, ?, 'proposed', ?, ?, ?, ?)",
+                (statement, tier, owner, json.dumps(links), study_id, _now()),
             )
             fid = cur.lastrowid
-            self._log(conn, fid, "proposed", owner, tier=tier, evidence_links=links)
+            self._log(conn, fid, "proposed", owner, study_id, tier=tier, evidence_links=links)
         if tier != "data_point" and not links:
             warnings.append(f"this {tier} has no evidence links yet")
         conflicts = self.check_conflict(finding_id=fid)["candidates"]

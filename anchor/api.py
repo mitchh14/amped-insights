@@ -15,6 +15,7 @@ from .core import CoreError, Store
 # POST /api/<action> maps straight onto a core function. No other write path.
 ACTIONS = (
     "whoami", "set_role",
+    "start_study", "update_study",
     "propose", "validate", "check_conflict", "confirm_conflict", "checkout", "release",
 )
 
@@ -32,6 +33,10 @@ def handle(store: Store, method: str, path: str, body: Any = None) -> tuple[int,
                 return 200, store.team_config()
             if parts == ["api", "people"]:
                 return 200, store.people()
+            if parts == ["api", "studies"]:
+                return 200, store.list_studies(status=q.get("status"), owner=q.get("owner"))
+            if len(parts) == 3 and parts[:2] == ["api", "studies"]:
+                return 200, store.get_study(int(parts[2]))
             if parts == ["api", "activity"]:
                 return 200, store.activity(int(q.get("limit", 50)))
             if len(parts) == 3 and parts[:2] == ["api", "findings"]:
