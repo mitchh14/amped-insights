@@ -57,7 +57,7 @@
 import os, sys
 sys.path.insert(0, "/app")
 from anchor.api import handle_json
-from anchor.core import Store
+from anchor.core import CoreError, Store
 from anchor.seed import seed
 
 DB_PATH = ${JSON.stringify(DB_PATH)}
@@ -69,7 +69,11 @@ def open_store(fresh=False):
             if os.path.exists(DB_PATH + suffix):
                 os.remove(DB_PATH + suffix)
     new = not os.path.exists(DB_PATH)
-    store = Store(DB_PATH)
+    try:
+        store = Store(DB_PATH)
+    except CoreError:
+        # Saved data from an older demo. Start fresh with the new sample team.
+        return open_store(fresh=True)
     if new:
         seed(store)
 
@@ -102,7 +106,7 @@ open_store()
   };
 
   async function reset() {
-    if (!confirm("Reset the demo? This clears your changes and reloads the sample findings.")) return;
+    if (!confirm("Reset the demo? This clears your changes and reloads the sample learnings.")) return;
     await ready;
     pyodide.globals.get("open_store")(true);
     await sync(false);
@@ -117,9 +121,9 @@ open_store()
     banner.innerHTML = `
       <div><b>Demo.</b> This runs entirely in your browser. Nothing you type leaves your device.
         <span id="demo-status">Loading (the first visit takes a few seconds)...</span></div>
-      <div class="demo-tips">Try it: pick a person to see their home. Be Morgan (stakeholder) to find
-        insights and see the decision they informed, or Sam (researcher) to work through reviews,
-        studies, and research requests. Switch person any time at the top.</div>
+      <div class="demo-tips">Try it: pick a person to see their one next step. Be Jordan to confirm an
+        AI draft, Sam (an SME) to review, Morgan (stakeholder) to say what happened after a decision,
+        or Lee to pick up a research request. Switch person any time at the top.</div>
       <div class="row"><button id="demo-reset" type="button">Reset demo</button>
         <a href="https://github.com/mitchh14/amped-insights">Source on GitHub</a></div>`;
     document.body.prepend(banner);
