@@ -122,6 +122,19 @@ def propose(
 
 
 @mcp.tool()
+def promote(finding_id: int, statement: str | None = None, note: str | None = None) -> dict[str, Any]:
+    """Promote a data point to a hypothesis, or a hypothesis to an insight.
+
+    Creates a new finding one tier up, linked back to the original, which stays
+    as it was. Pass statement to reword it for what the evidence now supports,
+    and note to say why. Anyone can promote; check the finding's `promotion`
+    field first to see whether it meets the team's rule. Warnings explain any
+    gaps (not validated, contested, no evidence) and should be shown to the person.
+    """
+    return _call(lambda: store.promote(finding_id, _who(None), statement, note))
+
+
+@mcp.tool()
 def start_study(
     title: str,
     objective: str | None = None,

@@ -102,7 +102,11 @@ CREATE TABLE IF NOT EXISTS events (
 MIGRATIONS = (
     ("findings", "study_id", "INTEGER REFERENCES studies(id)"),
     ("events", "study_id", "INTEGER"),
+    ("findings", "promoted_from", "INTEGER REFERENCES findings(id)"),
 )
+
+# Promotion moves up one tier and creates a new finding at that tier.
+NEXT_TIER = {"data_point": "hypothesis", "hypothesis": "insight"}
 
 
 class CoreError(ValueError):
@@ -415,6 +419,11 @@ class Store:
                 }
             )
         srow = conn.execute("SELECT * FROM studies WHERE id = ?", (row["study_id"],)).fetchone()
+        prow = conn.execute("SELECT * FROM findings WHERE id = ?", (row["promoted_from"],)).fetchone()
+        promoted_to = [
+            self._summary(r)
+            for r in conn.execute("SELECT * FROM findings WHERE promoted_from = ? ORDER BY id", (fid,))
+        ]
         return {
             "id": fid,
             "statement": row["statement"],
@@ -427,6 +436,9 @@ class Store:
             "evidence_links": evidence_ids,
             "evidence": evidence,
             "cited_by": cited_by,
+            "promoted_from": self._summary(prow) if prow else None,
+            "promoted_to": promoted_to,
+            "promotion": self._readiness(conn, row) if row["tier"] in NEXT_TIER else None,
             "validations": validations,
             "conflicts": conflicts,
             "checked_out_by": row["checked_out_by"],
@@ -684,21 +696,105 @@ class Store:
         warnings = []
         with self._conn() as conn:
             owner = self._person(conn, owner, "owner")
-            for eid in links:
-                self._row(conn, eid)
-            if study_id is not None:
-                study_id = self._study_row(conn, int(study_id))["id"]
-            cur = conn.execute(
-                "INSERT INTO findings (statement, tier, status, owner, evidence_links, study_id, created_at) "
-                "VALUES (?, ?, 'proposed', ?, ?, ?, ?)",
-                (statement, tier, owner, json.dumps(links), study_id, _now()),
-            )
-            fid = cur.lastrowid
-            self._log(conn, fid, "proposed", owner, study_id, tier=tier, evidence_links=links)
+            fid = self._insert_finding(conn, statement, tier, owner, links, study_id)
         if tier != "data_point" and not links:
             warnings.append(f"this {tier} has no evidence links yet")
+        return self._created(fid, warnings)
+
+    def _insert_finding(self, conn, statement, tier, owner, links, study_id, promoted_from=None) -> int:
+        for eid in links:
+            self._row(conn, eid)
+        if study_id is not None:
+            study_id = self._study_row(conn, int(study_id))["id"]
+        cur = conn.execute(
+            "INSERT INTO findings (statement, tier, status, owner, evidence_links, study_id, "
+            "promoted_from, created_at) VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?)",
+            (statement, tier, owner, json.dumps(links), study_id, promoted_from, _now()),
+        )
+        fid = cur.lastrowid
+        detail = {"tier": tier, "evidence_links": links}
+        if promoted_from:
+            detail["promoted_from"] = promoted_from
+        self._log(conn, fid, "proposed", owner, study_id, **detail)
+        return fid
+
+    def _created(self, fid: int, warnings: list[str]) -> dict[str, Any]:
+        """A new finding plus a conflict check, so contradictions surface on entry."""
         conflicts = self.check_conflict(finding_id=fid)["candidates"]
         return {"finding": self.get(fid), "possible_conflicts": conflicts, "warnings": warnings}
+
+    def promote(
+        self, finding_id: int, by: str, statement: str | None = None, note: str | None = None
+    ) -> dict[str, Any]:
+        """Promote a data point to a hypothesis, or a hypothesis to an insight.
+
+        Promotion creates a new finding one tier up, linked back to the one it
+        came from, which stays exactly as it was with its own validations. The
+        new finding starts as proposed, owned by whoever promoted it, and can
+        be reworded (statement) to say what the evidence now supports.
+
+        Anyone can promote. The team's promotion rules show whether the source
+        is ready; they only stop a promotion if the team set enforce = "required".
+        """
+        with self._conn() as conn:
+            row = self._row(conn, finding_id)
+            by = self._person(conn, by, "by")
+            if row["tier"] not in NEXT_TIER:
+                raise CoreError(f"finding {finding_id} is already an {row['tier']}; it cannot be promoted further")
+            to_tier = NEXT_TIER[row["tier"]]
+            readiness = self._readiness(conn, row, promoter=by)
+            if not readiness["ready"] and self.config["promote"]["enforce"] == "required":
+                raise CoreError(f"not ready to promote: {readiness['summary']}")
+            warnings = []
+            if not readiness["ready"]:
+                warnings.append(f"not ready by the team's rule ({readiness['summary']}); promoted anyway")
+            if row["status"] == "proposed":
+                warnings.append(f"finding {finding_id} has not been validated yet")
+            if row["status"] == "contested":
+                warnings.append(f"finding {finding_id} is contested; its conflict is not resolved")
+            if row["tier"] != "data_point" and not json.loads(row["evidence_links"]):
+                warnings.append(f"finding {finding_id} has no evidence links, so this {to_tier} rests on it alone")
+            new_statement = (statement or "").strip() or row["statement"]
+            fid = self._insert_finding(
+                conn, new_statement, to_tier, by, [finding_id], row["study_id"], promoted_from=finding_id
+            )
+            self._log(conn, finding_id, "promoted", by, row["study_id"],
+                      to=fid, from_tier=row["tier"], to_tier=to_tier, note=_clean(note))
+        return self._created(fid, warnings)
+
+    def _approvals(self, conn, finding_id: int) -> list[sqlite3.Row]:
+        """The validations that currently count as approval, with the validator's role."""
+        return conn.execute(
+            "SELECT v.validated_by, p.role FROM validations v "
+            "LEFT JOIN people p ON p.name = v.validated_by WHERE v.finding_id = ?",
+            (finding_id,),
+        ).fetchall()
+
+    def _trusted(self, role: str | None) -> bool:
+        return bool(role and self.config["roles"].get(role, {}).get("trusted"))
+
+    def _readiness(self, conn, row: sqlite3.Row, promoter: str | None = None) -> dict[str, Any]:
+        """Whether a finding meets the team's promotion rule. Any one rule is enough."""
+        rules = self.config["promote"]
+        approvals = self._approvals(conn, row["id"])
+        trusted = sum(self._trusted(a["role"]) for a in approvals)
+        checks = []
+        if rules["min_validations"]:
+            checks.append((len(approvals) >= rules["min_validations"],
+                           f"{len(approvals)} of {rules['min_validations']} validations"))
+        if rules["min_trusted_validations"]:
+            checks.append((trusted >= rules["min_trusted_validations"],
+                           f"{trusted} of {rules['min_trusted_validations']} trusted validations"))
+        if rules["trusted_roles_ready"] and promoter is not None:
+            checks.append((self._trusted(self._role_of(conn, promoter)), f"{promoter} has a trusted role"))
+        if not checks:
+            return {"ready": True, "summary": "no promotion rule set", "enforced": False}
+        ready = any(ok for ok, _ in checks)
+        return {
+            "ready": ready,
+            "summary": ", or ".join(text for _, text in checks),
+            "enforced": rules["enforce"] == "required",
+        }
 
     def validate(self, finding_id: int, validated_by: str, note: str | None = None) -> dict[str, Any]:
         """Add one validation record. The first one moves 'proposed' to 'validated'.
