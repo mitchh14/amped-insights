@@ -163,6 +163,7 @@ MIGRATIONS = (
     ("events", "study_id", "INTEGER"),
     ("findings", "promoted_from", "INTEGER REFERENCES findings(id)"),
     ("events", "decision_id", "INTEGER"),
+    ("findings", "revises", "INTEGER REFERENCES findings(id)"),
 )
 
 # Promotion moves up one tier and creates a new finding at that tier.
@@ -515,6 +516,11 @@ class Store:
             self._summary(r)
             for r in conn.execute("SELECT * FROM findings WHERE promoted_from = ? ORDER BY id", (fid,))
         ]
+        rrow = conn.execute("SELECT * FROM findings WHERE id = ?", (row["revises"],)).fetchone()
+        revised_as = [
+            self._summary(r)
+            for r in conn.execute("SELECT * FROM findings WHERE revises = ? ORDER BY id", (fid,))
+        ]
         links = {"extends": [], "extended_by": [], "duplicates": []}
         for l in conn.execute(
             "SELECT * FROM links WHERE from_id = ? OR to_id = ? ORDER BY id", (fid, fid)
@@ -540,6 +546,8 @@ class Store:
             "links": links,
             "promoted_from": self._summary(prow) if prow else None,
             "promoted_to": promoted_to,
+            "revises": self._summary(rrow) if rrow else None,
+            "revised_as": revised_as,
             "promotion": self._readiness(conn, row) if row["tier"] in NEXT_TIER else None,
             "trust": self._trust([v for v in validations if v["current"]]),
             "validations": validations,
@@ -854,20 +862,24 @@ class Store:
             warnings.append(f"this {tier} has no evidence links yet")
         return self._created(fid, warnings)
 
-    def _insert_finding(self, conn, statement, tier, owner, links, study_id, promoted_from=None) -> int:
+    def _insert_finding(
+        self, conn, statement, tier, owner, links, study_id, promoted_from=None, revises=None
+    ) -> int:
         for eid in links:
             self._row(conn, eid)
         if study_id is not None:
             study_id = self._study_row(conn, int(study_id))["id"]
         cur = conn.execute(
             "INSERT INTO findings (statement, tier, status, owner, evidence_links, study_id, "
-            "promoted_from, created_at) VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?)",
-            (statement, tier, owner, json.dumps(links), study_id, promoted_from, _now()),
+            "promoted_from, revises, created_at) VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?)",
+            (statement, tier, owner, json.dumps(links), study_id, promoted_from, revises, _now()),
         )
         fid = cur.lastrowid
         detail = {"tier": tier, "evidence_links": links}
         if promoted_from:
             detail["promoted_from"] = promoted_from
+        if revises:
+            detail["revises"] = revises
         self._log(conn, fid, "proposed", owner, study_id, **detail)
         return fid
 
@@ -914,6 +926,48 @@ class Store:
             self._log(conn, finding_id, "promoted", by, row["study_id"],
                       to=fid, from_tier=row["tier"], to_tier=to_tier, note=_clean(note))
         return self._created(fid, warnings)
+
+    def revise(self, finding_id: int, by: str, statement: str, note: str | None = None) -> dict[str, Any]:
+        """Respond to review feedback with a new version of a finding.
+
+        The new version keeps the tier, evidence, and study, and links back to
+        the one it revises, which stays as it was with its reviews. Everyone
+        whose current review asked for changes gets a request to look again.
+        """
+        statement = self._require_name(statement, "statement")
+        with self._conn() as conn:
+            row = self._row(conn, finding_id)
+            by = self._person(conn, by, "by")
+            if statement == row["statement"]:
+                raise CoreError("the new version says the same thing; change the statement to revise")
+            warnings = []
+            if by != row["owner"]:
+                warnings.append(f"finding {finding_id} is owned by {row['owner']}; you own the new version")
+            fid = self._insert_finding(
+                conn, statement, row["tier"], by, json.loads(row["evidence_links"]), row["study_id"],
+                promoted_from=row["promoted_from"], revises=finding_id,
+            )
+            self._log(conn, finding_id, "revised", by, row["study_id"], to=fid, note=_clean(note))
+            asked = [
+                r["validated_by"] for r in self._current_reviews(conn, finding_id)
+                if r["outcome"] == "changes_requested" and r["validated_by"] != by
+            ]
+            for name in asked:
+                cur = conn.execute(
+                    "INSERT INTO validation_requests (finding_id, requested_by, person, note, at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (fid, by, name, f"Revised after your review of #{finding_id}", _now()),
+                )
+                self._log(conn, fid, "review_requested", by, person=name, request_id=cur.lastrowid)
+            # Requests still open on the old version move to the new one.
+            conn.execute(
+                "UPDATE validation_requests SET status = 'withdrawn', closed_by = ?, closed_at = ? "
+                "WHERE finding_id = ? AND status = 'open'",
+                (by, _now(), finding_id),
+            )
+        result = self._created(fid, warnings)
+        result["review_requested_from"] = asked
+        return result
 
     @staticmethod
     def _current_reviews(conn, finding_id: int) -> list[sqlite3.Row]:
@@ -1142,7 +1196,11 @@ class Store:
                     continue  # already approved before the request came in
                 waiting.append({"request": self._request(req), "finding": self._full(conn, self._row(conn, req["finding_id"]))})
             feedback = []
-            for row in conn.execute("SELECT * FROM findings WHERE owner = ? ORDER BY id DESC", (who,)):
+            for row in conn.execute(
+                "SELECT * FROM findings f WHERE owner = ? AND NOT EXISTS "
+                "(SELECT 1 FROM findings r WHERE r.revises = f.id) ORDER BY id DESC",
+                (who,),
+            ):
                 concerns = [dict(r) for r in self._current_reviews(conn, row["id"]) if r["outcome"] != "approve"]
                 if concerns:
                     feedback.append({"finding": self._full(conn, row), "reviews": concerns})

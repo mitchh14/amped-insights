@@ -121,6 +121,7 @@ In MCP, the person's name is set once per session with `set_identity` (or the `A
 | Explore | `check_conflict(statement or finding_id)` | `check_conflict` | `POST /api/check_conflict` |
 | Explore | `confirm_conflict(finding_id, conflicting_id, confirmed_by, note)` | `check_conflict` with `confirm_with` | `POST /api/confirm_conflict` |
 | Validate | `validate(finding_id, validated_by, note, outcome, basis)` | `validate` | `POST /api/validate` |
+| Validate | `revise(finding_id, by, statement, note)` | `revise` | `POST /api/revise` |
 | Validate | `request_validation(finding_id, requested_by, people, roles, note)` | `request_validation` | `POST /api/request_validation` |
 | Validate | `withdraw_request(request_id, by)` | `withdraw_request` | `POST /api/withdraw_request` |
 | Validate | `my_queue(who)` | `my_queue` | `GET /api/queue?who=` |

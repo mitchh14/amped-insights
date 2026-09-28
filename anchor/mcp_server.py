@@ -167,6 +167,14 @@ def promote(finding_id: int, statement: str | None = None, note: str | None = No
 
 
 @mcp.tool()
+def revise(finding_id: int, statement: str, note: str | None = None) -> dict[str, Any]:
+    """Respond to review feedback with a new version of a finding. The new
+    version keeps the tier, evidence, and study and links back to the original,
+    which stays as it was. Reviewers who asked for changes are asked to look again."""
+    return _call(lambda: store.revise(finding_id, _who(None), statement, note))
+
+
+@mcp.tool()
 def start_study(
     title: str,
     objective: str | None = None,

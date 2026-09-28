@@ -17,7 +17,7 @@ from .core import CoreError, Store
 ACTIONS = (
     "whoami", "set_role",
     "start_study", "update_study", "request_research",
-    "propose", "promote", "validate", "request_validation", "withdraw_request",
+    "propose", "promote", "revise", "validate", "request_validation", "withdraw_request",
     "link", "check_conflict", "confirm_conflict", "checkout", "release",
     "log_decision", "update_decision",
 )

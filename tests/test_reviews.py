@@ -75,3 +75,24 @@ def test_request_rules(store):
     assert store.my_queue("Sam")["waiting_on_me"] == []
     with pytest.raises(CoreError):
         store.withdraw_request(req, "Jo")
+
+
+def test_revise_answers_a_request_for_changes(store):
+    fid = _finding(store)
+    store.validate(fid, "Sam", "Narrow it to mobile web", outcome="changes_requested")
+    store.validate(fid, "Lee", "Fine as is")
+    store.request_validation(fid, "Jo", people=["Kim"])
+    assert store.my_queue("Jo")["feedback_on_mine"][0]["finding"]["id"] == fid
+
+    r = store.revise(fid, "Jo", "Long address forms drive abandonment on mobile web", note="Scoped down")
+    new = r["finding"]
+    assert r["review_requested_from"] == ["Sam"]
+    assert new["revises"]["id"] == fid and new["tier"] == "hypothesis" and new["status"] == "proposed"
+    old = store.get(fid)
+    assert old["revised_as"][0]["id"] == new["id"]
+    assert old["status"] == "validated" and len(old["validations"]) == 2  # kept as it was
+    assert old["open_requests"] == []  # moved to the new version
+    assert store.my_queue("Jo")["feedback_on_mine"] == []
+    assert [w["finding"]["id"] for w in store.my_queue("Sam")["waiting_on_me"]] == [new["id"]]
+    with pytest.raises(CoreError):
+        store.revise(new["id"], "Jo", new["statement"])
