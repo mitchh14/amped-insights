@@ -8,6 +8,7 @@ Usage: python scripts/build_demo.py [out_dir] [--pyodide-url URL]
 """
 
 import argparse
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -22,20 +23,24 @@ def build(out: Path, pyodide_url: str | None) -> None:
         shutil.rmtree(out)
     out.mkdir(parents=True)
 
-    config = {"pyodideUrl": pyodide_url} if pyodide_url else {}
+    src = {name: (ROOT / "anchor" / name).read_text() for name in PY_FILES}
+    page = (ROOT / "anchor/static/index.html").read_text()
+    # Every file the page loads carries a version from its content, so a
+    # browser never mixes a cached old file with new ones after a deploy.
+    parts = [page, json.dumps(src)] + [(ROOT / "demo" / n).read_text() for n in ("demo.js", "demo.css")]
+    version = hashlib.sha256("".join(parts).encode()).hexdigest()[:12]
+    config = {"version": version, **({"pyodideUrl": pyodide_url} if pyodide_url else {})}
     head = (
         f"<script>window.ANCHOR_DEMO = {json.dumps(config)};</script>\n"
-        '<link rel="stylesheet" href="demo.css">\n'
-        '<script src="demo.js"></script>\n'
+        f'<link rel="stylesheet" href="demo.css?v={version}">\n'
+        f'<script src="demo.js?v={version}"></script>\n'
         "</head>"
     )
-    page = (ROOT / "anchor/static/index.html").read_text()
     assert page.count("</head>") == 1, "index.html should have exactly one </head>"
     (out / "index.html").write_text(page.replace("</head>", head))
 
     for name in ["demo.js", "demo.css"]:
         shutil.copy(ROOT / "demo" / name, out / name)
-    src = {name: (ROOT / "anchor" / name).read_text() for name in PY_FILES}
     (out / "anchor-src.json").write_text(json.dumps(src))
     (out / ".nojekyll").write_text("")
     print(f"Built demo in {out}")

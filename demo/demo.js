@@ -38,7 +38,7 @@
     await loadScript(PYODIDE_URL + "pyodide.js");
     pyodide = await loadPyodide({ indexURL: PYODIDE_URL });
     const [src] = await Promise.all([
-      fetch("anchor-src.json").then((r) => r.json()),
+      fetch("anchor-src.json" + (config.version ? "?v=" + config.version : "")).then((r) => r.json()),
       pyodide.loadPackage("sqlite3"),
     ]);
 
@@ -57,7 +57,7 @@
 import os, sys
 sys.path.insert(0, "/app")
 from anchor.api import handle_json
-from anchor.core import CoreError, Store
+from anchor.core import Store
 from anchor.seed import seed
 
 DB_PATH = ${JSON.stringify(DB_PATH)}
@@ -71,8 +71,11 @@ def open_store(fresh=False):
     new = not os.path.exists(DB_PATH)
     try:
         store = Store(DB_PATH)
-    except CoreError:
-        # Saved data from an older demo. Start fresh with the new sample team.
+    except Exception:
+        if fresh:
+            raise
+        # Saved data this version cannot open, for example from an older
+        # demo. Start fresh with the sample team rather than fail to load.
         return open_store(fresh=True)
     if new:
         seed(store)
@@ -105,11 +108,22 @@ open_store()
     return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
   };
 
+  // Reset works even when loading failed: then it clears the saved data
+  // directly, and the reload starts fresh.
   async function reset() {
     if (!confirm("Reset the demo? This clears your changes and reloads the sample learnings.")) return;
-    await ready;
-    pyodide.globals.get("open_store")(true);
-    await sync(false);
+    try {
+      await ready;
+      pyodide.globals.get("open_store")(true);
+      await sync(false);
+    } catch (e) {
+      await new Promise((done) => {
+        try {
+          const req = indexedDB.deleteDatabase(DATA_DIR);
+          req.onsuccess = req.onerror = req.onblocked = () => done();
+        } catch (err) { done(); }
+      });
+    }
     try { localStorage.removeItem("anchor-me"); } catch (e) {}
     location.hash = "";
     location.reload();
