@@ -287,6 +287,51 @@ def release(finding_id: int, who: str | None = None) -> dict[str, Any]:
 
 
 @mcp.tool()
+def log_decision(
+    title: str, finding_ids: list[int] | None = None, note: str | None = None, outcome: str | None = None
+) -> dict[str, Any]:
+    """Record a decision and the findings used to make it, in one step. Use this
+    when a person says they used insights in a decision. Findings that are not
+    validated, or are contested, come back as warnings to show the person.
+    The result lists everyone in the chain behind those findings."""
+    return _call(lambda: store.log_decision(title, _who(None), finding_ids, note, outcome))
+
+
+@mcp.tool()
+def update_decision(
+    decision_id: int,
+    outcome: str | None = None,
+    note: str | None = None,
+    add_finding_ids: list[int] | None = None,
+) -> dict[str, Any]:
+    """Add what happened after a decision (outcome), a note, or more findings
+    that were used. If the outcome raises a new question, follow with
+    request_research(from_decision_id=...)."""
+    return _call(lambda: store.update_decision(decision_id, _who(None), outcome, note, add_finding_ids))
+
+
+@mcp.tool()
+def get_decision(decision_id: int) -> dict[str, Any]:
+    """A decision with the findings it used (trust now and status when used),
+    which of them are now contested (at_risk), research asked for from it, and
+    credits: everyone in the chain behind it and what they did."""
+    return _call(store.get_decision, decision_id)
+
+
+@mcp.tool()
+def list_decisions(made_by: str | None = None) -> dict[str, Any]:
+    """Decisions, newest first, optionally only those made by one person."""
+    return _call(lambda: {"decisions": store.list_decisions(made_by)})
+
+
+@mcp.tool()
+def person(name: str | None = None) -> dict[str, Any]:
+    """A person's role, decisions they made, and decisions their work
+    contributed to. name defaults to this session's identity."""
+    return _call(lambda: store.person(_who(name)))
+
+
+@mcp.tool()
 def team_config() -> dict[str, Any]:
     """How this team has set up ANCHOR: role names and which roles are trusted,
     tier labels, the study template, promotion rules, and which work modes are on.

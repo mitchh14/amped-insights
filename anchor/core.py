@@ -99,6 +99,25 @@ CREATE TABLE IF NOT EXISTS links (
     UNIQUE (from_id, to_id, type)
 );
 
+-- A decision someone made, and the findings they used to make it.
+-- This is how research shows its value, and how a decision owner learns when
+-- something they relied on is later contested.
+CREATE TABLE IF NOT EXISTS decisions (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    title     TEXT NOT NULL,
+    made_by   TEXT NOT NULL,
+    at        TEXT NOT NULL,
+    note      TEXT,
+    outcome   TEXT  -- what happened, added whenever it is known
+);
+
+CREATE TABLE IF NOT EXISTS decision_uses (
+    decision_id    INTEGER NOT NULL REFERENCES decisions(id),
+    finding_id     INTEGER NOT NULL REFERENCES findings(id),
+    status_at_use  TEXT NOT NULL,
+    PRIMARY KEY (decision_id, finding_id)
+);
+
 -- Why we looked, what decision it serves, and how it was studied. Findings
 -- captured inside a study carry this context with them.
 CREATE TABLE IF NOT EXISTS studies (
@@ -143,6 +162,7 @@ MIGRATIONS = (
     ("findings", "study_id", "INTEGER REFERENCES studies(id)"),
     ("events", "study_id", "INTEGER"),
     ("findings", "promoted_from", "INTEGER REFERENCES findings(id)"),
+    ("events", "decision_id", "INTEGER"),
 )
 
 # Promotion moves up one tier and creates a new finding at that tier.
@@ -344,10 +364,11 @@ class Store:
     # -- helpers -----------------------------------------------------------
 
     @staticmethod
-    def _log(conn, finding_id, kind, actor, _study=None, **detail) -> None:
+    def _log(conn, finding_id, kind, actor, _study=None, _decision=None, **detail) -> None:
         conn.execute(
-            "INSERT INTO events (finding_id, study_id, kind, actor, at, detail) VALUES (?, ?, ?, ?, ?, ?)",
-            (finding_id, _study, kind, actor, _now(), json.dumps(detail)),
+            "INSERT INTO events (finding_id, study_id, decision_id, kind, actor, at, detail) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (finding_id, _study, _decision, kind, actor, _now(), json.dumps(detail)),
         )
 
     @staticmethod
@@ -523,6 +544,13 @@ class Store:
             "trust": self._trust([v for v in validations if v["current"]]),
             "validations": validations,
             "open_requests": requests,
+            "used_in": [
+                dict(d) for d in conn.execute(
+                    "SELECT d.id, d.title, d.made_by, d.at FROM decisions d "
+                    "JOIN decision_uses u ON u.decision_id = d.id WHERE u.finding_id = ? ORDER BY d.id",
+                    (fid,),
+                )
+            ],
             "conflicts": conflicts,
             "checked_out_by": row["checked_out_by"],
             "checked_out_at": row["checked_out_at"],
@@ -642,9 +670,9 @@ class Store:
     def activity(self, limit: int = 50) -> list[dict[str, Any]]:
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT e.*, f.statement, s.title AS study_title FROM events e "
+                "SELECT e.*, f.statement, s.title AS study_title, d.title AS decision_title FROM events e "
                 "LEFT JOIN findings f ON f.id = e.finding_id LEFT JOIN studies s ON s.id = e.study_id "
-                "ORDER BY e.id DESC LIMIT ?",
+                "LEFT JOIN decisions d ON d.id = e.decision_id ORDER BY e.id DESC LIMIT ?",
                 (limit,),
             ).fetchall()
         return [
@@ -653,6 +681,8 @@ class Store:
                 "statement": r["statement"],
                 "study_id": r["study_id"],
                 "study_title": r["study_title"],
+                "decision_id": r["decision_id"],
+                "decision_title": r["decision_title"],
                 "kind": r["kind"],
                 "actor": r["actor"],
                 "at": r["at"],
@@ -1083,11 +1113,195 @@ class Store:
                     (who,),
                 )
             ]
-        return {"who": who, "role": role, "waiting_on_me": waiting, "feedback_on_mine": feedback, "my_requests": mine}
+            at_risk = [
+                d for d in (
+                    self._decision_full(conn, r, with_credits=False)
+                    for r in conn.execute("SELECT * FROM decisions WHERE made_by = ? ORDER BY id DESC", (who,))
+                ) if d["at_risk"]
+            ]
+        return {"who": who, "role": role, "waiting_on_me": waiting, "feedback_on_mine": feedback,
+                "my_requests": mine, "decisions_at_risk": at_risk}
 
     @staticmethod
     def _request(r: sqlite3.Row) -> dict[str, Any]:
         return {k: r[k] for k in ("id", "finding_id", "requested_by", "person", "role", "note", "at", "status")}
+
+    # -- decisions ---------------------------------------------------------
+
+    def log_decision(
+        self,
+        title: str,
+        made_by: str,
+        finding_ids: list[int] | None = None,
+        note: str | None = None,
+        outcome: str | None = None,
+    ) -> dict[str, Any]:
+        """Record a decision and the findings used to make it, in one step.
+
+        Using a finding that is not validated yet, or is contested, is allowed
+        and comes back as a warning, so the record stays honest about what the
+        decision rested on.
+        """
+        title = self._require_name(title, "title")
+        ids = list(dict.fromkeys(int(x) for x in (finding_ids or [])))
+        with self._conn() as conn:
+            made_by = self._person(conn, made_by, "made_by")
+            rows = [self._row(conn, fid) for fid in ids]
+            cur = conn.execute(
+                "INSERT INTO decisions (title, made_by, at, note, outcome) VALUES (?, ?, ?, ?, ?)",
+                (title, made_by, _now(), _clean(note), _clean(outcome)),
+            )
+            did = cur.lastrowid
+            self._log(conn, None, "decision_logged", made_by, None, did, finding_ids=ids)
+            warnings = self._use(conn, did, rows, made_by)
+        if not ids:
+            warnings.append("no findings linked; if nothing trusted exists yet, ask for research")
+        return {"decision": self.get_decision(did), "warnings": warnings}
+
+    def _use(self, conn, decision_id: int, rows: list[sqlite3.Row], by: str) -> list[str]:
+        warnings = []
+        for row in rows:
+            conn.execute(
+                "INSERT OR IGNORE INTO decision_uses (decision_id, finding_id, status_at_use) VALUES (?, ?, ?)",
+                (decision_id, row["id"], row["status"]),
+            )
+            self._log(conn, row["id"], "used_in_decision", by, None, decision_id)
+            if row["status"] == "proposed":
+                warnings.append(f"finding {row['id']} has not been validated yet")
+            elif row["status"] == "contested":
+                warnings.append(f"finding {row['id']} is contested")
+        return warnings
+
+    def update_decision(
+        self,
+        decision_id: int,
+        by: str,
+        outcome: str | None = None,
+        note: str | None = None,
+        add_finding_ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        """Add what happened (outcome), a note, or more findings that were used."""
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            row = self._decision_row(conn, decision_id)
+            changes = {}
+            for key, value in (("outcome", outcome), ("note", note)):
+                if value is not None and _clean(value) != row[key]:
+                    changes[key] = _clean(value)
+            if changes:
+                conn.execute(
+                    f"UPDATE decisions SET {', '.join(f'{k} = ?' for k in changes)} WHERE id = ?",
+                    (*changes.values(), decision_id),
+                )
+                self._log(conn, None, "decision_updated", by, None, decision_id,
+                          changed=sorted(changes), previous={k: row[k] for k in changes})
+            rows = [self._row(conn, int(fid)) for fid in (add_finding_ids or [])]
+            warnings = self._use(conn, decision_id, rows, by)
+        return {"decision": self.get_decision(decision_id), "warnings": warnings}
+
+    @staticmethod
+    def _decision_row(conn, decision_id: int) -> sqlite3.Row:
+        row = conn.execute("SELECT * FROM decisions WHERE id = ?", (decision_id,)).fetchone()
+        if row is None:
+            raise CoreError(f"decision {decision_id} does not exist")
+        return row
+
+    def _decision_full(self, conn, row: sqlite3.Row, with_credits: bool = True) -> dict[str, Any]:
+        decision = dict(row)
+        used = []
+        for u in conn.execute(
+            "SELECT * FROM decision_uses WHERE decision_id = ? ORDER BY finding_id", (row["id"],)
+        ):
+            f = self._full(conn, self._row(conn, u["finding_id"]))
+            used.append({
+                **{k: f[k] for k in ("id", "statement", "tier", "status", "owner")},
+                "status_at_use": u["status_at_use"],
+                "trust": f["trust"]["summary"],
+            })
+        decision["findings"] = used
+        # A decision is at risk when something it relied on is now contested.
+        decision["at_risk"] = [f["id"] for f in used if f["status"] == "contested"]
+        decision["requests"] = [
+            self._study_summary(r)
+            for r in conn.execute("SELECT * FROM studies WHERE from_decision_id = ? ORDER BY id", (row["id"],))
+        ]
+        if with_credits:
+            decision["credits"] = self._credits(conn, [f["id"] for f in used])
+        return decision
+
+    def _credits(self, conn, finding_ids: list[int]) -> list[dict[str, Any]]:
+        """Everyone in the chain behind these findings, and what they did.
+
+        Walks each finding's evidence and promotion history back to the start.
+        Listed by name, not ranked: this is about seeing the collaboration
+        behind a decision, not scoring it.
+        """
+        seen: set[int] = set()
+        credit: dict[str, list[dict[str, Any]]] = {}
+
+        def add(name, what, **ref):
+            items = credit.setdefault(name, [])
+            item = {"did": what, **ref}
+            if item not in items:
+                items.append(item)
+
+        stack = list(finding_ids)
+        while stack:
+            fid = stack.pop()
+            if fid in seen:
+                continue
+            seen.add(fid)
+            row = self._row(conn, fid)
+            add(row["owner"], "proposed", finding_id=fid)
+            for v in self._approvals(conn, fid):
+                add(v["validated_by"], "validated", finding_id=fid)
+            if row["study_id"]:
+                study = self._study_row(conn, row["study_id"])
+                if study["owner"]:
+                    add(study["owner"], "ran study", study_id=study["id"])
+            stack.extend(json.loads(row["evidence_links"]))
+            if row["promoted_from"]:
+                stack.append(row["promoted_from"])
+        out = []
+        for name in sorted(credit, key=str.lower):
+            role = self._role_of(conn, name)
+            out.append({**self._person_dict(name, role), "contributions": credit[name]})
+        return out
+
+    def get_decision(self, decision_id: int) -> dict[str, Any]:
+        """A decision, the findings it used (with their trust now and when used),
+        what is at risk, research asked for from it, and everyone behind it."""
+        with self._conn() as conn:
+            return self._decision_full(conn, self._decision_row(conn, decision_id))
+
+    def list_decisions(self, made_by: str | None = None) -> list[dict[str, Any]]:
+        sql, args = "SELECT * FROM decisions", []
+        if made_by:
+            sql += " WHERE made_by = ? COLLATE NOCASE"
+            args.append(made_by.strip())
+        with self._conn() as conn:
+            rows = conn.execute(sql + " ORDER BY id DESC", args).fetchall()
+            return [self._decision_full(conn, r, with_credits=False) for r in rows]
+
+    def person(self, name: str) -> dict[str, Any]:
+        """A person's role, the decisions they made, and the decisions their work
+        contributed to (through any finding in the chain behind them)."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT * FROM people WHERE name = ?", ((name or "").strip(),)).fetchone()
+            if row is None:
+                raise CoreError(f"{name} has not taken part yet")
+            contributed = []
+            for d in conn.execute("SELECT * FROM decisions ORDER BY id DESC").fetchall():
+                ids = [u["finding_id"] for u in conn.execute(
+                    "SELECT finding_id FROM decision_uses WHERE decision_id = ?", (d["id"],))]
+                mine = [c for c in self._credits(conn, ids) if c["name"] == row["name"]]
+                if mine:
+                    contributed.append({"id": d["id"], "title": d["title"], "made_by": d["made_by"],
+                                        "at": d["at"], "contributions": mine[0]["contributions"]})
+            made = [dict(d) for d in conn.execute(
+                "SELECT id, title, at, outcome FROM decisions WHERE made_by = ? ORDER BY id DESC", (row["name"],))]
+        return {**self._person_dict(row["name"], row["role"]), "decisions_made": made,
+                "contributed_to": contributed}
 
     def check_conflict(
         self, statement: str | None = None, finding_id: int | None = None
@@ -1157,6 +1371,11 @@ class Store:
                 )
                 if row["status"] != "contested":
                     conn.execute("UPDATE findings SET status = 'contested' WHERE id = ?", (row["id"],))
+                # Tell anyone who made a decision with it.
+                for u in conn.execute(
+                    "SELECT decision_id FROM decision_uses WHERE finding_id = ?", (row["id"],)
+                ).fetchall():
+                    self._log(conn, row["id"], "decision_at_risk", confirmed_by, None, u["decision_id"])
         return {"findings": [self.get(finding_id), self.get(conflicting_id)]}
 
     def link(

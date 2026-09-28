@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from .core import CoreError, Store
 
@@ -16,6 +16,7 @@ from .core import CoreError, Store
 ACTIONS = (
     "whoami", "set_role",
     "start_study", "update_study",
+    "log_decision", "update_decision",
     "propose", "promote", "validate", "request_validation", "withdraw_request", "link", "check_conflict", "confirm_conflict", "checkout", "release",
 )
 
@@ -39,6 +40,12 @@ def handle(store: Store, method: str, path: str, body: Any = None) -> tuple[int,
                 return 200, store.get_study(int(parts[2]))
             if parts == ["api", "queue"]:
                 return 200, store.my_queue(q.get("who", ""))
+            if parts == ["api", "decisions"]:
+                return 200, store.list_decisions(made_by=q.get("made_by"))
+            if len(parts) == 3 and parts[:2] == ["api", "decisions"]:
+                return 200, store.get_decision(int(parts[2]))
+            if len(parts) == 3 and parts[:2] == ["api", "people"]:
+                return 200, store.person(unquote(parts[2]))
             if parts == ["api", "activity"]:
                 return 200, store.activity(int(q.get("limit", 50)))
             if len(parts) == 3 and parts[:2] == ["api", "findings"]:
