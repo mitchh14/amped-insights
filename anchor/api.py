@@ -13,7 +13,10 @@ from urllib.parse import parse_qs, urlparse
 from .core import CoreError, Store
 
 # POST /api/<action> maps straight onto a core function. No other write path.
-ACTIONS = ("propose", "validate", "check_conflict", "confirm_conflict", "checkout", "release")
+ACTIONS = (
+    "whoami", "set_role",
+    "propose", "validate", "check_conflict", "confirm_conflict", "checkout", "release",
+)
 
 
 def handle(store: Store, method: str, path: str, body: Any = None) -> tuple[int, Any]:
@@ -27,6 +30,8 @@ def handle(store: Store, method: str, path: str, body: Any = None) -> tuple[int,
                 return 200, store.query(q.get("q", ""), tier=q.get("tier"), status=q.get("status"), limit=500)
             if parts == ["api", "config"]:
                 return 200, store.team_config()
+            if parts == ["api", "people"]:
+                return 200, store.people()
             if parts == ["api", "activity"]:
                 return 200, store.activity(int(q.get("limit", 50)))
             if len(parts) == 3 and parts[:2] == ["api", "findings"]:

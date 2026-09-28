@@ -122,7 +122,7 @@ def test_activity_feed(store):
     fid = store.propose("x is 1", "data_point", "ana")["finding"]["id"]
     store.validate(fid, "sam")
     store.checkout(fid, "sam")
-    kinds = [e["kind"] for e in store.activity()]
+    kinds = [e["kind"] for e in store.activity() if e["finding_id"]]
     assert kinds == ["checked_out", "status_changed", "validated", "proposed"]
 
 

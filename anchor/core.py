@@ -55,6 +55,14 @@ CREATE TABLE IF NOT EXISTS conflicts (
     note            TEXT
 );
 
+-- Everyone who has taken an action, with the role they hold on this team.
+-- Names are matched without regard to case, so "sam" and "Sam" are one person.
+CREATE TABLE IF NOT EXISTS people (
+    name        TEXT PRIMARY KEY COLLATE NOCASE,
+    role        TEXT NOT NULL,
+    created_at  TEXT NOT NULL
+);
+
 -- Append-only history. Drives the activity feed and keeps prior state
 -- (for example the status a finding had before it was contested).
 CREATE TABLE IF NOT EXISTS events (
@@ -188,6 +196,26 @@ class Store:
         self.config = config if config is not None else config_mod.load()
         with self._conn() as conn:
             conn.executescript(SCHEMA)
+            self._sync_people(conn)
+
+    def _sync_people(self, conn) -> None:
+        """Make sure every name on record is a person with a role.
+
+        Names already in older databases join with the default role. The config
+        file is the source of truth for the people it lists.
+        """
+        conn.execute(
+            "INSERT OR IGNORE INTO people (name, role, created_at) "
+            "SELECT name, ?, ? FROM (SELECT owner AS name FROM findings "
+            "UNION SELECT validated_by FROM validations UNION SELECT flagged_by FROM conflicts)",
+            (self.config["default_role"], _now()),
+        )
+        for name, role in self.config["people"].items():
+            conn.execute(
+                "INSERT INTO people (name, role, created_at) VALUES (?, ?, ?) "
+                "ON CONFLICT (name) DO UPDATE SET role = excluded.role",
+                (name, role, _now()),
+            )
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -229,6 +257,33 @@ class Store:
             raise CoreError(f"{field} is required")
         return value
 
+    def _person(self, conn, name: str | None, field: str) -> str:
+        """Resolve a name to the person on record, adding them on first use.
+
+        Returns the name as first recorded, so small differences in case do not
+        split one person into two. New people get the team's default role.
+        """
+        name = self._require_name(name, field)
+        row = conn.execute("SELECT name FROM people WHERE name = ?", (name,)).fetchone()
+        if row:
+            return row["name"]
+        conn.execute(
+            "INSERT INTO people (name, role, created_at) VALUES (?, ?, ?)",
+            (name, self.config["default_role"], _now()),
+        )
+        self._log(conn, None, "joined", name, role=self.config["default_role"])
+        return name
+
+    def _role_of(self, conn, name: str | None) -> str | None:
+        if not name:
+            return None
+        row = conn.execute("SELECT role FROM people WHERE name = ?", (name,)).fetchone()
+        return row["role"] if row else None
+
+    def _person_dict(self, name: str, role: str) -> dict[str, Any]:
+        info = self.config["roles"].get(role, {"label": role, "trusted": False})
+        return {"name": name, "role": role, "role_label": info["label"], "trusted": info["trusted"]}
+
     @staticmethod
     def _summary(row: sqlite3.Row) -> dict[str, Any]:
         return {
@@ -268,8 +323,9 @@ class Store:
         validations = [
             dict(r)
             for r in conn.execute(
-                "SELECT validated_by, validated_at, note FROM validations "
-                "WHERE finding_id = ? ORDER BY validated_at, id",
+                "SELECT v.validated_by, p.role, v.validated_at, v.note FROM validations v "
+                "LEFT JOIN people p ON p.name = v.validated_by "
+                "WHERE v.finding_id = ? ORDER BY v.validated_at, v.id",
                 (fid,),
             )
         ]
@@ -293,6 +349,7 @@ class Store:
             "tier": row["tier"],
             "status": row["status"],
             "owner": row["owner"],
+            "owner_role": self._role_of(conn, row["owner"]),
             "created_at": row["created_at"],
             "evidence_links": evidence_ids,
             "evidence": evidence,
@@ -308,6 +365,20 @@ class Store:
     def team_config(self) -> dict[str, Any]:
         """Display labels and team choices: roles, tiers, study template, modes."""
         return config_mod.public(self.config)
+
+    def people(self) -> list[dict[str, Any]]:
+        """Everyone on record with their role, grouped by role order in the config."""
+        order = {r: i for i, r in enumerate(self.config["roles"])}
+        with self._conn() as conn:
+            rows = conn.execute("SELECT name, role FROM people ORDER BY name COLLATE NOCASE").fetchall()
+        people = [self._person_dict(r["name"], r["role"]) for r in rows]
+        return sorted(people, key=lambda p: order.get(p["role"], len(order)))
+
+    def whoami(self, name: str) -> dict[str, Any]:
+        """Look up a person, adding them with the default role if they are new."""
+        with self._conn() as conn:
+            name = self._person(conn, name, "name")
+            return self._person_dict(name, self._role_of(conn, name))
 
     def get(self, finding_id: int) -> dict[str, Any]:
         with self._conn() as conn:
@@ -388,6 +459,21 @@ class Store:
 
     # -- write -------------------------------------------------------------
 
+    def set_role(self, name: str, role: str, by: str) -> dict[str, Any]:
+        """Change someone's role. Logged, so role changes are visible to everyone."""
+        if role not in self.config["roles"]:
+            raise CoreError(f"role must be one of {tuple(self.config['roles'])}")
+        warnings = []
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            name = self._person(conn, name, "name")
+            previous = self._role_of(conn, name)
+            conn.execute("UPDATE people SET role = ? WHERE name = ?", (role, name))
+            self._log(conn, None, "role_set", by, person=name, role=role, previous_role=previous)
+        if any(n.lower() == name.lower() for n in self.config["people"]):
+            warnings.append(f"{name} is listed in the team config, which resets their role on restart")
+        return {"person": self._person_dict(name, role), "warnings": warnings}
+
     def propose(
         self,
         statement: str,
@@ -401,12 +487,12 @@ class Store:
         finding enters the system. The check never blocks the proposal.
         """
         statement = self._require_name(statement, "statement")
-        owner = self._require_name(owner, "owner")
         if tier not in TIERS:
             raise CoreError(f"tier must be one of {TIERS}")
         links = sorted({int(x) for x in (evidence_links or [])})
         warnings = []
         with self._conn() as conn:
+            owner = self._person(conn, owner, "owner")
             for eid in links:
                 self._row(conn, eid)
             cur = conn.execute(
@@ -427,9 +513,9 @@ class Store:
         A contested finding keeps its 'contested' status: more validations are
         recorded and visible, but they do not silently resolve the conflict.
         """
-        validated_by = self._require_name(validated_by, "validated_by")
         with self._conn() as conn:
             row = self._row(conn, finding_id)
+            validated_by = self._person(conn, validated_by, "validated_by")
             if row["owner"] == validated_by:
                 raise CoreError("a finding cannot be validated by its own owner")
             warnings = self._checkout_warning(row, validated_by)
@@ -496,10 +582,10 @@ class Store:
 
         Their previous statuses and validations are kept in the record.
         """
-        confirmed_by = self._require_name(confirmed_by, "confirmed_by")
         if finding_id == conflicting_id:
             raise CoreError("a finding cannot conflict with itself")
         with self._conn() as conn:
+            confirmed_by = self._person(conn, confirmed_by, "confirmed_by")
             rows = [self._row(conn, finding_id), self._row(conn, conflicting_id)]
             exists = conn.execute(
                 "SELECT 1 FROM conflicts WHERE (finding_id = ? AND conflicting_id = ?) "
@@ -524,9 +610,9 @@ class Store:
 
     def checkout(self, finding_id: int, who: str) -> dict[str, Any]:
         """Mark a finding as being worked on. Advisory: never refuses."""
-        who = self._require_name(who, "who")
         with self._conn() as conn:
             row = self._row(conn, finding_id)
+            who = self._person(conn, who, "who")
             warnings = self._checkout_warning(row, who)
             conn.execute(
                 "UPDATE findings SET checked_out_by = ?, checked_out_at = ? WHERE id = ?",
@@ -536,9 +622,9 @@ class Store:
         return {"finding": self.get(finding_id), "warnings": warnings}
 
     def release(self, finding_id: int, who: str) -> dict[str, Any]:
-        who = self._require_name(who, "who")
         with self._conn() as conn:
             row = self._row(conn, finding_id)
+            who = self._person(conn, who, "who")
             warnings = []
             if not row["checked_out_by"]:
                 warnings.append(f"finding {finding_id} was not checked out")
