@@ -1,8 +1,9 @@
-"""Core layer: the data store and the actions on findings.
+"""Core layer: the data store and the actions on learnings.
 
-Everything that reads or writes findings goes through the Store class. The MCP
-server and the web app are thin wrappers around it, so there is only one write
-path and one version of the truth.
+Everything that reads or writes goes through the Store class. The MCP server
+and the web app are thin wrappers around it, so there is only one write path
+and one version of the truth. The words used here are defined in
+docs/GLOSSARY.md.
 """
 
 from __future__ import annotations
@@ -12,122 +13,162 @@ import os
 import re
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterator
 
 from . import config as config_mod
 
-TIERS = ("data_point", "hypothesis", "insight")
-STATUSES = ("proposed", "validated", "contested")
+# How far a learning goes. Promotion moves up one level.
+LEVELS = ("observation", "finding", "insight")
+NEXT_LEVEL = {"observation": "finding", "finding": "insight"}
+# Where a learning is in its life. Made with AI starts as a draft until its
+# owner confirms it. Replaced means a newer version took its place.
+STAGES = ("draft", "shared", "replaced")
+# Who made it. An AI agent always has a named person as owner.
+ORIGINS = ("person", "person_with_ai", "ai_agent")
+# A review's verdict. Only approve counts toward a learning being checked.
+VERDICTS = ("approve", "changes", "disagree")
+# How one learning relates to another. "supports" is stored as evidence and
+# "conflicts_with" as a conflict, so each fact lives in one place.
+LINK_TYPES = ("supports", "builds_on", "same_as", "conflicts_with")
 # requested: someone asked for research and nobody has picked it up yet.
-# closed: ended without running, for example answered by existing findings.
-STUDY_STATUSES = ("requested", "planned", "running", "done", "closed")
-STUDY_TEXT_FIELDS = ("title", "objective", "decision", "method", "sample")
-# How one finding relates to another. "supports" is stored as an evidence
-# link and "contradicts" as a confirmed conflict, so each fact lives in one place.
-LINK_TYPES = ("supports", "extends", "duplicates", "contradicts")
-# A review's outcome. Only approve counts toward a finding being validated.
-OUTCOMES = ("approve", "changes_requested", "disagree")
-OUTCOME_EVENT = {"approve": "validated", "changes_requested": "changes_requested", "disagree": "disagreed"}
+# dropped: ended without running, for example answered by what we know.
+STUDY_STAGES = ("requested", "planned", "running", "finished", "dropped")
+STUDY_TEXT = ("question", "decision", "hypothesis", "method", "sample", "learned")
+# What each study stage asks for. Team template fields add to these.
+STUDY_ASKS = {
+    "start": (("decision", "Decision it serves"),),
+    "running": (("method", "Method"), ("sample", "Who or what we studied")),
+    "finished": (("learned", "What we learned"),),
+}
+STAGE_ASKS = {"requested": (), "planned": ("start",), "running": ("start", "running"),
+              "finished": ("start", "running", "finished"), "dropped": ()}
 REQUEST_STATUSES = ("open", "done", "withdrawn")
+
+# One trust state per learning. When more than one could apply, the first in
+# TRUST_ORDER wins.
+TRUST_LABEL = {
+    "contested": "Contested",
+    "needs_changes": "Needs changes",
+    "checked_by_sme": "Checked by an SME",
+    "checked_by_peers": "Checked by peers",
+    "not_reviewed": "Not reviewed",
+}
+TRUST_ORDER = tuple(TRUST_LABEL)
+CHECKED = ("checked_by_sme", "checked_by_peers")
+VERDICT_SAID = {"approve": "approved", "changes": "asked for changes on", "disagree": "disagreed with"}
+CREDIT_FOR = {"approve": "approved", "changes": "asked for changes", "disagree": "disagreed"}
+LINK_SAID = {"supports": "supports", "builds_on": "builds on", "same_as": "is the same as",
+             "conflicts_with": "conflicts with"}
+# Counts that earn a milestone moment.
+MILESTONES = (5, 10, 25, 50, 100, 250, 500, 1000)
+# How loudly the app shows a digest item: 1 do now, 2 news, 3 digest only.
+DO_NOW, NEWS, DIGEST = 1, 2, 3
 
 DEFAULT_DB_PATH = os.environ.get("ANCHOR_DB", "anchor.db")
 
 SCHEMA = f"""
-CREATE TABLE IF NOT EXISTS findings (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    statement       TEXT NOT NULL,
-    tier            TEXT NOT NULL CHECK (tier IN {TIERS}),
-    status          TEXT NOT NULL DEFAULT 'proposed' CHECK (status IN {STATUSES}),
-    owner           TEXT NOT NULL,
-    evidence_links  TEXT NOT NULL DEFAULT '[]',  -- JSON list of finding ids
-    created_at      TEXT NOT NULL,
-    checked_out_by  TEXT,
-    checked_out_at  TEXT
+CREATE TABLE IF NOT EXISTS learnings (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    statement      TEXT NOT NULL,
+    level          TEXT NOT NULL CHECK (level IN {LEVELS}),
+    stage          TEXT NOT NULL DEFAULT 'shared' CHECK (stage IN {STAGES}),
+    origin         TEXT NOT NULL DEFAULT 'person' CHECK (origin IN {ORIGINS}),
+    owner          TEXT NOT NULL,
+    evidence       TEXT NOT NULL DEFAULT '[]',  -- JSON list of learning ids that support it
+    study_id       INTEGER REFERENCES studies(id),
+    promoted_from  INTEGER REFERENCES learnings(id),
+    revises        INTEGER REFERENCES learnings(id),
+    created_at     TEXT NOT NULL,
+    working_by     TEXT,
+    working_at     TEXT
 );
 
 -- One row per review. Never collapsed into a single flag. A person can
--- review again (for example approve after asking for changes); their latest
--- review is the one that counts, and earlier ones stay visible.
-CREATE TABLE IF NOT EXISTS validations (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    finding_id    INTEGER NOT NULL REFERENCES findings(id),
-    validated_by  TEXT NOT NULL,
-    validated_at  TEXT NOT NULL,
-    note          TEXT,
-    outcome       TEXT NOT NULL DEFAULT 'approve' CHECK (outcome IN {OUTCOMES}),
-    basis         TEXT,  -- how the reviewer checked (a key from the team's checks)
-    role          TEXT   -- the reviewer's role when they reviewed
+-- review again; their latest review is the one that counts, and earlier ones
+-- stay visible. Role and SME standing are kept as they were at review time.
+CREATE TABLE IF NOT EXISTS reviews (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_id  INTEGER NOT NULL REFERENCES learnings(id),
+    by           TEXT NOT NULL,
+    at           TEXT NOT NULL,
+    verdict      TEXT NOT NULL CHECK (verdict IN {VERDICTS}),
+    how          TEXT,  -- a key from the team's checks
+    note         TEXT,
+    role         TEXT,
+    sme          INTEGER NOT NULL DEFAULT 0
 );
 
--- A request for someone, or anyone in a role, to review a finding.
--- Closed by any review from that person or role. Nobody needs to be asked.
-CREATE TABLE IF NOT EXISTS validation_requests (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    finding_id    INTEGER NOT NULL REFERENCES findings(id),
-    requested_by  TEXT NOT NULL,
-    person        TEXT,  -- one of person or role is set
-    role          TEXT,
-    note          TEXT,
-    at            TEXT NOT NULL,
-    status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN {REQUEST_STATUSES}),
-    closed_by     TEXT,
-    closed_at     TEXT,
-    outcome       TEXT
+-- A request for someone, anyone in a role, or any SME to review a learning.
+-- Closed by any review from that person or group. Nobody needs to be asked.
+CREATE TABLE IF NOT EXISTS review_requests (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_id  INTEGER NOT NULL REFERENCES learnings(id),
+    asked_by     TEXT NOT NULL,
+    person       TEXT,  -- one of person or role is set; role 'sme' means any SME
+    role         TEXT,
+    note         TEXT,
+    at           TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN {REQUEST_STATUSES}),
+    closed_by    TEXT,
+    closed_at    TEXT,
+    verdict      TEXT
 );
 
--- A confirmed contradiction between two findings. Both stay visible.
+-- A confirmed conflict between two learnings. Both stay visible.
 CREATE TABLE IF NOT EXISTS conflicts (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    finding_id      INTEGER NOT NULL REFERENCES findings(id),
-    conflicting_id  INTEGER NOT NULL REFERENCES findings(id),
-    flagged_by      TEXT NOT NULL,
-    flagged_at      TEXT NOT NULL,
-    note            TEXT
+    id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    a     INTEGER NOT NULL REFERENCES learnings(id),
+    b     INTEGER NOT NULL REFERENCES learnings(id),
+    by    TEXT NOT NULL,
+    at    TEXT NOT NULL,
+    note  TEXT
 );
 
--- Other ways two findings relate. A extends B: A builds on B.
--- Duplicates reads the same from both sides.
+-- Other ways two learnings relate. A builds_on B: A builds on B.
+-- same_as reads the same from both sides.
 CREATE TABLE IF NOT EXISTS links (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_id  INTEGER NOT NULL REFERENCES findings(id),
-    to_id    INTEGER NOT NULL REFERENCES findings(id),
-    type     TEXT NOT NULL CHECK (type IN ('extends', 'duplicates')),
+    from_id  INTEGER NOT NULL REFERENCES learnings(id),
+    to_id    INTEGER NOT NULL REFERENCES learnings(id),
+    type     TEXT NOT NULL CHECK (type IN ('builds_on', 'same_as')),
     by       TEXT NOT NULL,
     at       TEXT NOT NULL,
     note     TEXT,
     UNIQUE (from_id, to_id, type)
 );
 
--- A decision someone made, and the findings they used to make it.
--- This is how research shows its value, and how a decision owner learns when
--- something they relied on is later contested.
+-- A decision someone made, and the learnings it relied on. This is how
+-- research shows its value, and how a decision owner learns when something
+-- they relied on is later contested. The outcome is added later, once known.
 CREATE TABLE IF NOT EXISTS decisions (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    title     TEXT NOT NULL,
-    made_by   TEXT NOT NULL,
-    at        TEXT NOT NULL,
-    note      TEXT,
-    outcome   TEXT  -- what happened, added whenever it is known
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT NOT NULL,
+    made_by     TEXT NOT NULL,
+    at          TEXT NOT NULL,
+    note        TEXT,
+    outcome     TEXT,
+    outcome_at  TEXT
 );
 
 CREATE TABLE IF NOT EXISTS decision_uses (
-    decision_id    INTEGER NOT NULL REFERENCES decisions(id),
-    finding_id     INTEGER NOT NULL REFERENCES findings(id),
-    status_at_use  TEXT NOT NULL,
-    PRIMARY KEY (decision_id, finding_id)
+    decision_id   INTEGER NOT NULL REFERENCES decisions(id),
+    learning_id   INTEGER NOT NULL REFERENCES learnings(id),
+    trust_at_use  TEXT NOT NULL,
+    PRIMARY KEY (decision_id, learning_id)
 );
 
--- Why we looked, what decision it serves, and how it was studied. Findings
--- captured inside a study carry this context with them.
+-- A piece of research: the question, the decision it serves, and how it was
+-- studied. Learnings added inside a study carry this context with them.
 CREATE TABLE IF NOT EXISTS studies (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    title             TEXT NOT NULL,
-    objective         TEXT,
-    decision          TEXT,  -- the business decision this study serves
+    question          TEXT NOT NULL,
+    decision          TEXT,
+    hypothesis        TEXT,  -- what the study expects to find, if anything
     method            TEXT,
     sample            TEXT,
-    status            TEXT NOT NULL CHECK (status IN {STUDY_STATUSES}),
+    learned           TEXT,  -- the wrap up, once finished
+    status            TEXT NOT NULL CHECK (status IN {STUDY_STAGES}),
     owner             TEXT,  -- empty while a request waits to be picked up
     fields            TEXT NOT NULL DEFAULT '{{}}',  -- team template fields, JSON
     requested_by      TEXT,
@@ -136,38 +177,44 @@ CREATE TABLE IF NOT EXISTS studies (
     created_at        TEXT NOT NULL
 );
 
--- Everyone who has taken an action, with the role they hold on this team.
--- Names are matched without regard to case, so "sam" and "Sam" are one person.
+-- Everyone who has taken an action. Names are matched without regard to
+-- case, so "sam" and "Sam" are one person.
 CREATE TABLE IF NOT EXISTS people (
     name        TEXT PRIMARY KEY COLLATE NOCASE,
     role        TEXT NOT NULL,
+    sme         INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL
 );
 
--- Append-only history. Drives the activity feed and keeps prior state
--- (for example the status a finding had before it was contested).
+-- Learnings a person chose to follow. Owning, reviewing, or using a learning
+-- in a decision follows it without a row here.
+CREATE TABLE IF NOT EXISTS follows (
+    name         TEXT NOT NULL COLLATE NOCASE,
+    learning_id  INTEGER NOT NULL REFERENCES learnings(id),
+    at           TEXT NOT NULL,
+    PRIMARY KEY (name, learning_id)
+);
+
+-- What a person has already seen, or set aside with "Not now".
+CREATE TABLE IF NOT EXISTS seen (
+    name  TEXT NOT NULL COLLATE NOCASE,
+    key   TEXT NOT NULL,
+    at    TEXT NOT NULL,
+    PRIMARY KEY (name, key)
+);
+
+-- Append-only record. Drives history, the digest, and moments.
 CREATE TABLE IF NOT EXISTS events (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    finding_id  INTEGER REFERENCES findings(id),
-    kind        TEXT NOT NULL,
-    actor       TEXT NOT NULL,
-    at          TEXT NOT NULL,
-    detail      TEXT NOT NULL DEFAULT '{{}}'
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_id  INTEGER REFERENCES learnings(id),
+    study_id     INTEGER,
+    decision_id  INTEGER,
+    kind         TEXT NOT NULL,
+    actor        TEXT NOT NULL,
+    at           TEXT NOT NULL,
+    detail       TEXT NOT NULL DEFAULT '{{}}'
 );
 """
-
-# Columns added after the first release. Applied to new and older databases
-# alike, so there is one path to the current shape.
-MIGRATIONS = (
-    ("findings", "study_id", "INTEGER REFERENCES studies(id)"),
-    ("events", "study_id", "INTEGER"),
-    ("findings", "promoted_from", "INTEGER REFERENCES findings(id)"),
-    ("events", "decision_id", "INTEGER"),
-    ("findings", "revises", "INTEGER REFERENCES findings(id)"),
-)
-
-# Promotion moves up one tier and creates a new finding at that tier.
-NEXT_TIER = {"data_point": "hypothesis", "hypothesis": "insight"}
 
 
 class CoreError(ValueError):
@@ -193,9 +240,19 @@ def _clean_fields(fields: dict[str, Any] | None) -> dict[str, Any]:
     return {str(k): v.strip() if isinstance(v, str) else v for k, v in fields.items()}
 
 
+def _short(text: str | None, n: int = 70) -> str:
+    text = text or ""
+    return text if len(text) <= n else text[: n - 3].rstrip() + "..."
+
+
+def _ordinal(n: int) -> str:
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 # ---------------------------------------------------------------------------
 # Text matching. Deliberately simple and dependency free for the prototype.
-# The conflict check only *suggests* candidates; a human always confirms.
+# The conflict check only *suggests* candidates; a person always confirms.
 # ---------------------------------------------------------------------------
 
 STOPWORDS = set(
@@ -304,45 +361,24 @@ class Store:
         self.path = path
         self.config = config if config is not None else config_mod.load()
         with self._conn() as conn:
-            self._rebuild_old_validations(conn)
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'findings'").fetchone():
+                raise CoreError(f"{path} was made by an older ANCHOR. Move it aside and start a new database.")
             conn.executescript(SCHEMA)
-            for table, column, decl in MIGRATIONS:
-                have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
-                if column not in have:
-                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
             self._sync_people(conn)
 
-    @staticmethod
-    def _rebuild_old_validations(conn) -> None:
-        """The first release allowed one validation per person. Lift that in place."""
-        have = {r["name"] for r in conn.execute("PRAGMA table_info(validations)")}
-        if not have or "outcome" in have:
-            return
-        conn.execute("ALTER TABLE validations RENAME TO validations_v1")
-        conn.executescript(SCHEMA)
-        conn.execute(
-            "INSERT INTO validations (id, finding_id, validated_by, validated_at, note) "
-            "SELECT id, finding_id, validated_by, validated_at, note FROM validations_v1"
-        )
-        conn.execute("DROP TABLE validations_v1")
-
     def _sync_people(self, conn) -> None:
-        """Make sure every name on record is a person with a role.
-
-        Names already in older databases join with the default role. The config
-        file is the source of truth for the people it lists.
-        """
-        conn.execute(
-            "INSERT OR IGNORE INTO people (name, role, created_at) "
-            "SELECT name, ?, ? FROM (SELECT owner AS name FROM findings "
-            "UNION SELECT validated_by FROM validations UNION SELECT flagged_by FROM conflicts)",
-            (self.config["default_role"], _now()),
-        )
+        """The config file is the source of truth for the people and SMEs it lists."""
         for name, role in self.config["people"].items():
             conn.execute(
                 "INSERT INTO people (name, role, created_at) VALUES (?, ?, ?) "
                 "ON CONFLICT (name) DO UPDATE SET role = excluded.role",
                 (name, role, _now()),
+            )
+        for name in self.config["smes"]:
+            conn.execute(
+                "INSERT INTO people (name, role, sme, created_at) VALUES (?, ?, 1, ?) "
+                "ON CONFLICT (name) DO UPDATE SET sme = 1",
+                (name, self.config["default_role"], _now()),
             )
 
     @contextmanager
@@ -365,12 +401,27 @@ class Store:
     # -- helpers -----------------------------------------------------------
 
     @staticmethod
-    def _log(conn, finding_id, kind, actor, _study=None, _decision=None, **detail) -> None:
-        conn.execute(
-            "INSERT INTO events (finding_id, study_id, decision_id, kind, actor, at, detail) "
+    def _log(conn, learning_id, kind, actor, _study=None, _decision=None, **detail) -> int:
+        cur = conn.execute(
+            "INSERT INTO events (learning_id, study_id, decision_id, kind, actor, at, detail) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (finding_id, _study, _decision, kind, actor, _now(), json.dumps(detail)),
+            (learning_id, _study, _decision, kind, actor, _now(), json.dumps(detail)),
         )
+        return cur.lastrowid
+
+    @staticmethod
+    def _require(value: str | None, field: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise CoreError(f"{field} is required")
+        return value
+
+    @staticmethod
+    def _row(conn, learning_id: int) -> sqlite3.Row:
+        row = conn.execute("SELECT * FROM learnings WHERE id = ?", (learning_id,)).fetchone()
+        if row is None:
+            raise CoreError(f"learning {learning_id} does not exist")
+        return row
 
     @staticmethod
     def _study_row(conn, study_id: int) -> sqlite3.Row:
@@ -380,34 +431,11 @@ class Store:
         return row
 
     @staticmethod
-    def _study_summary(row: sqlite3.Row) -> dict[str, Any]:
-        return {k: row[k] for k in ("id", "title", "objective", "decision", "status", "owner", "requested_by")}
-
-    def _study_warnings(self, study: dict[str, Any]) -> list[str]:
-        """Gentle nudges toward a complete chain. Never blocks."""
-        warnings = []
-        if study["status"] != "requested":
-            for key in ("objective", "decision"):
-                if not study.get(key):
-                    warnings.append(f"study has no {key} yet; findings are easier to trust with it")
-        for field in self.config["study"]["fields"]:
-            if field["required"] and not study["fields"].get(field["key"]):
-                warnings.append(f"study template field '{field['label']}' is empty")
-        return warnings
-
-    @staticmethod
-    def _row(conn, finding_id: int) -> sqlite3.Row:
-        row = conn.execute("SELECT * FROM findings WHERE id = ?", (finding_id,)).fetchone()
+    def _decision_row(conn, decision_id: int) -> sqlite3.Row:
+        row = conn.execute("SELECT * FROM decisions WHERE id = ?", (decision_id,)).fetchone()
         if row is None:
-            raise CoreError(f"finding {finding_id} does not exist")
+            raise CoreError(f"decision {decision_id} does not exist")
         return row
-
-    @staticmethod
-    def _require_name(value: str | None, field: str) -> str:
-        value = (value or "").strip()
-        if not value:
-            raise CoreError(f"{field} is required")
-        return value
 
     def _person(self, conn, name: str | None, field: str) -> str:
         """Resolve a name to the person on record, adding them on first use.
@@ -415,7 +443,7 @@ class Store:
         Returns the name as first recorded, so small differences in case do not
         split one person into two. New people get the team's default role.
         """
-        name = self._require_name(name, field)
+        name = self._require(name, field)
         row = conn.execute("SELECT name FROM people WHERE name = ?", (name,)).fetchone()
         if row:
             return row["name"]
@@ -426,191 +454,889 @@ class Store:
         self._log(conn, None, "joined", name, role=self.config["default_role"])
         return name
 
-    def _role_of(self, conn, name: str | None) -> str | None:
+    @staticmethod
+    def _who(conn, name: str | None) -> sqlite3.Row | None:
         if not name:
             return None
-        row = conn.execute("SELECT role FROM people WHERE name = ?", (name,)).fetchone()
-        return row["role"] if row else None
+        return conn.execute("SELECT * FROM people WHERE name = ?", (name,)).fetchone()
 
-    def _person_dict(self, name: str, role: str) -> dict[str, Any]:
-        info = self.config["roles"].get(role, {"label": role, "trusted": False})
-        return {"name": name, "role": role, "role_label": info["label"], "trusted": info["trusted"]}
+    def _role_label(self, role: str | None) -> str | None:
+        return self.config["roles"].get(role, {}).get("label", role) if role else None
+
+    def _level_label(self, level: str) -> str:
+        return self.config["levels"].get(level, level)
+
+    def _person_dict(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {"name": row["name"], "role": row["role"], "role_label": self._role_label(row["role"]),
+                "sme": bool(row["sme"])}
+
+    # -- trust -------------------------------------------------------------
 
     @staticmethod
-    def _summary(row: sqlite3.Row) -> dict[str, Any]:
+    def _current_reviews(conn, learning_id: int) -> list[sqlite3.Row]:
+        """Each reviewer's latest review of a learning. Earlier ones are history."""
+        return conn.execute(
+            "SELECT * FROM reviews r WHERE learning_id = ? AND id = "
+            "(SELECT MAX(id) FROM reviews w WHERE w.learning_id = r.learning_id AND w.by = r.by) ORDER BY id",
+            (learning_id,),
+        ).fetchall()
+
+    @staticmethod
+    def _conflict_ids(conn, learning_id: int) -> list[int]:
+        return [r[0] for r in conn.execute(
+            "SELECT CASE WHEN a = ? THEN b ELSE a END FROM conflicts WHERE a = ? OR b = ? ORDER BY id",
+            (learning_id, learning_id, learning_id),
+        )]
+
+    def _trust(self, conn, learning_id: int) -> dict[str, Any]:
+        """How far to lean on a learning: one state, and a plain sentence that
+        the app and AI tools both use."""
+        current = self._current_reviews(conn, learning_id)
+        approvals = [r for r in current if r["verdict"] == "approve"]
+        sme = sum(bool(r["sme"]) for r in approvals)
+        peer = len(approvals) - sme
+        changes = sum(r["verdict"] == "changes" for r in current)
+        disagree = sum(r["verdict"] == "disagree" for r in current)
+        conflicts = self._conflict_ids(conn, learning_id)
+        checked: dict[str, int] = {}
+        for r in approvals:
+            if r["how"]:
+                checked[r["how"]] = checked.get(r["how"], 0) + 1
+
+        if conflicts or disagree:
+            state = "contested"
+        elif changes:
+            state = "needs_changes"
+        elif sme:
+            state = "checked_by_sme"
+        elif peer:
+            state = "checked_by_peers"
+        else:
+            state = "not_reviewed"
+
+        who = " and ".join(p for p in (
+            f"{sme} SME{'s' if sme != 1 else ''}" if sme else "",
+            f"{peer} peer{'s' if peer != 1 else ''}" if peer else "",
+        ) if p)
+        parts = [f"Checked by {who}." if who else "Not reviewed yet."]
+        if checked:
+            labels = self.config["checks"]
+            parts.append("How they checked: " + ", ".join(
+                f"{labels.get(k, k).lower()} ({n})" for k, n in checked.items()) + ".")
+        if changes:
+            parts.append(f"{changes} {'asks' if changes == 1 else 'ask'} for changes.")
+        if disagree:
+            parts.append(f"{disagree} {'disagrees' if disagree == 1 else 'disagree'}.")
+        if conflicts:
+            parts.append("Conflicts with " + ", ".join(f"#{c}" for c in conflicts) + ".")
         return {
-            "id": row["id"],
-            "statement": row["statement"],
-            "tier": row["tier"],
-            "status": row["status"],
-            "owner": row["owner"],
+            "state": state, "label": TRUST_LABEL[state], "sme": sme, "peer": peer,
+            "changes": changes, "disagree": disagree, "conflicts": conflicts, "checked": checked,
+            "summary": " ".join(parts),
         }
 
-    def _checkout_warning(self, row: sqlite3.Row, actor: str) -> list[str]:
-        holder = row["checked_out_by"]
-        if holder and holder != actor:
-            return [
-                f"finding {row['id']} is checked out by {holder} since "
-                f"{row['checked_out_at']} (advisory, action still applied)"
-            ]
-        return []
+    @staticmethod
+    def _chip(row: sqlite3.Row, trust: dict[str, Any]) -> dict[str, str]:
+        """The one chip a list row shows: the stage when it is unusual, else trust."""
+        if row["stage"] == "draft":
+            return {"key": "draft", "label": "Draft"}
+        if row["stage"] == "replaced":
+            return {"key": "replaced", "label": "Replaced"}
+        return {"key": trust["state"], "label": trust["label"]}
+
+    def _retrust(self, conn, learning_id: int, before: str, actor: str, cause: str, moment: bool = True) -> str:
+        """Log a change in trust, and warn decisions when something they used is now contested."""
+        after = self._trust(conn, learning_id)["state"]
+        if after == before:
+            return after
+        row = self._row(conn, learning_id)
+        self._log(conn, learning_id, "trust_changed", actor, row["study_id"], **{"from": before, "to": after, "cause": cause})
+        if after == "contested":
+            for u in conn.execute("SELECT decision_id FROM decision_uses WHERE learning_id = ?", (learning_id,)).fetchall():
+                self._log(conn, learning_id, "decision_at_risk", actor, None, u["decision_id"])
+        if after in CHECKED and before not in CHECKED:
+            if row["level"] == "insight" and moment:
+                self._moment(conn, "checked", actor, row["owner"],
+                             f"Your insight #{learning_id} is now {TRUST_LABEL[after]}.", learning_id=learning_id)
+            self._milestone_mine(conn, row["owner"], actor)
+        return after
+
+    # -- moments -----------------------------------------------------------
+
+    def _moment(self, conn, kind: str, actor: str, to: str, text: str, learning_id=None, decision_id=None,
+                key: str | None = None) -> None:
+        """A small good-news note for one person, or "*" for the whole team.
+
+        Never compares people. A key stops the same moment being made twice.
+        """
+        if kind not in self.config["moments"] or (to != "*" and to == actor):
+            return
+        if key and conn.execute(
+            "SELECT 1 FROM events WHERE kind = 'moment' AND json_extract(detail, '$.key') = ?", (key,)
+        ).fetchone():
+            return
+        self._log(conn, learning_id, "moment", actor, None, decision_id, to=to, moment=kind, text=text, key=key)
+
+    def _milestone_mine(self, conn, owner: str, actor: str) -> None:
+        n = sum(
+            self._trust(conn, r["id"])["state"] in CHECKED
+            for r in conn.execute("SELECT id FROM learnings WHERE owner = ? AND stage = 'shared'", (owner,))
+        )
+        if n in MILESTONES:
+            self._moment(conn, "milestone", actor, owner, f"That is your {_ordinal(n)} checked learning.",
+                         key=f"mine:{owner.lower()}:{n}")
+
+    def _milestone_team(self, conn, actor: str) -> None:
+        n = conn.execute("SELECT COUNT(DISTINCT decision_id) FROM decision_uses").fetchone()[0]
+        if n in MILESTONES:
+            self._moment(conn, "milestone", actor, "*", f"The team's learnings have now informed {n} decisions.",
+                         key=f"team:decisions:{n}")
+
+    BUILT_ON = {"evidence": "used your learning #{} as evidence", "promoted": "promoted your learning #{}",
+                "builds_on": "built on your learning #{}"}
+
+    def _built_on(self, conn, actor: str, learning_id: int, how: str) -> None:
+        owner = self._row(conn, learning_id)["owner"]
+        self._moment(conn, "built_on", actor, owner, f"{actor} {self.BUILT_ON[how].format(learning_id)}.",
+                     learning_id=learning_id, key=f"built:{learning_id}:{how}:{actor.lower()}")
+
+    # -- shaping records ---------------------------------------------------
+
+    def _brief(self, conn, row: sqlite3.Row) -> dict[str, Any]:
+        trust = self._trust(conn, row["id"])
+        return {"id": row["id"], "statement": row["statement"], "level": row["level"], "stage": row["stage"],
+                "origin": row["origin"], "owner": row["owner"], "chip": self._chip(row, trust)}
 
     def _full(self, conn, row: sqlite3.Row) -> dict[str, Any]:
-        """A finding with everything needed to judge how much to trust it."""
-        fid = row["id"]
-        evidence_ids = json.loads(row["evidence_links"])
-        evidence = []
-        for eid in evidence_ids:
-            erow = conn.execute("SELECT * FROM findings WHERE id = ?", (eid,)).fetchone()
-            if erow is not None:
-                evidence.append(self._summary(erow))
-        cited_by = [
-            self._summary(r)
-            for r in conn.execute(
-                "SELECT f.* FROM findings f, json_each(f.evidence_links) j "
-                "WHERE j.value = ? ORDER BY f.id",
-                (fid,),
-            )
-        ]
-        current = {r["id"] for r in self._current_reviews(conn, fid)}
-        validations = []
-        for r in conn.execute(
-            # Reviews from before roles were recorded show the reviewer's role today.
-            "SELECT v.id, v.validated_by, COALESCE(v.role, p.role) AS role, v.outcome, v.basis, "
-            "v.validated_at, v.note FROM validations v LEFT JOIN people p ON p.name = v.validated_by "
-            "WHERE v.finding_id = ? ORDER BY v.id",
-            (fid,),
-        ):
+        """A learning with everything needed to judge how far to trust it."""
+        lid = row["id"]
+        evidence_ids = json.loads(row["evidence"])
+        evidence = [self._brief(conn, r) for r in (
+            conn.execute("SELECT * FROM learnings WHERE id = ?", (e,)).fetchone() for e in evidence_ids) if r]
+        supports = [self._brief(conn, r) for r in conn.execute(
+            "SELECT l.* FROM learnings l, json_each(l.evidence) j WHERE j.value = ? ORDER BY l.id", (lid,))]
+        current = {r["id"] for r in self._current_reviews(conn, lid)}
+        reviews = []
+        for r in conn.execute("SELECT * FROM reviews WHERE learning_id = ? ORDER BY id", (lid,)):
             v = dict(r)
+            v["sme"] = bool(v["sme"])
             v["role_label"] = self._role_label(v["role"])
-            v["trusted"] = self._trusted(v["role"])
             v["current"] = v["id"] in current
-            validations.append(v)
-        # Current reviews first, trusted roles first within them, then oldest first.
-        validations.sort(key=lambda v: (not v["current"], not v["trusted"], v["id"]))
-        requests = [
-            dict(r)
-            for r in conn.execute(
-                "SELECT id, requested_by, person, role, note, at FROM validation_requests "
-                "WHERE finding_id = ? AND status = 'open' ORDER BY id",
-                (fid,),
-            )
-        ]
+            reviews.append(v)
+        # Current reviews first, SMEs first within them, then oldest first.
+        reviews.sort(key=lambda v: (not v["current"], not v["sme"], v["id"]))
         conflicts = []
-        for c in conn.execute(
-            "SELECT * FROM conflicts WHERE finding_id = ? OR conflicting_id = ? ORDER BY id",
-            (fid, fid),
-        ):
-            other_id = c["conflicting_id"] if c["finding_id"] == fid else c["finding_id"]
-            conflicts.append(
-                {
-                    "with": self._summary(self._row(conn, other_id)),
-                    "flagged_by": c["flagged_by"],
-                    "flagged_at": c["flagged_at"],
-                    "note": c["note"],
-                }
-            )
+        for c in conn.execute("SELECT * FROM conflicts WHERE a = ? OR b = ? ORDER BY id", (lid, lid)):
+            other = c["b"] if c["a"] == lid else c["a"]
+            conflicts.append({"with": self._brief(conn, self._row(conn, other)), "by": c["by"], "at": c["at"],
+                              "note": c["note"]})
+        links = {"builds_on": [], "built_on_by": [], "same_as": []}
+        for link in conn.execute("SELECT * FROM links WHERE from_id = ? OR to_id = ? ORDER BY id", (lid, lid)):
+            outgoing = link["from_id"] == lid
+            other = self._row(conn, link["to_id"] if outgoing else link["from_id"])
+            group = link["type"] if outgoing or link["type"] == "same_as" else "built_on_by"
+            links[group].append({"learning": self._brief(conn, other), "by": link["by"], "at": link["at"],
+                                 "note": link["note"]})
         srow = conn.execute("SELECT * FROM studies WHERE id = ?", (row["study_id"],)).fetchone()
-        prow = conn.execute("SELECT * FROM findings WHERE id = ?", (row["promoted_from"],)).fetchone()
-        promoted_to = [
-            self._summary(r)
-            for r in conn.execute("SELECT * FROM findings WHERE promoted_from = ? ORDER BY id", (fid,))
-        ]
-        rrow = conn.execute("SELECT * FROM findings WHERE id = ?", (row["revises"],)).fetchone()
-        revised_as = [
-            self._summary(r)
-            for r in conn.execute("SELECT * FROM findings WHERE revises = ? ORDER BY id", (fid,))
-        ]
-        links = {"extends": [], "extended_by": [], "duplicates": []}
-        for l in conn.execute(
-            "SELECT * FROM links WHERE from_id = ? OR to_id = ? ORDER BY id", (fid, fid)
-        ):
-            outgoing = l["from_id"] == fid
-            other = self._row(conn, l["to_id"] if outgoing else l["from_id"])
-            group = l["type"] if outgoing or l["type"] == "duplicates" else "extended_by"
-            links[group].append(
-                {"finding": self._summary(other), "by": l["by"], "at": l["at"], "note": l["note"]}
-            )
+        prow = conn.execute("SELECT * FROM learnings WHERE id = ?", (row["promoted_from"],)).fetchone()
+        rrow = conn.execute("SELECT * FROM learnings WHERE id = ?", (row["revises"],)).fetchone()
+        promoted_to = [self._brief(conn, r) for r in conn.execute(
+            "SELECT * FROM learnings WHERE promoted_from = ? AND revises IS NULL ORDER BY id", (lid,))]
+        replaced_by = [self._brief(conn, r) for r in conn.execute(
+            "SELECT * FROM learnings WHERE revises = ? ORDER BY id", (lid,))]
+        trust = self._trust(conn, lid)
+        confirmed = conn.execute(
+            "SELECT actor, at, detail FROM events WHERE learning_id = ? AND kind = 'confirmed' ORDER BY id DESC LIMIT 1",
+            (lid,),
+        ).fetchone()
+        requests = [dict(r) for r in conn.execute(
+            "SELECT id, asked_by, person, role, note, at FROM review_requests "
+            "WHERE learning_id = ? AND status = 'open' ORDER BY id", (lid,))]
+        used_in = [dict(d) for d in conn.execute(
+            "SELECT d.id, d.title, d.made_by, d.at FROM decisions d JOIN decision_uses u ON u.decision_id = d.id "
+            "WHERE u.learning_id = ? ORDER BY d.id", (lid,))]
         return {
-            "id": fid,
+            "id": lid,
             "statement": row["statement"],
-            "tier": row["tier"],
-            "status": row["status"],
+            "level": row["level"],
+            "stage": row["stage"],
+            "origin": row["origin"],
             "owner": row["owner"],
-            "owner_role": self._role_of(conn, row["owner"]),
+            "owner_role": (self._who(conn, row["owner"]) or {"role": None})["role"],
             "created_at": row["created_at"],
-            "study": self._study_summary(srow) if srow else None,
-            "evidence_links": evidence_ids,
+            "confirmed": {"by": confirmed["actor"], "at": confirmed["at"], **json.loads(confirmed["detail"])}
+            if confirmed else None,
+            "chip": self._chip(row, trust),
+            "trust": trust,
+            "study": {k: srow[k] for k in ("id", "question", "decision", "status")} if srow else None,
+            "evidence_ids": evidence_ids,
             "evidence": evidence,
-            "cited_by": cited_by,
+            "supports": supports,
             "links": links,
-            "promoted_from": self._summary(prow) if prow else None,
+            "promoted_from": self._brief(conn, prow) if prow else None,
             "promoted_to": promoted_to,
-            "revises": self._summary(rrow) if rrow else None,
-            "revised_as": revised_as,
-            "promotion": self._readiness(conn, row) if row["tier"] in NEXT_TIER else None,
-            "trust": self._trust([v for v in validations if v["current"]]),
-            "validations": validations,
+            "revises": self._brief(conn, rrow) if rrow else None,
+            "replaced_by": replaced_by,
+            "connections": len(evidence) + len(supports) + len(conflicts) + sum(map(len, links.values()))
+            + len(promoted_to) + (1 if prow else 0),
+            "promotion": self._readiness(conn, row) if row["level"] in NEXT_LEVEL else None,
+            "reviews": reviews,
             "open_requests": requests,
-            "used_in": [
-                dict(d) for d in conn.execute(
-                    "SELECT d.id, d.title, d.made_by, d.at FROM decisions d "
-                    "JOIN decision_uses u ON u.decision_id = d.id WHERE u.finding_id = ? ORDER BY d.id",
-                    (fid,),
-                )
-            ],
+            "used_in": used_in,
             "conflicts": conflicts,
-            "checked_out_by": row["checked_out_by"],
-            "checked_out_at": row["checked_out_at"],
+            "working_by": row["working_by"],
+            "working_at": row["working_at"],
         }
+
+    def _readiness(self, conn, row: sqlite3.Row) -> dict[str, Any]:
+        """Whether a learning meets the team's promotion rule. Any one rule is enough."""
+        rules = self.config["promote"]
+        trust = self._trust(conn, row["id"])
+        checks = []
+        if rules["min_approvals"]:
+            n = trust["sme"] + trust["peer"]
+            checks.append((n >= rules["min_approvals"], f"{n} of {rules['min_approvals']} approvals"))
+        if rules["min_sme_approvals"]:
+            checks.append((trust["sme"] >= rules["min_sme_approvals"],
+                           f"{trust['sme']} of {rules['min_sme_approvals']} SME approvals"))
+        if not checks:
+            return {"ready": True, "rule": False, "summary": "", "enforced": False}
+        return {"ready": any(ok for ok, _ in checks), "rule": True,
+                "summary": ", or ".join(text for _, text in checks), "enforced": rules["enforce"] == "required"}
 
     # -- read --------------------------------------------------------------
 
     def team_config(self) -> dict[str, Any]:
-        """Display labels and team choices: roles, tiers, study template, modes."""
+        """Display labels and team choices: roles, levels, checks, study template, modes."""
         return config_mod.public(self.config)
 
     def people(self) -> list[dict[str, Any]]:
-        """Everyone on record with their role, grouped by role order in the config."""
+        """Everyone on record with their role and whether they are an SME."""
         order = {r: i for i, r in enumerate(self.config["roles"])}
         with self._conn() as conn:
-            rows = conn.execute("SELECT name, role FROM people ORDER BY name COLLATE NOCASE").fetchall()
-        people = [self._person_dict(r["name"], r["role"]) for r in rows]
-        return sorted(people, key=lambda p: order.get(p["role"], len(order)))
+            rows = conn.execute("SELECT * FROM people ORDER BY name COLLATE NOCASE").fetchall()
+        return sorted((self._person_dict(r) for r in rows), key=lambda p: order.get(p["role"], len(order)))
 
     def whoami(self, name: str) -> dict[str, Any]:
         """Look up a person, adding them with the default role if they are new."""
         with self._conn() as conn:
             name = self._person(conn, name, "name")
-            return self._person_dict(name, self._role_of(conn, name))
+            return self._person_dict(self._who(conn, name))
+
+    def get(self, learning_id: int) -> dict[str, Any]:
+        with self._conn() as conn:
+            return self._full(conn, self._row(conn, learning_id))
+
+    def query(
+        self, topic: str = "", level: str | None = None, trust: str | None = None, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        """Learnings that match a topic or question, best match first.
+
+        An empty topic returns the most recent. trust filters by chip: one of
+        the trust states, or draft or replaced. Replaced learnings are left out
+        unless asked for.
+        """
+        if level and level not in LEVELS:
+            raise CoreError(f"level must be one of {LEVELS}")
+        chips = TRUST_ORDER + ("draft", "replaced")
+        if trust and trust not in chips:
+            raise CoreError(f"trust must be one of {chips}")
+        sql, args = "SELECT * FROM learnings WHERE 1=1", []
+        if level:
+            sql += " AND level = ?"
+            args.append(level)
+        if trust != "replaced":
+            sql += " AND stage != 'replaced'"
+        wanted = topic_tokens(topic or "")
+        with self._conn() as conn:
+            out = []
+            for row in conn.execute(sql + " ORDER BY id DESC", args).fetchall():
+                score = 0.0
+                if wanted:
+                    shared = wanted & topic_tokens(row["statement"])
+                    if not shared:
+                        continue
+                    score = round(len(shared) / len(wanted), 2)
+                f = self._full(conn, row)
+                if trust and f["chip"]["key"] != trust:
+                    continue
+                if wanted:
+                    f["match_score"] = score
+                out.append(f)
+        if wanted:
+            out.sort(key=lambda f: (-f["match_score"], -f["id"]))
+        return out[:limit]
+
+    def _events(self, conn, where: str, args: tuple, limit: int | None = None) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            "SELECT e.*, l.statement, s.question AS study_title, d.title AS decision_title FROM events e "
+            "LEFT JOIN learnings l ON l.id = e.learning_id LEFT JOIN studies s ON s.id = e.study_id "
+            f"LEFT JOIN decisions d ON d.id = e.decision_id WHERE {where} ORDER BY e.id DESC"
+            + (" LIMIT ?" if limit else ""),
+            args + ((limit,) if limit else ()),
+        ).fetchall()
+        return [self._event(r) for r in rows]
+
+    def _event(self, r: sqlite3.Row, you: str | None = None) -> dict[str, Any]:
+        d = json.loads(r["detail"])
+        return {"id": r["id"], "learning_id": r["learning_id"], "statement": r["statement"],
+                "study_id": r["study_id"], "study_title": r["study_title"], "decision_id": r["decision_id"],
+                "decision_title": r["decision_title"], "kind": r["kind"], "actor": r["actor"], "at": r["at"],
+                "detail": d, "text": self._say(r, d, you)}
+
+    def _say(self, e: sqlite3.Row, d: dict[str, Any], you: str | None = None) -> str:
+        """One plain sentence per event, so the app and AI tools say the same thing."""
+        a, ref, kind = e["actor"], f"#{e['learning_id']}", e["kind"]
+        title, study = f"\"{e['decision_title']}\"", f"\"{e['study_title']}\""
+        if kind == "added":
+            with_ai = {"person_with_ai": " with AI", "ai_agent": " (AI agent)"}.get(d.get("origin"), "")
+            if d.get("revises"):
+                return f"{a}{with_ai} revised #{d['revises']} as {ref}"
+            if d.get("promoted_from"):
+                return f"{a}{with_ai} promoted #{d['promoted_from']} to {ref}"
+            return f"{a}{with_ai} added {ref}: \"{_short(e['statement'])}\""
+        if kind == "confirmed":
+            return f"{a} confirmed the AI draft {ref}" + (" and changed its wording" if d.get("edited") else "")
+        if kind == "promoted":
+            return f"{a} promoted {ref} to {self._level_label(d['to_level']).lower()} #{d['to']}"
+        if kind == "revised":
+            return f"{a} revised {ref} as #{d['to']}. Was: \"{_short(d['before'])}\". Now: \"{_short(d['after'])}\""
+        if kind == "reviewed":
+            return f"{a} {VERDICT_SAID[d['verdict']]} {ref}" + (f": \"{_short(d['note'])}\"" if d.get("note") else "")
+        if kind == "trust_changed":
+            return f"{ref} is now {TRUST_LABEL[d['to']]}"
+        if kind == "review_asked":
+            if d.get("person"):
+                target = "you" if you and d["person"].lower() == you.lower() else d["person"]
+            else:
+                target = "any SME" if d.get("role") == "sme" else f"any {(self._role_label(d.get('role')) or '').lower()}"
+            return f"{a} asked {target} to review {ref}"
+        if kind == "request_withdrawn":
+            return f"{a} withdrew a review request on {ref}"
+        if kind == "linked":
+            return f"{a} linked: #{d['source']} {LINK_SAID[d['type']]} #{d['target']}"
+        if kind == "conflict_flagged":
+            return f"{a} flagged a conflict between {ref} and #{d['with']}"
+        if kind == "used_in_decision":
+            return f"{a} used {ref} in {title}"
+        if kind == "decision_at_risk":
+            return f"{ref}, used in {title}, is now Contested"
+        if kind == "decision_logged":
+            return f"{a} logged the decision {title}"
+        if kind == "decision_updated":
+            return f"{a} added what happened to {title}" if "outcome" in d.get("changed", []) else f"{a} updated {title}"
+        if kind == "study_started":
+            return f"{a} started the study {study}"
+        if kind == "research_asked":
+            return f"{a} asked for research: {study}"
+        if kind == "study_updated":
+            if "status" in d.get("changed", []):
+                return f"{a} moved {study} to {d.get('status', '').capitalize()}"
+            return f"{a} updated {study}"
+        if kind == "working_on":
+            return f"{a} is working on {ref}" if d.get("on") else f"{a} stopped working on {ref}"
+        if kind == "followed":
+            return f"{a} followed {ref}"
+        if kind == "joined":
+            return f"{a} joined as {self._role_label(d.get('role'))}"
+        if kind == "person_set":
+            bits = []
+            if "role" in d:
+                bits.append(f"role to {self._role_label(d['role'])}")
+            if "sme" in d:
+                bits.append("SME" if d["sme"] else "not an SME")
+            return f"{a} set {d['person']}: " + ", ".join(bits)
+        if kind == "moment":
+            return d["text"]
+        return f"{a} {kind.replace('_', ' ')}"
+
+    def activity(self, limit: int = 50) -> list[dict[str, Any]]:
+        """The full record, newest first. Everything is here; the digest picks what matters."""
+        with self._conn() as conn:
+            return self._events(conn, "e.kind != 'moment'", (), limit)
+
+    def history(self, learning_id: int) -> list[dict[str, Any]]:
+        """Every change to one learning, oldest first. Nothing is erased."""
+        with self._conn() as conn:
+            self._row(conn, learning_id)
+            return list(reversed(self._events(conn, "e.learning_id = ? AND e.kind != 'moment'", (learning_id,))))
+
+    # -- people ------------------------------------------------------------
+
+    def set_person(self, name: str, by: str, role: str | None = None, sme: bool | None = None) -> dict[str, Any]:
+        """Change someone's role, or whether they are an SME. Logged, so everyone can see it."""
+        if role is not None and role not in self.config["roles"]:
+            raise CoreError(f"role must be one of {tuple(self.config['roles'])}")
+        if role is None and sme is None:
+            raise CoreError("say what to change: role or sme")
+        warnings = []
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            name = self._person(conn, name, "name")
+            changes = {}
+            if role is not None:
+                changes["role"] = role
+            if sme is not None:
+                changes["sme"] = bool(sme)
+            conn.execute(f"UPDATE people SET {', '.join(f'{k} = ?' for k in changes)} WHERE name = ?",
+                         (*[int(v) if isinstance(v, bool) else v for v in changes.values()], name))
+            self._log(conn, None, "person_set", by, person=name, **changes)
+            person = self._person_dict(self._who(conn, name))
+        listed = [n.lower() for n in list(self.config["people"]) + self.config["smes"]]
+        if name.lower() in listed:
+            warnings.append(f"{name} is listed in the team config, which resets them on restart")
+        return {"person": person, "warnings": warnings}
+
+    def person(self, name: str) -> dict[str, Any]:
+        """A person's role, the decisions they made, and the decisions their work
+        contributed to (through any learning in the chain behind them)."""
+        with self._conn() as conn:
+            row = self._who(conn, (name or "").strip())
+            if row is None:
+                raise CoreError(f"{name} has not taken part yet")
+            contributed = []
+            for d in conn.execute("SELECT * FROM decisions ORDER BY id DESC").fetchall():
+                ids = [u[0] for u in conn.execute("SELECT learning_id FROM decision_uses WHERE decision_id = ?", (d["id"],))]
+                mine = [c for c in self._credits(conn, ids) if c["name"] == row["name"]]
+                if mine:
+                    contributed.append({"id": d["id"], "title": d["title"], "made_by": d["made_by"], "at": d["at"],
+                                        "contributions": mine[0]["contributions"]})
+            made = [dict(d) for d in conn.execute(
+                "SELECT id, title, at, outcome FROM decisions WHERE made_by = ? ORDER BY id DESC", (row["name"],))]
+        return {**self._person_dict(row), "decisions_made": made, "contributed_to": contributed}
+
+    # -- learnings ---------------------------------------------------------
+
+    def _insert(self, conn, statement, level, owner, evidence, study_id, origin, promoted_from=None,
+                revises=None, **extra) -> int:
+        if origin not in ORIGINS:
+            raise CoreError(f"origin must be one of {ORIGINS}")
+        for e in evidence:
+            self._row(conn, e)
+        if study_id is not None:
+            study_id = self._study_row(conn, int(study_id))["id"]
+        stage = "shared" if origin == "person" else "draft"
+        cur = conn.execute(
+            "INSERT INTO learnings (statement, level, stage, origin, owner, evidence, study_id, promoted_from, "
+            "revises, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (statement, level, stage, origin, owner, json.dumps(evidence), study_id, promoted_from, revises, _now()),
+        )
+        lid = cur.lastrowid
+        detail = {"level": level, "origin": origin, "evidence": evidence, **extra}
+        if promoted_from:
+            detail["promoted_from"] = promoted_from
+        if revises:
+            detail["revises"] = revises
+        self._log(conn, lid, "added", owner, study_id, **detail)
+        for e in evidence:
+            if e != promoted_from:
+                self._built_on(conn, owner, e, "evidence")
+        return lid
+
+    def _created(self, lid: int, warnings: list[str]) -> dict[str, Any]:
+        """A new learning plus a conflict check, so contradictions surface on entry."""
+        conflicts = self.check_conflict(learning_id=lid)["candidates"]
+        learning = self.get(lid)
+        if learning["stage"] == "draft":
+            warnings.append(f"#{lid} is a draft until {learning['owner']} confirms it")
+        return {"learning": learning, "possible_conflicts": conflicts, "warnings": warnings}
+
+    def add(
+        self,
+        statement: str,
+        level: str,
+        owner: str,
+        evidence: list[int] | None = None,
+        study_id: int | None = None,
+        origin: str = "person",
+    ) -> dict[str, Any]:
+        """Write down a learning, optionally inside a study.
+
+        origin says who made it: person, person_with_ai, or ai_agent. Anything
+        made with AI starts as a draft until its owner confirms it. A conflict
+        check runs at once, so contradictions surface on entry. It never blocks.
+        """
+        statement = self._require(statement, "statement")
+        if level not in LEVELS:
+            raise CoreError(f"level must be one of {LEVELS}")
+        evidence = sorted({int(x) for x in (evidence or [])})
+        warnings = []
+        with self._conn() as conn:
+            owner = self._person(conn, owner, "owner")
+            lid = self._insert(conn, statement, level, owner, evidence, study_id, origin)
+        if level != "observation" and not evidence:
+            warnings.append(f"this {self._level_label(level).lower()} has no evidence yet")
+        return self._created(lid, warnings)
+
+    def confirm(self, learning_id: int, by: str, statement: str | None = None, note: str | None = None) -> dict[str, Any]:
+        """The owner checks an AI draft and stands behind it. Moves it from draft
+        to shared, so it can be reviewed. Pass statement to fix the wording; the
+        record keeps whether the AI's wording was changed. note says what was
+        checked or changed."""
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            by = self._person(conn, by, "by")
+            if row["stage"] != "draft":
+                raise CoreError(f"#{learning_id} is not a draft")
+            if by != row["owner"]:
+                raise CoreError(f"only {row['owner']} can confirm #{learning_id}")
+            new = (statement or "").strip() or row["statement"]
+            edited = new != row["statement"]
+            conn.execute("UPDATE learnings SET stage = 'shared', statement = ? WHERE id = ?", (new, learning_id))
+            self._log(conn, learning_id, "confirmed", by, row["study_id"], edited=edited, note=_clean(note),
+                      **({"before": row["statement"]} if edited else {}))
+            added = json.loads(conn.execute(
+                "SELECT detail FROM events WHERE learning_id = ? AND kind = 'added'", (learning_id,)).fetchone()[0])
+            for name in added.get("ask_again", []):
+                self._ask(conn, learning_id, by, "person", name, f"Revised after your review of #{row['revises']}")
+        return {"learning": self.get(learning_id), "warnings": []}
+
+    def promote(
+        self, learning_id: int, by: str, statement: str | None = None, note: str | None = None, origin: str = "person"
+    ) -> dict[str, Any]:
+        """Take a learning up a level: an observation to a finding, or a finding
+        to an insight.
+
+        Promotion adds a new learning one level up, linked back to the one it
+        came from, which stays exactly as it was. The new one is owned by
+        whoever promoted it, and can be reworded to say what the evidence now
+        supports. Anyone can promote. The team's rule shows whether the source
+        is ready; it only stops a promotion if the team set enforce = "required".
+        """
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            by = self._person(conn, by, "by")
+            if row["level"] not in NEXT_LEVEL:
+                raise CoreError(f"#{learning_id} is already an insight")
+            if row["stage"] == "draft":
+                raise CoreError(f"#{learning_id} is a draft; its owner confirms it first")
+            to = NEXT_LEVEL[row["level"]]
+            readiness = self._readiness(conn, row)
+            if not readiness["ready"] and readiness["enforced"]:
+                raise CoreError(f"not ready to promote: {readiness['summary']}")
+            warnings = []
+            if not readiness["ready"]:
+                warnings.append(f"not ready by the team's rule ({readiness['summary']}); promoted anyway")
+            state = self._trust(conn, learning_id)["state"]
+            if state == "not_reviewed":
+                warnings.append(f"#{learning_id} has not been reviewed yet")
+            if state == "contested":
+                warnings.append(f"#{learning_id} is contested; its conflict is not resolved")
+            if row["level"] != "observation" and not json.loads(row["evidence"]):
+                warnings.append(f"#{learning_id} has no evidence, so this rests on it alone")
+            new = (statement or "").strip() or row["statement"]
+            lid = self._insert(conn, new, to, by, [learning_id], row["study_id"], origin, promoted_from=learning_id)
+            self._log(conn, learning_id, "promoted", by, row["study_id"], to=lid, to_level=to, note=_clean(note))
+            self._built_on(conn, by, learning_id, "promoted")
+        return self._created(lid, warnings)
+
+    def revise(
+        self, learning_id: int, by: str, statement: str, note: str | None = None, origin: str = "person"
+    ) -> dict[str, Any]:
+        """Write a new version of a learning, for example after review feedback.
+
+        The new version keeps the level, evidence, and study. The old one
+        becomes Replaced and stays in the record with its reviews. Everyone
+        whose current review asked for changes is asked to look again.
+        """
+        statement = self._require(statement, "statement")
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            by = self._person(conn, by, "by")
+            if row["stage"] == "replaced":
+                newer = conn.execute("SELECT id FROM learnings WHERE revises = ?", (learning_id,)).fetchone()
+                raise CoreError(f"#{learning_id} is already replaced by #{newer[0]}; revise that one")
+            if statement == row["statement"]:
+                raise CoreError("the new version says the same thing; change the wording to revise")
+            warnings = []
+            if by != row["owner"]:
+                warnings.append(f"#{learning_id} is owned by {row['owner']}; you own the new version")
+            if self._trust(conn, learning_id)["state"] == "contested":
+                warnings.append(f"#{learning_id} is contested, and revising does not resolve the conflict")
+            asked = [r["by"] for r in self._current_reviews(conn, learning_id)
+                     if r["verdict"] == "changes" and r["by"] != by]
+            draft = origin != "person"
+            lid = self._insert(conn, statement, row["level"], by, json.loads(row["evidence"]), row["study_id"], origin,
+                               promoted_from=row["promoted_from"], revises=learning_id,
+                               **({"ask_again": asked} if draft and asked else {}))
+            conn.execute("UPDATE learnings SET stage = 'replaced' WHERE id = ?", (learning_id,))
+            self._log(conn, learning_id, "revised", by, row["study_id"], to=lid, before=row["statement"],
+                      after=statement, note=_clean(note))
+            # Requests still open on the old version are closed; the new one asks again.
+            conn.execute(
+                "UPDATE review_requests SET status = 'withdrawn', closed_by = ?, closed_at = ? "
+                "WHERE learning_id = ? AND status = 'open'", (by, _now(), learning_id))
+            if not draft:
+                for name in asked:
+                    self._ask(conn, lid, by, "person", name, f"Revised after your review of #{learning_id}")
+        result = self._created(lid, warnings)
+        result["asked_again"] = asked
+        return result
+
+    def review(
+        self,
+        learning_id: int,
+        by: str,
+        verdict: str = "approve",
+        how: str | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Review a learning: approve, ask for changes, or disagree, plus how you checked.
+
+        Each review stays visible with the reviewer's role and SME standing. A
+        person can review again; their latest review is the one that counts.
+        Any open request for this person, their role, or any SME closes.
+        """
+        if verdict not in VERDICTS:
+            raise CoreError(f"verdict must be one of {VERDICTS}")
+        if how is not None and how not in self.config["checks"]:
+            raise CoreError(f"how must be one of {tuple(self.config['checks'])}")
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            by = self._person(conn, by, "by")
+            if row["owner"] == by:
+                raise CoreError("you cannot review your own learning")
+            if row["stage"] == "draft":
+                raise CoreError(f"#{learning_id} is a draft; its owner confirms it before anyone reviews it")
+            if row["stage"] == "replaced":
+                newer = conn.execute("SELECT id FROM learnings WHERE revises = ?", (learning_id,)).fetchone()
+                raise CoreError(f"#{learning_id} was replaced by #{newer[0]}; review that one")
+            warnings = []
+            if row["working_by"] and row["working_by"] != by:
+                warnings.append(f"{row['working_by']} is working on #{learning_id}; your review still counts")
+            last = conn.execute("SELECT verdict FROM reviews WHERE learning_id = ? AND by = ? ORDER BY id DESC LIMIT 1",
+                                (learning_id, by)).fetchone()
+            if last and last["verdict"] == verdict:
+                raise CoreError(f"{by} has already {VERDICT_SAID[verdict]} #{learning_id}")
+            before = self._trust(conn, learning_id)["state"]
+            person = self._who(conn, by)
+            conn.execute(
+                "INSERT INTO reviews (learning_id, by, at, verdict, how, note, role, sme) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (learning_id, by, _now(), verdict, how, _clean(note), person["role"], person["sme"]),
+            )
+            self._log(conn, learning_id, "reviewed", by, row["study_id"], verdict=verdict, how=how, note=_clean(note),
+                      role=person["role"], sme=bool(person["sme"]))
+            conn.execute(
+                "UPDATE review_requests SET status = 'done', closed_by = ?, closed_at = ?, verdict = ? "
+                "WHERE learning_id = ? AND status = 'open' AND (person = ? OR role = ? OR (role = 'sme' AND ?))",
+                (by, _now(), verdict, learning_id, by, person["role"], person["sme"]),
+            )
+            sme_approved = verdict == "approve" and bool(person["sme"])
+            if sme_approved:
+                self._moment(conn, "checked", by, row["owner"], f"{by}, an SME, approved your learning #{learning_id}.",
+                             learning_id=learning_id, key=f"sme:{learning_id}:{by.lower()}")
+            self._retrust(conn, learning_id, before, by, "review", moment=not sme_approved)
+        return {"learning": self.get(learning_id), "warnings": warnings}
+
+    def _ask(self, conn, learning_id: int, by: str, kind: str, who: str, note: str | None) -> int:
+        cur = conn.execute(
+            f"INSERT INTO review_requests (learning_id, asked_by, {kind}, note, at) VALUES (?, ?, ?, ?, ?)",
+            (learning_id, by, who, note, _now()),
+        )
+        self._log(conn, learning_id, "review_asked", by, **{kind: who}, request_id=cur.lastrowid, note=note)
+        return cur.lastrowid
+
+    def ask_for_review(
+        self,
+        learning_id: int,
+        by: str,
+        people: list[str] | None = None,
+        roles: list[str] | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Ask named people, anyone in a role, or any SME (role "sme") to review a
+        learning. It shows in their queue until one of them reviews it. Anyone
+        can still review without being asked."""
+        people = [p for p in (people or []) if (p or "").strip()]
+        roles = list(roles or [])
+        if not people and not roles:
+            raise CoreError("name at least one person or role to ask")
+        for role in roles:
+            if role != "sme" and role not in self.config["roles"]:
+                raise CoreError(f"role must be 'sme' or one of {tuple(self.config['roles'])}")
+        warnings, made = [], []
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            by = self._person(conn, by, "by")
+            if row["stage"] == "draft":
+                raise CoreError(f"#{learning_id} is a draft; confirm it before asking for review")
+            if row["stage"] == "replaced":
+                raise CoreError(f"#{learning_id} was replaced; ask for review of the newer version")
+            targets = [("person", self._person(conn, p, "people")) for p in people] + [("role", r) for r in roles]
+            for kind, who in targets:
+                if kind == "person" and who == row["owner"]:
+                    warnings.append(f"{who} owns this learning, so they cannot review it; skipped")
+                    continue
+                if conn.execute(
+                    f"SELECT 1 FROM review_requests WHERE learning_id = ? AND status = 'open' AND {kind} = ?",
+                    (learning_id, who),
+                ).fetchone():
+                    warnings.append(f"{who} already has an open request for this learning; skipped")
+                    continue
+                made.append(self._ask(conn, learning_id, by, kind, who, _clean(note)))
+        return {"learning": self.get(learning_id), "request_ids": made, "warnings": warnings}
+
+    def withdraw_request(self, request_id: int, by: str) -> dict[str, Any]:
+        """Withdraw an open review request that is no longer needed."""
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            req = conn.execute("SELECT * FROM review_requests WHERE id = ?", (request_id,)).fetchone()
+            if req is None:
+                raise CoreError(f"request {request_id} does not exist")
+            if req["status"] != "open":
+                raise CoreError(f"request {request_id} is already {req['status']}")
+            conn.execute("UPDATE review_requests SET status = 'withdrawn', closed_by = ?, closed_at = ? WHERE id = ?",
+                         (by, _now(), request_id))
+            self._log(conn, req["learning_id"], "request_withdrawn", by, request_id=request_id)
+        return {"learning": self.get(req["learning_id"]), "warnings": []}
+
+    def link(self, from_id: int, to_id: int, type: str, by: str, note: str | None = None) -> dict[str, Any]:
+        """Say how one learning relates to another.
+
+        supports: from_id is evidence for to_id.
+        builds_on: from_id builds on to_id.
+        same_as: the two say the same thing.
+        conflicts_with: a person confirms they conflict; both become Contested.
+        """
+        if type not in LINK_TYPES:
+            raise CoreError(f"type must be one of {LINK_TYPES}")
+        from_id, to_id = int(from_id), int(to_id)
+        if from_id == to_id:
+            raise CoreError("a learning cannot be linked to itself")
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            source, target = self._row(conn, from_id), self._row(conn, to_id)
+            if type == "conflicts_with":
+                if conn.execute("SELECT 1 FROM conflicts WHERE (a = ? AND b = ?) OR (a = ? AND b = ?)",
+                                (from_id, to_id, to_id, from_id)).fetchone():
+                    raise CoreError(f"#{from_id} and #{to_id} are already flagged as in conflict")
+                before = {r["id"]: self._trust(conn, r["id"])["state"] for r in (source, target)}
+                conn.execute("INSERT INTO conflicts (a, b, by, at, note) VALUES (?, ?, ?, ?, ?)",
+                             (from_id, to_id, by, _now(), _clean(note)))
+                for r, other in ((source, to_id), (target, from_id)):
+                    self._log(conn, r["id"], "conflict_flagged", by, r["study_id"], **{"with": other}, note=_clean(note))
+                    self._retrust(conn, r["id"], before[r["id"]], by, "conflict")
+            elif type == "supports":
+                evidence = json.loads(target["evidence"])
+                if from_id in evidence:
+                    raise CoreError(f"#{from_id} already supports #{to_id}")
+                conn.execute("UPDATE learnings SET evidence = ? WHERE id = ?",
+                             (json.dumps(sorted(evidence + [from_id])), to_id))
+                self._built_on(conn, by, from_id, "evidence")
+            else:
+                if conn.execute(
+                    "SELECT 1 FROM links WHERE type = ? AND ((from_id = ? AND to_id = ?) "
+                    "OR (type = 'same_as' AND from_id = ? AND to_id = ?))",
+                    (type, from_id, to_id, to_id, from_id),
+                ).fetchone():
+                    raise CoreError(f"#{from_id} and #{to_id} are already linked that way")
+                conn.execute("INSERT INTO links (from_id, to_id, type, by, at, note) VALUES (?, ?, ?, ?, ?, ?)",
+                             (from_id, to_id, type, by, _now(), _clean(note)))
+                if type == "builds_on":
+                    self._built_on(conn, by, to_id, "builds_on")
+            if type != "conflicts_with":
+                for lid in (from_id, to_id):
+                    self._log(conn, lid, "linked", by, type=type, source=from_id, target=to_id, note=_clean(note))
+        return {"learnings": [self.get(from_id), self.get(to_id)], "warnings": []}
+
+    def check_conflict(self, statement: str | None = None, learning_id: int | None = None) -> dict[str, Any]:
+        """Find checked (or already contested) learnings on a similar topic that
+        may conflict with this one. Contested ones are included so a third
+        conflicting learning still surfaces.
+
+        Pass a statement (to check before adding) or the id of a learning.
+        Returns candidates for a person to judge; nothing changes. To flag a
+        real conflict, link the two with type conflicts_with.
+        """
+        with self._conn() as conn:
+            if learning_id is not None:
+                statement = self._row(conn, learning_id)["statement"]
+            statement = self._require(statement, "statement")
+            candidates = []
+            for row in conn.execute("SELECT * FROM learnings WHERE stage = 'shared' ORDER BY id DESC").fetchall():
+                if row["id"] == learning_id:
+                    continue
+                score, shared = similarity(statement, row["statement"])
+                if score < SIMILARITY_THRESHOLD or len(shared) < MIN_SHARED_WORDS:
+                    continue
+                if self._trust(conn, row["id"])["state"] not in CHECKED + ("contested",):
+                    continue
+                signals = contradiction_signals(statement, row["statement"])
+                candidates.append({"learning": self._brief(conn, row), "similarity": round(score, 2),
+                                   "shared_words": sorted(shared), "signals": signals,
+                                   "likely_conflict": bool(signals)})
+        candidates.sort(key=lambda c: (not c["likely_conflict"], -c["similarity"]))
+        return {"statement": statement, "learning_id": learning_id, "candidates": candidates}
+
+    def working_on(self, learning_id: int, who: str, on: bool = True) -> dict[str, Any]:
+        """Say you are working on a learning, or that you stopped. A soft hold:
+        it never stops anyone else."""
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            who = self._person(conn, who, "who")
+            warnings = []
+            if row["working_by"] and row["working_by"] != who:
+                warnings.append(f"{row['working_by']} was working on #{learning_id}")
+            conn.execute("UPDATE learnings SET working_by = ?, working_at = ? WHERE id = ?",
+                         (who if on else None, _now() if on else None, learning_id))
+            self._log(conn, learning_id, "working_on", who, on=bool(on))
+        return {"learning": self.get(learning_id), "warnings": warnings}
+
+    def follow(self, learning_id: int, who: str, on: bool = True) -> dict[str, Any]:
+        """Hear about changes to a learning. Owning, reviewing, or using one in
+        a decision follows it already."""
+        with self._conn() as conn:
+            self._row(conn, learning_id)
+            who = self._person(conn, who, "who")
+            if on:
+                if conn.execute("INSERT OR IGNORE INTO follows (name, learning_id, at) VALUES (?, ?, ?)",
+                                (who, learning_id, _now())).rowcount:
+                    self._log(conn, learning_id, "followed", who)
+            else:
+                conn.execute("DELETE FROM follows WHERE name = ? AND learning_id = ?", (who, learning_id))
+        return {"learning": self.get(learning_id), "following": bool(on), "warnings": []}
+
+    # -- studies -----------------------------------------------------------
+
+    def _study_needs(self, study: dict[str, Any]) -> list[dict[str, str]]:
+        """What the study's current stage asks for that is still empty."""
+        needs = []
+        for stage in STAGE_ASKS[study["status"]]:
+            for key, label in STUDY_ASKS[stage]:
+                if not study.get(key):
+                    needs.append({"key": key, "label": label, "stage": stage})
+            for f in self.config["study"]["fields"]:
+                if f["ask_at"] == stage and not study["fields"].get(f["key"]):
+                    needs.append({"key": f"field:{f['key']}", "label": f["label"], "stage": stage,
+                                  "required": f["required"]})
+        return needs
+
+    def _study_warnings(self, study: dict[str, Any]) -> list[str]:
+        """Gentle nudges for what this stage asks for. Never blocks."""
+        return [f"{n['label']} is empty" for n in study["needs"] if n.get("required", True)]
 
     def _study_full(self, conn, row: sqlite3.Row) -> dict[str, Any]:
         study = dict(row)
         study["fields"] = json.loads(row["fields"])
-        findings = [
-            self._full(conn, r)
-            for r in conn.execute("SELECT * FROM findings WHERE study_id = ? ORDER BY id", (row["id"],))
-        ]
+        learnings = [self._full(conn, r) for r in conn.execute(
+            "SELECT * FROM learnings WHERE study_id = ? AND stage != 'replaced' ORDER BY id", (row["id"],))]
         drow = conn.execute("SELECT * FROM decisions WHERE id = ?", (row["from_decision_id"],)).fetchone()
         study["from_decision"] = {k: drow[k] for k in ("id", "title", "made_by", "at")} if drow else None
-        study["findings_by_tier"] = {t: [f for f in findings if f["tier"] == t] for t in TIERS}
-        study["finding_count"] = len(findings)
-        study["history"] = [
-            {"kind": e["kind"], "actor": e["actor"], "at": e["at"], "detail": json.loads(e["detail"])}
-            for e in conn.execute(
-                "SELECT * FROM events WHERE study_id = ? AND finding_id IS NULL ORDER BY id", (row["id"],)
-            )
-        ]
+        study["by_level"] = {lv: [x for x in learnings if x["level"] == lv] for lv in LEVELS}
+        study["learning_count"] = len(learnings)
+        study["needs"] = self._study_needs(study)
+        study["history"] = list(reversed(self._events(conn, "e.study_id = ? AND e.learning_id IS NULL", (row["id"],))))
         return study
 
     def get_study(self, study_id: int) -> dict[str, Any]:
-        """A study with its objective, the decision it serves, and its findings by tier."""
+        """A study: its question, the decision it serves, how it was run, its
+        learnings by level, and what its current stage still asks for."""
         with self._conn() as conn:
             return self._study_full(conn, self._study_row(conn, study_id))
 
     def list_studies(self, status: str | None = None, owner: str | None = None) -> list[dict[str, Any]]:
-        if status and status not in STUDY_STATUSES:
-            raise CoreError(f"status must be one of {STUDY_STATUSES}")
+        if status and status not in STUDY_STAGES:
+            raise CoreError(f"status must be one of {STUDY_STAGES}")
         sql, args = "SELECT * FROM studies WHERE 1=1", []
         if status:
             sql += " AND status = ?"
@@ -619,200 +1345,80 @@ class Store:
             sql += " AND owner = ? COLLATE NOCASE"
             args.append(owner.strip())
         with self._conn() as conn:
-            rows = conn.execute(sql + " ORDER BY id DESC", args).fetchall()
             out = []
-            for r in rows:
+            for r in conn.execute(sql + " ORDER BY id DESC", args).fetchall():
                 study = dict(r)
                 study["fields"] = json.loads(r["fields"])
-                study["finding_count"] = conn.execute(
-                    "SELECT COUNT(*) FROM findings WHERE study_id = ?", (r["id"],)
-                ).fetchone()[0]
+                study["learning_count"] = conn.execute(
+                    "SELECT COUNT(*) FROM learnings WHERE study_id = ? AND stage != 'replaced'", (r["id"],)).fetchone()[0]
+                study["needs"] = self._study_needs(study)
                 out.append(study)
         return out
 
-    def get(self, finding_id: int) -> dict[str, Any]:
-        with self._conn() as conn:
-            return self._full(conn, self._row(conn, finding_id))
-
-    def list_findings(
-        self, tier: str | None = None, status: str | None = None, limit: int = 200
-    ) -> list[dict[str, Any]]:
-        if tier and tier not in TIERS:
-            raise CoreError(f"tier must be one of {TIERS}")
-        if status and status not in STATUSES:
-            raise CoreError(f"status must be one of {STATUSES}")
-        sql, args = "SELECT * FROM findings WHERE 1=1", []
-        if tier:
-            sql += " AND tier = ?"
-            args.append(tier)
-        if status:
-            sql += " AND status = ?"
-            args.append(status)
-        sql += " ORDER BY id DESC LIMIT ?"
-        args.append(limit)
-        with self._conn() as conn:
-            return [self._full(conn, r) for r in conn.execute(sql, args).fetchall()]
-
-    def query(
-        self,
-        topic: str = "",
-        tier: str | None = None,
-        status: str | None = None,
-        limit: int = 20,
-    ) -> list[dict[str, Any]]:
-        """Findings that match a topic or question, best match first.
-
-        An empty topic returns the most recent findings.
-        """
-        candidates = self.list_findings(tier=tier, status=status, limit=10_000)
-        wanted = topic_tokens(topic or "")
-        if not wanted:
-            return candidates[:limit]
-        scored = []
-        for f in candidates:
-            shared = wanted & topic_tokens(f["statement"])
-            if shared:
-                f["match_score"] = round(len(shared) / len(wanted), 2)
-                scored.append(f)
-        scored.sort(key=lambda f: (-f["match_score"], -f["id"]))
-        return scored[:limit]
-
-    def activity(self, limit: int = 50) -> list[dict[str, Any]]:
-        with self._conn() as conn:
-            rows = conn.execute(
-                "SELECT e.*, f.statement, s.title AS study_title, d.title AS decision_title FROM events e "
-                "LEFT JOIN findings f ON f.id = e.finding_id LEFT JOIN studies s ON s.id = e.study_id "
-                "LEFT JOIN decisions d ON d.id = e.decision_id ORDER BY e.id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-        return [
-            {
-                "finding_id": r["finding_id"],
-                "statement": r["statement"],
-                "study_id": r["study_id"],
-                "study_title": r["study_title"],
-                "decision_id": r["decision_id"],
-                "decision_title": r["decision_title"],
-                "kind": r["kind"],
-                "actor": r["actor"],
-                "at": r["at"],
-                "detail": json.loads(r["detail"]),
-            }
-            for r in rows
-        ]
-
-    def history(self, finding_id: int) -> list[dict[str, Any]]:
-        with self._conn() as conn:
-            self._row(conn, finding_id)
-            rows = conn.execute(
-                "SELECT * FROM events WHERE finding_id = ? ORDER BY id", (finding_id,)
-            ).fetchall()
-        return [
-            {"kind": r["kind"], "actor": r["actor"], "at": r["at"], "detail": json.loads(r["detail"])}
-            for r in rows
-        ]
-
-    # -- write -------------------------------------------------------------
-
-    def set_role(self, name: str, role: str, by: str) -> dict[str, Any]:
-        """Change someone's role. Logged, so role changes are visible to everyone."""
-        if role not in self.config["roles"]:
-            raise CoreError(f"role must be one of {tuple(self.config['roles'])}")
-        warnings = []
-        with self._conn() as conn:
-            by = self._person(conn, by, "by")
-            name = self._person(conn, name, "name")
-            previous = self._role_of(conn, name)
-            conn.execute("UPDATE people SET role = ? WHERE name = ?", (role, name))
-            self._log(conn, None, "role_set", by, person=name, role=role, previous_role=previous)
-        if any(n.lower() == name.lower() for n in self.config["people"]):
-            warnings.append(f"{name} is listed in the team config, which resets their role on restart")
-        return {"person": self._person_dict(name, role), "warnings": warnings}
-
     def start_study(
         self,
-        title: str,
+        question: str,
         owner: str,
-        objective: str | None = None,
         decision: str | None = None,
-        method: str | None = None,
-        sample: str | None = None,
-        status: str = "planned",
+        hypothesis: str | None = None,
         fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Open a study: why we are looking, the decision it serves, and how.
-
-        Only a title is needed to start. Missing objective, decision, or
-        required template fields come back as warnings, never errors, so a
-        team can start now and fill in details as they learn them.
-        """
-        title = self._require_name(title, "title")
-        if status not in STUDY_STATUSES:
-            raise CoreError(f"status must be one of {STUDY_STATUSES}")
+        """Start a study with the question and the decision it serves. The rest
+        is asked for when the study reaches the stage that needs it."""
+        question = self._require(question, "question")
         with self._conn() as conn:
             owner = self._person(conn, owner, "owner")
             cur = conn.execute(
-                "INSERT INTO studies (title, objective, decision, method, sample, status, owner, fields, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (title, _clean(objective), _clean(decision), _clean(method), _clean(sample),
-                 status, owner, json.dumps(_clean_fields(fields)), _now()),
+                "INSERT INTO studies (question, decision, hypothesis, status, owner, fields, created_at) "
+                "VALUES (?, ?, ?, 'planned', ?, ?, ?)",
+                (question, _clean(decision), _clean(hypothesis), owner, json.dumps(_clean_fields(fields)), _now()),
             )
             sid = cur.lastrowid
-            self._log(conn, None, "study_started", owner, sid, status=status)
+            self._log(conn, None, "study_started", owner, sid)
         study = self.get_study(sid)
         return {"study": study, "warnings": self._study_warnings(study)}
 
-    def request_research(
+    def ask_for_research(
         self,
         question: str,
-        requested_by: str,
+        by: str,
         decision: str | None = None,
         from_decision_id: int | None = None,
         from_query: str | None = None,
-        fields: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Ask a research question. It lands as a study with status 'requested'
-        for the research team to pick up (update_study to planned, with an owner)
-        or close.
-
-        Link it to where it came from: a decision whose outcome raised the
-        question (from_decision_id), or a search that found nothing trusted
-        (from_query). fields holds any intake fields the team added to its study
-        template, such as a link to its own tracker.
-        """
-        question = self._require_name(question, "question")
+        """Ask a research question. It lands as a Requested study for someone to
+        pick up. Link where it came from: a decision whose outcome raised it
+        (from_decision_id), or a search that found nothing checked (from_query)."""
+        question = self._require(question, "question")
         with self._conn() as conn:
-            requested_by = self._person(conn, requested_by, "requested_by")
+            by = self._person(conn, by, "by")
             if from_decision_id is not None:
                 drow = self._decision_row(conn, int(from_decision_id))
                 from_decision_id = drow["id"]
                 decision = _clean(decision) or drow["title"]
             cur = conn.execute(
-                "INSERT INTO studies (title, decision, status, fields, requested_by, from_decision_id, "
-                "from_query, created_at) VALUES (?, ?, 'requested', ?, ?, ?, ?, ?)",
-                (question, _clean(decision), json.dumps(_clean_fields(fields)), requested_by,
-                 from_decision_id, _clean(from_query), _now()),
+                "INSERT INTO studies (question, decision, status, requested_by, from_decision_id, from_query, created_at) "
+                "VALUES (?, ?, 'requested', ?, ?, ?, ?)",
+                (question, _clean(decision), by, from_decision_id, _clean(from_query), _now()),
             )
             sid = cur.lastrowid
-            self._log(conn, None, "research_requested", requested_by, sid, from_decision_id,
-                      from_query=_clean(from_query))
+            self._log(conn, None, "research_asked", by, sid, from_decision_id, from_query=_clean(from_query))
         study = self.get_study(sid)
         warnings = [] if study["decision"] else ["say which decision this would inform, so it can be prioritized"]
         return {"study": study, "warnings": warnings}
 
     def update_study(self, study_id: int, by: str, **changes: Any) -> dict[str, Any]:
-        """Change a study's details, status, or owner. Template fields are merged.
-
-        The previous values are kept in the study's history.
-        """
-        allowed = set(STUDY_TEXT_FIELDS) | {"status", "owner", "fields"}
+        """Change a study's details, stage (status), or owner. Template fields
+        are merged. Previous values stay in its history. The result lists what
+        the new stage asks for."""
+        allowed = set(STUDY_TEXT) | {"status", "owner", "fields"}
         unknown = set(changes) - allowed
         if unknown:
             raise CoreError(f"cannot update {sorted(unknown)}; choose from {sorted(allowed)}")
-        if "status" in changes and changes["status"] not in STUDY_STATUSES:
-            raise CoreError(f"status must be one of {STUDY_STATUSES}")
-        if "title" in changes:
-            changes["title"] = self._require_name(changes["title"], "title")
+        if "status" in changes and changes["status"] not in STUDY_STAGES:
+            raise CoreError(f"status must be one of {STUDY_STAGES}")
+        if "question" in changes:
+            changes["question"] = self._require(changes["question"], "question")
         with self._conn() as conn:
             by = self._person(conn, by, "by")
             row = self._study_row(conn, study_id)
@@ -828,447 +1434,57 @@ class Store:
                     updates[key] = value
                     previous[key] = row[key]
             if updates:
-                conn.execute(
-                    f"UPDATE studies SET {', '.join(f'{k} = ?' for k in updates)} WHERE id = ?",
-                    (*updates.values(), study_id),
-                )
-                self._log(conn, None, "study_updated", by, study_id,
-                          changed=sorted(updates), previous=previous)
+                conn.execute(f"UPDATE studies SET {', '.join(f'{k} = ?' for k in updates)} WHERE id = ?",
+                             (*updates.values(), study_id))
+                self._log(conn, None, "study_updated", by, study_id, changed=sorted(updates), previous=previous,
+                          status=updates.get("status"))
         study = self.get_study(study_id)
         return {"study": study, "warnings": self._study_warnings(study)}
 
-    def propose(
-        self,
-        statement: str,
-        tier: str,
-        owner: str,
-        evidence_links: list[int] | None = None,
-        study_id: int | None = None,
-    ) -> dict[str, Any]:
-        """Create a finding with status 'proposed', optionally inside a study.
-
-        Also runs a conflict check so contradictions surface at the moment a
-        finding enters the system. The check never blocks the proposal.
-        """
-        statement = self._require_name(statement, "statement")
-        if tier not in TIERS:
-            raise CoreError(f"tier must be one of {TIERS}")
-        links = sorted({int(x) for x in (evidence_links or [])})
-        warnings = []
-        with self._conn() as conn:
-            owner = self._person(conn, owner, "owner")
-            fid = self._insert_finding(conn, statement, tier, owner, links, study_id)
-        if tier != "data_point" and not links:
-            warnings.append(f"this {tier} has no evidence links yet")
-        return self._created(fid, warnings)
-
-    def _insert_finding(
-        self, conn, statement, tier, owner, links, study_id, promoted_from=None, revises=None
-    ) -> int:
-        for eid in links:
-            self._row(conn, eid)
-        if study_id is not None:
-            study_id = self._study_row(conn, int(study_id))["id"]
-        cur = conn.execute(
-            "INSERT INTO findings (statement, tier, status, owner, evidence_links, study_id, "
-            "promoted_from, revises, created_at) VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?)",
-            (statement, tier, owner, json.dumps(links), study_id, promoted_from, revises, _now()),
-        )
-        fid = cur.lastrowid
-        detail = {"tier": tier, "evidence_links": links}
-        if promoted_from:
-            detail["promoted_from"] = promoted_from
-        if revises:
-            detail["revises"] = revises
-        self._log(conn, fid, "proposed", owner, study_id, **detail)
-        return fid
-
-    def _created(self, fid: int, warnings: list[str]) -> dict[str, Any]:
-        """A new finding plus a conflict check, so contradictions surface on entry."""
-        conflicts = self.check_conflict(finding_id=fid)["candidates"]
-        return {"finding": self.get(fid), "possible_conflicts": conflicts, "warnings": warnings}
-
-    def promote(
-        self, finding_id: int, by: str, statement: str | None = None, note: str | None = None
-    ) -> dict[str, Any]:
-        """Promote a data point to a hypothesis, or a hypothesis to an insight.
-
-        Promotion creates a new finding one tier up, linked back to the one it
-        came from, which stays exactly as it was with its own validations. The
-        new finding starts as proposed, owned by whoever promoted it, and can
-        be reworded (statement) to say what the evidence now supports.
-
-        Anyone can promote. The team's promotion rules show whether the source
-        is ready; they only stop a promotion if the team set enforce = "required".
-        """
-        with self._conn() as conn:
-            row = self._row(conn, finding_id)
-            by = self._person(conn, by, "by")
-            if row["tier"] not in NEXT_TIER:
-                raise CoreError(f"finding {finding_id} is already an {row['tier']}; it cannot be promoted further")
-            to_tier = NEXT_TIER[row["tier"]]
-            readiness = self._readiness(conn, row, promoter=by)
-            if not readiness["ready"] and self.config["promote"]["enforce"] == "required":
-                raise CoreError(f"not ready to promote: {readiness['summary']}")
-            warnings = []
-            if not readiness["ready"]:
-                warnings.append(f"not ready by the team's rule ({readiness['summary']}); promoted anyway")
-            if row["status"] == "proposed":
-                warnings.append(f"finding {finding_id} has not been validated yet")
-            if row["status"] == "contested":
-                warnings.append(f"finding {finding_id} is contested; its conflict is not resolved")
-            if row["tier"] != "data_point" and not json.loads(row["evidence_links"]):
-                warnings.append(f"finding {finding_id} has no evidence links, so this {to_tier} rests on it alone")
-            new_statement = (statement or "").strip() or row["statement"]
-            fid = self._insert_finding(
-                conn, new_statement, to_tier, by, [finding_id], row["study_id"], promoted_from=finding_id
-            )
-            self._log(conn, finding_id, "promoted", by, row["study_id"],
-                      to=fid, from_tier=row["tier"], to_tier=to_tier, note=_clean(note))
-        return self._created(fid, warnings)
-
-    def revise(self, finding_id: int, by: str, statement: str, note: str | None = None) -> dict[str, Any]:
-        """Respond to review feedback with a new version of a finding.
-
-        The new version keeps the tier, evidence, and study, and links back to
-        the one it revises, which stays as it was with its reviews. Everyone
-        whose current review asked for changes gets a request to look again.
-        """
-        statement = self._require_name(statement, "statement")
-        with self._conn() as conn:
-            row = self._row(conn, finding_id)
-            by = self._person(conn, by, "by")
-            if statement == row["statement"]:
-                raise CoreError("the new version says the same thing; change the statement to revise")
-            warnings = []
-            if by != row["owner"]:
-                warnings.append(f"finding {finding_id} is owned by {row['owner']}; you own the new version")
-            fid = self._insert_finding(
-                conn, statement, row["tier"], by, json.loads(row["evidence_links"]), row["study_id"],
-                promoted_from=row["promoted_from"], revises=finding_id,
-            )
-            self._log(conn, finding_id, "revised", by, row["study_id"], to=fid, note=_clean(note))
-            asked = [
-                r["validated_by"] for r in self._current_reviews(conn, finding_id)
-                if r["outcome"] == "changes_requested" and r["validated_by"] != by
-            ]
-            for name in asked:
-                cur = conn.execute(
-                    "INSERT INTO validation_requests (finding_id, requested_by, person, note, at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (fid, by, name, f"Revised after your review of #{finding_id}", _now()),
-                )
-                self._log(conn, fid, "review_requested", by, person=name, request_id=cur.lastrowid)
-            # Requests still open on the old version move to the new one.
-            conn.execute(
-                "UPDATE validation_requests SET status = 'withdrawn', closed_by = ?, closed_at = ? "
-                "WHERE finding_id = ? AND status = 'open'",
-                (by, _now(), finding_id),
-            )
-        result = self._created(fid, warnings)
-        result["review_requested_from"] = asked
-        return result
-
-    @staticmethod
-    def _current_reviews(conn, finding_id: int) -> list[sqlite3.Row]:
-        """Each reviewer's latest review of a finding. Earlier ones are history."""
-        return conn.execute(
-            "SELECT * FROM validations v WHERE finding_id = ? AND id = "
-            "(SELECT MAX(id) FROM validations w WHERE w.finding_id = v.finding_id "
-            "AND w.validated_by = v.validated_by) ORDER BY id",
-            (finding_id,),
-        ).fetchall()
-
-    def _approvals(self, conn, finding_id: int) -> list[sqlite3.Row]:
-        """Reviews that currently count as approval."""
-        return [r for r in self._current_reviews(conn, finding_id) if r["outcome"] == "approve"]
-
-    def _trusted(self, role: str | None) -> bool:
-        return bool(role and self.config["roles"].get(role, {}).get("trusted"))
-
-    def _role_label(self, role: str | None) -> str | None:
-        return self.config["roles"].get(role, {}).get("label", role) if role else None
-
-    def _trust(self, current: list[dict[str, Any]]) -> dict[str, Any]:
-        """How much to lean on a finding, from who reviewed it, in what role, and how.
-
-        Trusted roles are counted by role. Everyone else counts as a peer.
-        The summary is plain text so the app and AI tools say the same thing.
-        """
-        approvals = [v for v in current if v["outcome"] == "approve"]
-        by_role: dict[str, int] = {}
-        for v in approvals:
-            key = v["role"] if v["trusted"] else "peer"
-            by_role[key] = by_role.get(key, 0) + 1
-        checked: dict[str, int] = {}
-        for v in approvals:
-            if v["basis"]:
-                checked[v["basis"]] = checked.get(v["basis"], 0) + 1
-        changes = sum(v["outcome"] == "changes_requested" for v in current)
-        disagree = sum(v["outcome"] == "disagree" for v in current)
-
-        order = [r for r in self.config["roles"] if self._trusted(r)] + ["peer"]
-        who = ", ".join(
-            f"{by_role[r]} {'peer' if r == 'peer' else self._role_label(r).lower()}"
-            for r in order if by_role.get(r)
-        )
-        parts = [f"Validated by {who}." if who else "Not validated yet."]
-        if checked:
-            labels = self.config["checks"]
-            parts.append("How they checked: " + ", ".join(
-                f"{labels.get(k, k).lower()} ({n})" for k, n in checked.items()) + ".")
-        if changes:
-            parts.append(f"{changes} {'asks' if changes == 1 else 'ask'} for changes.")
-        if disagree:
-            parts.append(f"{disagree} {'disagrees' if disagree == 1 else 'disagree'}.")
-        return {
-            "approvals": len(approvals),
-            "trusted": sum(n for r, n in by_role.items() if r != "peer"),
-            "peer": by_role.get("peer", 0),
-            "by_role": by_role,
-            "checked": checked,
-            "changes_requested": changes,
-            "disagree": disagree,
-            "summary": " ".join(parts),
-        }
-
-    def _readiness(self, conn, row: sqlite3.Row, promoter: str | None = None) -> dict[str, Any]:
-        """Whether a finding meets the team's promotion rule. Any one rule is enough."""
-        rules = self.config["promote"]
-        approvals = self._approvals(conn, row["id"])
-        trusted = sum(self._trusted(a["role"]) for a in approvals)
-        checks = []
-        if rules["min_validations"]:
-            checks.append((len(approvals) >= rules["min_validations"],
-                           f"{len(approvals)} of {rules['min_validations']} validations"))
-        if rules["min_trusted_validations"]:
-            checks.append((trusted >= rules["min_trusted_validations"],
-                           f"{trusted} of {rules['min_trusted_validations']} trusted validations"))
-        if rules["trusted_roles_ready"] and promoter is not None:
-            checks.append((self._trusted(self._role_of(conn, promoter)), f"{promoter} has a trusted role"))
-        if not checks:
-            return {"ready": True, "summary": "no promotion rule set", "enforced": False}
-        ready = any(ok for ok, _ in checks)
-        return {
-            "ready": ready,
-            "summary": ", or ".join(text for _, text in checks),
-            "enforced": rules["enforce"] == "required",
-        }
-
-    def validate(
-        self,
-        finding_id: int,
-        validated_by: str,
-        note: str | None = None,
-        outcome: str = "approve",
-        basis: str | None = None,
-    ) -> dict[str, Any]:
-        """Review a finding: approve it, request changes, or disagree.
-
-        Each review stays visible individually, with the reviewer's role. A
-        person can review again; their latest review is the one that counts.
-        A finding is validated while at least one current review approves it.
-        Requesting changes or disagreeing never contests a finding on its own;
-        a conflict is confirmed separately.
-
-        Any open review request for this person, or for their role, closes.
-        """
-        if outcome not in OUTCOMES:
-            raise CoreError(f"outcome must be one of {OUTCOMES}")
-        if basis is not None and basis not in self.config["checks"]:
-            raise CoreError(f"basis must be one of {tuple(self.config['checks'])}")
-        with self._conn() as conn:
-            row = self._row(conn, finding_id)
-            validated_by = self._person(conn, validated_by, "validated_by")
-            if row["owner"] == validated_by:
-                raise CoreError("a finding cannot be validated by its own owner")
-            warnings = self._checkout_warning(row, validated_by)
-            last = conn.execute(
-                "SELECT outcome FROM validations WHERE finding_id = ? AND validated_by = ? "
-                "ORDER BY id DESC LIMIT 1",
-                (finding_id, validated_by),
-            ).fetchone()
-            if last and last["outcome"] == outcome:
-                said = "validated" if outcome == "approve" else f"given '{outcome}' on"
-                raise CoreError(f"{validated_by} has already {said} finding {finding_id}")
-            role = self._role_of(conn, validated_by)
-            conn.execute(
-                "INSERT INTO validations (finding_id, validated_by, validated_at, note, outcome, basis, role) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (finding_id, validated_by, _now(), _clean(note), outcome, basis, role),
-            )
-            self._log(conn, finding_id, OUTCOME_EVENT[outcome], validated_by,
-                      note=_clean(note), outcome=outcome, basis=basis, role=role)
-            conn.execute(
-                "UPDATE validation_requests SET status = 'done', closed_by = ?, closed_at = ?, outcome = ? "
-                "WHERE finding_id = ? AND status = 'open' AND (person = ? OR role = ?)",
-                (validated_by, _now(), outcome, finding_id, validated_by, role),
-            )
-            if row["status"] == "contested":
-                warnings.append("finding is contested; review recorded but status stays contested")
-            else:
-                status = "validated" if self._approvals(conn, finding_id) else "proposed"
-                if status != row["status"]:
-                    conn.execute("UPDATE findings SET status = ? WHERE id = ?", (status, finding_id))
-                    self._log(conn, finding_id, "status_changed", validated_by,
-                              **{"from": row["status"], "to": status})
-        return {"finding": self.get(finding_id), "warnings": warnings}
-
-    def request_validation(
-        self,
-        finding_id: int,
-        requested_by: str,
-        people: list[str] | None = None,
-        roles: list[str] | None = None,
-        note: str | None = None,
-    ) -> dict[str, Any]:
-        """Ask named people, or anyone in a role (for example any researcher), to
-        review a finding. It shows up in their queue until they review it.
-        Anyone can still review without being asked."""
-        people = [p for p in (people or []) if (p or "").strip()]
-        roles = list(roles or [])
-        if not people and not roles:
-            raise CoreError("name at least one person or role to ask")
-        for role in roles:
-            if role not in self.config["roles"]:
-                raise CoreError(f"role must be one of {tuple(self.config['roles'])}")
-        warnings, made = [], []
-        with self._conn() as conn:
-            row = self._row(conn, finding_id)
-            requested_by = self._person(conn, requested_by, "requested_by")
-            targets = [("person", self._person(conn, p, "people")) for p in people]
-            targets += [("role", r) for r in roles]
-            for kind, who in targets:
-                if kind == "person" and who == row["owner"]:
-                    warnings.append(f"{who} owns this finding, so they cannot review it; skipped")
-                    continue
-                if conn.execute(
-                    f"SELECT 1 FROM validation_requests WHERE finding_id = ? AND status = 'open' AND {kind} = ?",
-                    (finding_id, who),
-                ).fetchone():
-                    warnings.append(f"{who} already has an open request for this finding; skipped")
-                    continue
-                cur = conn.execute(
-                    f"INSERT INTO validation_requests (finding_id, requested_by, {kind}, note, at) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (finding_id, requested_by, who, _clean(note), _now()),
-                )
-                made.append(cur.lastrowid)
-                self._log(conn, finding_id, "review_requested", requested_by,
-                          **{kind: who}, request_id=cur.lastrowid, note=_clean(note))
-        return {"finding": self.get(finding_id), "request_ids": made, "warnings": warnings}
-
-    def withdraw_request(self, request_id: int, by: str) -> dict[str, Any]:
-        """Withdraw an open review request, for example when it is no longer needed."""
-        with self._conn() as conn:
-            by = self._person(conn, by, "by")
-            req = conn.execute("SELECT * FROM validation_requests WHERE id = ?", (request_id,)).fetchone()
-            if req is None:
-                raise CoreError(f"request {request_id} does not exist")
-            if req["status"] != "open":
-                raise CoreError(f"request {request_id} is already {req['status']}")
-            conn.execute(
-                "UPDATE validation_requests SET status = 'withdrawn', closed_by = ?, closed_at = ? WHERE id = ?",
-                (by, _now(), request_id),
-            )
-            self._log(conn, req["finding_id"], "request_withdrawn", by, request_id=request_id)
-        return {"finding": self.get(req["finding_id"]), "warnings": []}
-
-    def my_queue(self, who: str) -> dict[str, Any]:
-        """What is waiting on a person.
-
-        waiting_on_me: findings someone asked this person (or their role) to review.
-        feedback_on_mine: their own findings where a current review asks for
-        changes or disagrees.
-        my_requests: review requests they made that are still open.
-        """
-        with self._conn() as conn:
-            who = self._person(conn, who, "who")
-            role = self._role_of(conn, who)
-            waiting = []
-            for req in conn.execute(
-                "SELECT r.*, f.owner FROM validation_requests r JOIN findings f ON f.id = r.finding_id "
-                "WHERE r.status = 'open' AND (r.person = ? OR r.role = ?) AND f.owner != ? ORDER BY r.id",
-                (who, role, who),
-            ):
-                mine = [r for r in self._current_reviews(conn, req["finding_id"]) if r["validated_by"] == who]
-                if mine and mine[0]["outcome"] == "approve":
-                    continue  # already approved before the request came in
-                waiting.append({"request": self._request(req), "finding": self._full(conn, self._row(conn, req["finding_id"]))})
-            feedback = []
-            for row in conn.execute(
-                "SELECT * FROM findings f WHERE owner = ? AND NOT EXISTS "
-                "(SELECT 1 FROM findings r WHERE r.revises = f.id) ORDER BY id DESC",
-                (who,),
-            ):
-                concerns = [dict(r) for r in self._current_reviews(conn, row["id"]) if r["outcome"] != "approve"]
-                if concerns:
-                    feedback.append({"finding": self._full(conn, row), "reviews": concerns})
-            mine = [
-                {"request": self._request(r), "finding": self._summary(self._row(conn, r["finding_id"]))}
-                for r in conn.execute(
-                    "SELECT * FROM validation_requests WHERE requested_by = ? AND status = 'open' ORDER BY id",
-                    (who,),
-                )
-            ]
-            at_risk = [
-                d for d in (
-                    self._decision_full(conn, r, with_credits=False)
-                    for r in conn.execute("SELECT * FROM decisions WHERE made_by = ? ORDER BY id DESC", (who,))
-                ) if d["at_risk"]
-            ]
-        return {"who": who, "role": role, "waiting_on_me": waiting, "feedback_on_mine": feedback,
-                "my_requests": mine, "decisions_at_risk": at_risk}
-
-    @staticmethod
-    def _request(r: sqlite3.Row) -> dict[str, Any]:
-        return {k: r[k] for k in ("id", "finding_id", "requested_by", "person", "role", "note", "at", "status")}
-
     # -- decisions ---------------------------------------------------------
-
-    def log_decision(
-        self,
-        title: str,
-        made_by: str,
-        finding_ids: list[int] | None = None,
-        note: str | None = None,
-        outcome: str | None = None,
-    ) -> dict[str, Any]:
-        """Record a decision and the findings used to make it, in one step.
-
-        Using a finding that is not validated yet, or is contested, is allowed
-        and comes back as a warning, so the record stays honest about what the
-        decision rested on.
-        """
-        title = self._require_name(title, "title")
-        ids = list(dict.fromkeys(int(x) for x in (finding_ids or [])))
-        with self._conn() as conn:
-            made_by = self._person(conn, made_by, "made_by")
-            rows = [self._row(conn, fid) for fid in ids]
-            cur = conn.execute(
-                "INSERT INTO decisions (title, made_by, at, note, outcome) VALUES (?, ?, ?, ?, ?)",
-                (title, made_by, _now(), _clean(note), _clean(outcome)),
-            )
-            did = cur.lastrowid
-            self._log(conn, None, "decision_logged", made_by, None, did, finding_ids=ids)
-            warnings = self._use(conn, did, rows, made_by)
-        if not ids:
-            warnings.append("no findings linked; if nothing trusted exists yet, ask for research")
-        return {"decision": self.get_decision(did), "warnings": warnings}
 
     def _use(self, conn, decision_id: int, rows: list[sqlite3.Row], by: str) -> list[str]:
         warnings = []
         for row in rows:
-            conn.execute(
-                "INSERT OR IGNORE INTO decision_uses (decision_id, finding_id, status_at_use) VALUES (?, ?, ?)",
-                (decision_id, row["id"], row["status"]),
-            )
-            self._log(conn, row["id"], "used_in_decision", by, None, decision_id)
-            if row["status"] == "proposed":
-                warnings.append(f"finding {row['id']} has not been validated yet")
-            elif row["status"] == "contested":
-                warnings.append(f"finding {row['id']} is contested")
+            state = self._trust(conn, row["id"])["state"]
+            if conn.execute("INSERT OR IGNORE INTO decision_uses (decision_id, learning_id, trust_at_use) "
+                            "VALUES (?, ?, ?)", (decision_id, row["id"], state)).rowcount:
+                self._log(conn, row["id"], "used_in_decision", by, None, decision_id)
+            if row["stage"] == "draft":
+                warnings.append(f"#{row['id']} is still a draft")
+            elif row["stage"] == "replaced":
+                warnings.append(f"#{row['id']} was replaced by a newer version")
+            elif state not in CHECKED:
+                warnings.append(f"#{row['id']} is {TRUST_LABEL[state]}")
+        # Everyone in the chain hears their work was used. Once per decision.
+        title = self._decision_row(conn, decision_id)["title"]
+        for c in self._credits(conn, [r["id"] for r in rows]):
+            self._moment(conn, "used", by, c["name"], f"{by} used your work in \"{title}\".",
+                         decision_id=decision_id, key=f"used:{decision_id}:{c['name'].lower()}")
+        self._milestone_team(conn, by)
         return warnings
+
+    def log_decision(
+        self, title: str, made_by: str, learning_ids: list[int] | None = None, note: str | None = None
+    ) -> dict[str, Any]:
+        """Record a decision and the learnings it relied on, in one step. What
+        happened is asked for later, once it is known (update_decision).
+
+        Using a learning that is not checked yet, or is contested, is allowed
+        and comes back as a warning, so the record stays honest."""
+        title = self._require(title, "title")
+        ids = list(dict.fromkeys(int(x) for x in (learning_ids or [])))
+        with self._conn() as conn:
+            made_by = self._person(conn, made_by, "made_by")
+            rows = [self._row(conn, lid) for lid in ids]
+            cur = conn.execute("INSERT INTO decisions (title, made_by, at, note) VALUES (?, ?, ?, ?)",
+                               (title, made_by, _now(), _clean(note)))
+            did = cur.lastrowid
+            self._log(conn, None, "decision_logged", made_by, None, did, learning_ids=ids)
+            warnings = self._use(conn, did, rows, made_by)
+        if not ids:
+            warnings.append("no learnings linked; if nothing checked exists yet, ask for research")
+        return {"decision": self.get_decision(did), "warnings": warnings}
 
     def update_decision(
         self,
@@ -1276,9 +1492,9 @@ class Store:
         by: str,
         outcome: str | None = None,
         note: str | None = None,
-        add_finding_ids: list[int] | None = None,
+        add_learning_ids: list[int] | None = None,
     ) -> dict[str, Any]:
-        """Add what happened (outcome), a note, or more findings that were used."""
+        """Add what happened (outcome), a note, or more learnings it relied on."""
         with self._conn() as conn:
             by = self._person(conn, by, "by")
             row = self._decision_row(conn, decision_id)
@@ -1286,56 +1502,52 @@ class Store:
             for key, value in (("outcome", outcome), ("note", note)):
                 if value is not None and _clean(value) != row[key]:
                     changes[key] = _clean(value)
+            if "outcome" in changes:
+                changes["outcome_at"] = _now()
             if changes:
-                conn.execute(
-                    f"UPDATE decisions SET {', '.join(f'{k} = ?' for k in changes)} WHERE id = ?",
-                    (*changes.values(), decision_id),
-                )
+                conn.execute(f"UPDATE decisions SET {', '.join(f'{k} = ?' for k in changes)} WHERE id = ?",
+                             (*changes.values(), decision_id))
                 self._log(conn, None, "decision_updated", by, None, decision_id,
-                          changed=sorted(changes), previous={k: row[k] for k in changes})
-            rows = [self._row(conn, int(fid)) for fid in (add_finding_ids or [])]
-            warnings = self._use(conn, decision_id, rows, by)
+                          changed=sorted(k for k in changes if k != "outcome_at"),
+                          previous={k: row[k] for k in changes if k != "outcome_at"})
+            rows = [self._row(conn, int(x)) for x in (add_learning_ids or [])]
+            warnings = self._use(conn, decision_id, rows, by) if rows else []
         return {"decision": self.get_decision(decision_id), "warnings": warnings}
 
-    @staticmethod
-    def _decision_row(conn, decision_id: int) -> sqlite3.Row:
-        row = conn.execute("SELECT * FROM decisions WHERE id = ?", (decision_id,)).fetchone()
-        if row is None:
-            raise CoreError(f"decision {decision_id} does not exist")
-        return row
+    def _outcome_due(self, row: sqlite3.Row) -> bool:
+        if row["outcome"]:
+            return False
+        due = datetime.fromisoformat(row["at"]) + timedelta(days=self.config["outcome_after_days"])
+        return datetime.now(timezone.utc) >= due
 
     def _decision_full(self, conn, row: sqlite3.Row, with_credits: bool = True) -> dict[str, Any]:
         decision = dict(row)
         used = []
-        for u in conn.execute(
-            "SELECT * FROM decision_uses WHERE decision_id = ? ORDER BY finding_id", (row["id"],)
-        ):
-            f = self._full(conn, self._row(conn, u["finding_id"]))
-            used.append({
-                **{k: f[k] for k in ("id", "statement", "tier", "status", "owner")},
-                "status_at_use": u["status_at_use"],
-                "trust": f["trust"]["summary"],
-            })
-        decision["findings"] = used
+        for u in conn.execute("SELECT * FROM decision_uses WHERE decision_id = ? ORDER BY learning_id", (row["id"],)):
+            lrow = self._row(conn, u["learning_id"])
+            trust = self._trust(conn, lrow["id"])
+            used.append({**self._brief(conn, lrow), "trust_at_use": u["trust_at_use"],
+                         "trust_at_use_label": TRUST_LABEL.get(u["trust_at_use"], u["trust_at_use"]),
+                         "trust": trust["summary"], "state": trust["state"]})
+        decision["learnings"] = used
         # A decision is at risk when something it relied on is now contested.
-        decision["at_risk"] = [f["id"] for f in used if f["status"] == "contested"]
+        decision["at_risk"] = [x["id"] for x in used if x["state"] == "contested"]
+        decision["outcome_due"] = self._outcome_due(row)
         decision["requests"] = [
-            self._study_summary(r)
+            {k: r[k] for k in ("id", "question", "status", "owner", "requested_by")}
             for r in conn.execute("SELECT * FROM studies WHERE from_decision_id = ? ORDER BY id", (row["id"],))
         ]
         if with_credits:
-            decision["credits"] = self._credits(conn, [f["id"] for f in used])
+            decision["credits"] = self._credits(conn, [x["id"] for x in used])
         return decision
 
-    CREDIT_FOR = {"approve": "validated", "changes_requested": "suggested changes", "disagree": "challenged"}
+    def _credits(self, conn, learning_ids: list[int]) -> list[dict[str, Any]]:
+        """Everyone in the chain behind these learnings, and what they did.
 
-    def _credits(self, conn, finding_ids: list[int]) -> list[dict[str, Any]]:
-        """Everyone in the chain behind these findings, and what they did.
-
-        Walks each finding's evidence, revisions, and promotions back to the
-        start. Reviewers who suggested changes or challenged a finding are
-        credited too: catching a problem is part of getting it right. Listed by
-        name, not ranked: this shows the collaboration behind a decision.
+        Walks each learning's evidence, revisions, and promotions back to the
+        start. Reviewers who asked for changes or disagreed are credited too:
+        catching a problem is part of getting it right. Listed by name, never
+        ranked: this shows the collaboration behind a decision.
         """
         seen: set[int] = set()
         credit: dict[str, list[dict[str, Any]]] = {}
@@ -1346,31 +1558,32 @@ class Store:
             if item not in items:
                 items.append(item)
 
-        stack = list(finding_ids)
+        stack = list(learning_ids)
         while stack:
-            fid = stack.pop()
-            if fid in seen:
+            lid = stack.pop()
+            if lid in seen:
                 continue
-            seen.add(fid)
-            row = self._row(conn, fid)
-            add(row["owner"], "proposed", finding_id=fid)
-            for v in self._current_reviews(conn, fid):
-                add(v["validated_by"], self.CREDIT_FOR[v["outcome"]], finding_id=fid)
+            seen.add(lid)
+            row = self._row(conn, lid)
+            add(row["owner"], "added", learning_id=lid)
+            for r in self._current_reviews(conn, lid):
+                add(r["by"], CREDIT_FOR[r["verdict"]], learning_id=lid)
             if row["study_id"]:
                 study = self._study_row(conn, row["study_id"])
                 if study["owner"]:
-                    add(study["owner"], "ran study", study_id=study["id"])
-            stack.extend(json.loads(row["evidence_links"]))
+                    add(study["owner"], "ran the study", study_id=study["id"])
+            stack.extend(json.loads(row["evidence"]))
             stack.extend(x for x in (row["promoted_from"], row["revises"]) if x)
         out = []
         for name in sorted(credit, key=str.lower):
-            items = sorted(credit[name], key=lambda c: (c.get("study_id") is None, c.get("finding_id") or 0))
-            out.append({**self._person_dict(name, self._role_of(conn, name)), "contributions": items})
+            items = sorted(credit[name], key=lambda c: (c.get("study_id") is None, c.get("learning_id") or 0))
+            out.append({**self._person_dict(self._who(conn, name)), "contributions": items})
         return out
 
     def get_decision(self, decision_id: int) -> dict[str, Any]:
-        """A decision, the findings it used (with their trust now and when used),
-        what is at risk, research asked for from it, and everyone behind it."""
+        """A decision, the learnings it relied on (trust now and when used),
+        what is at risk, whether its outcome is due, research it raised, and
+        everyone behind it."""
         with self._conn() as conn:
             return self._decision_full(conn, self._decision_row(conn, decision_id))
 
@@ -1380,174 +1593,211 @@ class Store:
             sql += " WHERE made_by = ? COLLATE NOCASE"
             args.append(made_by.strip())
         with self._conn() as conn:
-            rows = conn.execute(sql + " ORDER BY id DESC", args).fetchall()
-            return [self._decision_full(conn, r, with_credits=False) for r in rows]
+            return [self._decision_full(conn, r, with_credits=False)
+                    for r in conn.execute(sql + " ORDER BY id DESC", args).fetchall()]
 
-    def person(self, name: str) -> dict[str, Any]:
-        """A person's role, the decisions they made, and the decisions their work
-        contributed to (through any finding in the chain behind them)."""
-        with self._conn() as conn:
-            row = conn.execute("SELECT * FROM people WHERE name = ?", ((name or "").strip(),)).fetchone()
-            if row is None:
-                raise CoreError(f"{name} has not taken part yet")
-            contributed = []
-            for d in conn.execute("SELECT * FROM decisions ORDER BY id DESC").fetchall():
-                ids = [u["finding_id"] for u in conn.execute(
-                    "SELECT finding_id FROM decision_uses WHERE decision_id = ?", (d["id"],))]
-                mine = [c for c in self._credits(conn, ids) if c["name"] == row["name"]]
-                if mine:
-                    contributed.append({"id": d["id"], "title": d["title"], "made_by": d["made_by"],
-                                        "at": d["at"], "contributions": mine[0]["contributions"]})
-            made = [dict(d) for d in conn.execute(
-                "SELECT id, title, at, outcome FROM decisions WHERE made_by = ? ORDER BY id DESC", (row["name"],))]
-        return {**self._person_dict(row["name"], row["role"]), "decisions_made": made,
-                "contributed_to": contributed}
+    # -- what is waiting, and what changed ---------------------------------
 
-    def check_conflict(
-        self, statement: str | None = None, finding_id: int | None = None
-    ) -> dict[str, Any]:
-        """Find validated (or already contested) findings on a similar topic that
-        may contradict this one. Contested findings are included so a third
-        contradicting finding still surfaces.
+    def my_queue(self, who: str) -> dict[str, Any]:
+        """What is waiting on a person.
 
-        Pass either a statement (to check before proposing) or the id of an
-        existing finding. Returns candidates for a human to review; nothing is
-        changed. Use confirm_conflict to flag a real conflict.
+        waiting_on_me: learnings someone asked this person, their role, or any
+        SME (if they are one) to review.
+        drafts: their AI drafts to confirm.
+        feedback_on_mine: their shared learnings where a current review asks
+        for changes or disagrees.
+        my_requests: review requests they made that are still open.
+        decisions_at_risk and outcomes_due: their decisions that need a look.
         """
-        if finding_id is not None:
-            base = self.get(finding_id)
-            statement = base["statement"]
-        statement = self._require_name(statement, "statement")
+        with self._conn() as conn:
+            who = self._person(conn, who, "who")
+            me = self._who(conn, who)
+            waiting = []
+            for req in conn.execute(
+                "SELECT r.* FROM review_requests r JOIN learnings l ON l.id = r.learning_id "
+                "WHERE r.status = 'open' AND l.owner != ? AND (r.person = ? OR r.role = ? OR (r.role = 'sme' AND ?)) "
+                "ORDER BY r.id",
+                (who, who, me["role"], me["sme"]),
+            ):
+                mine = [r for r in self._current_reviews(conn, req["learning_id"]) if r["by"] == who]
+                if mine and mine[0]["verdict"] == "approve":
+                    continue  # already approved before the request came in
+                waiting.append({"request": dict(req), "learning": self._full(conn, self._row(conn, req["learning_id"]))})
+            drafts = [self._full(conn, r) for r in conn.execute(
+                "SELECT * FROM learnings WHERE owner = ? AND stage = 'draft' ORDER BY id", (who,))]
+            feedback = []
+            for row in conn.execute("SELECT * FROM learnings WHERE owner = ? AND stage = 'shared' ORDER BY id DESC", (who,)):
+                concerns = [dict(r) for r in self._current_reviews(conn, row["id"]) if r["verdict"] != "approve"]
+                if concerns:
+                    feedback.append({"learning": self._full(conn, row), "reviews": concerns})
+            asked = [{"request": dict(r), "learning": self._brief(conn, self._row(conn, r["learning_id"]))}
+                     for r in conn.execute("SELECT * FROM review_requests WHERE asked_by = ? AND status = 'open' ORDER BY id",
+                                           (who,))]
+            decisions = [self._decision_full(conn, r, with_credits=False) for r in conn.execute(
+                "SELECT * FROM decisions WHERE made_by = ? ORDER BY id DESC", (who,))]
+        return {"who": who, "role": me["role"], "sme": bool(me["sme"]), "waiting_on_me": waiting, "drafts": drafts,
+                "feedback_on_mine": feedback, "my_requests": asked,
+                "decisions_at_risk": [d for d in decisions if d["at_risk"]],
+                "outcomes_due": [d for d in decisions if d["outcome_due"]]}
+
+    @staticmethod
+    def _following(conn, who: str) -> dict[int, int]:
+        """Learnings a person owns, reviewed, used in a decision, or follows,
+        each with the event that started it, so only later changes are news."""
+        return {r[0]: r[1] for r in conn.execute(
+            "SELECT learning_id, MIN(id) FROM events WHERE learning_id IS NOT NULL AND actor = ? "
+            "AND kind IN ('added', 'reviewed', 'used_in_decision', 'followed') GROUP BY learning_id", (who,))}
+
+    def digest(self, who: str, since: str | None = None, limit: int = 30) -> dict[str, Any]:
+        """What changed for a person: changes to what they own, reviewed, used
+        in a decision, or follow; reviews asked of them; and moments. Ranked by
+        importance (1 do now, 2 news, 3 digest only), then newest first.
+
+        Joins, "working on" notes, follows, and other people's plain activity
+        are left out. The full record is in activity.
+        """
+        with self._conn() as conn:
+            who = self._person(conn, who, "who")
+            me = self._who(conn, who)
+            following = self._following(conn, who)
+            owned = {r[0] for r in conn.execute("SELECT id FROM learnings WHERE owner = ?", (who,))}
+            my_decisions = {r[0] for r in conn.execute("SELECT id FROM decisions WHERE made_by = ?", (who,))}
+            my_requests = {r[0] for r in conn.execute("SELECT id FROM studies WHERE requested_by = ?", (who,))}
+            seen = {r[0] for r in conn.execute("SELECT key FROM seen WHERE name = ?", (who,))}
+            rows = conn.execute(
+                "SELECT e.*, l.statement, l.stage, s.question AS study_title, d.title AS decision_title FROM events e "
+                "LEFT JOIN learnings l ON l.id = e.learning_id LEFT JOIN studies s ON s.id = e.study_id "
+                "LEFT JOIN decisions d ON d.id = e.decision_id WHERE e.actor != ? AND (? IS NULL OR e.at >= ?) "
+                "ORDER BY e.id DESC LIMIT 2000",
+                (who, since, since),
+            ).fetchall()
+            # A moment already says it; skip the plain event behind it.
+            said = {(r["learning_id"], r["actor"]) for r in rows if r["kind"] == "moment"
+                    and json.loads(r["detail"])["to"].lower() == who.lower()}
+            items = []
+            for r in rows:
+                d = json.loads(r["detail"])
+                lid, kind = r["learning_id"], r["kind"]
+                if kind in ("promoted", "reviewed") and (lid, r["actor"]) in said \
+                        and d.get("verdict", "approve") == "approve":
+                    continue
+                level = None
+                if kind == "moment":
+                    if d["to"] == "*" or d["to"].lower() == who.lower():
+                        level = NEWS
+                elif kind == "review_asked":
+                    if (d.get("person") or "").lower() == who.lower() or d.get("role") == me["role"] \
+                            or (d.get("role") == "sme" and me["sme"]):
+                        level = DO_NOW
+                elif kind == "decision_at_risk":
+                    if r["decision_id"] in my_decisions:
+                        level = DO_NOW
+                elif kind == "study_updated":
+                    if r["study_id"] in my_requests:
+                        level = DIGEST
+                elif lid in following and r["id"] > following[lid]:
+                    if kind == "reviewed" and lid in owned:
+                        level = DO_NOW if d["verdict"] != "approve" and r["stage"] == "shared" else NEWS
+                    elif kind == "trust_changed" and not (lid in owned and d.get("cause") == "review"):
+                        level = NEWS if d["to"] in CHECKED + ("contested",) else DIGEST
+                    elif kind in ("revised", "promoted"):
+                        level = NEWS
+                    elif kind in ("reviewed", "conflict_flagged", "confirmed"):
+                        level = DIGEST
+                if level is None:
+                    continue
+                item = self._event(r, who)
+                item["importance"] = level
+                item["seen"] = f"e{r['id']}" in seen
+                items.append(item)
+        items.sort(key=lambda x: (x["importance"], -x["id"]))
+        return {"who": who, "items": items[:limit]}
+
+    def mark_seen(self, who: str, keys: list[str]) -> dict[str, Any]:
+        """Record that a person has seen digest items or moments (keys like
+        "e12"), or set a next step aside with "Not now" (its key)."""
+        with self._conn() as conn:
+            who = self._person(conn, who, "who")
+            for key in keys or []:
+                conn.execute("INSERT OR IGNORE INTO seen (name, key, at) VALUES (?, ?, ?)", (who, str(key), _now()))
+        return {"who": who, "seen": list(keys or []), "warnings": []}
+
+    def next_step(self, who: str) -> dict[str, Any]:
+        """The one thing most worth doing now, and the first unseen moment.
+
+        In order: a decision of yours relies on something now contested; a
+        review asked of you; your AI drafts to confirm; changes asked on yours;
+        a research request waiting (researchers and SMEs); something you use or
+        follow changed; your study's next detail; a decision whose outcome is
+        due; and when nothing waits, a suggestion for your role. Steps set
+        aside with "Not now" are skipped until something new comes up.
+        """
+        queue = self.my_queue(who)
+        who = queue["who"]
+        digest = self.digest(who, limit=200)["items"]
+        with self._conn() as conn:
+            skip = {r[0] for r in conn.execute("SELECT key FROM seen WHERE name = ?", (who,))}
+            studies = [self._study_full(conn, r) for r in conn.execute(
+                "SELECT * FROM studies WHERE owner = ? AND status IN ('planned', 'running', 'finished') ORDER BY id DESC",
+                (who,))]
+            requests = conn.execute("SELECT * FROM studies WHERE status = 'requested' ORDER BY id").fetchall() \
+                if queue["role"] == "researcher" or queue["sme"] else []
+
+        def step(key, kind, title, text, button, act, **ref):
+            return {"key": key, "kind": kind, "title": title, "text": text, "button": button, "act": act, **ref}
+
         candidates = []
-        existing = self.list_findings(status="validated", limit=10_000)
-        existing += self.list_findings(status="contested", limit=10_000)
-        for f in existing:
-            if f["id"] == finding_id:
-                continue
-            score, shared = similarity(statement, f["statement"])
-            if score < SIMILARITY_THRESHOLD or len(shared) < MIN_SHARED_WORDS:
-                continue
-            signals = contradiction_signals(statement, f["statement"])
-            candidates.append(
-                {
-                    "finding": f,
-                    "similarity": round(score, 2),
-                    "shared_words": sorted(shared),
-                    "signals": signals,
-                    "likely_conflict": bool(signals),
-                }
-            )
-        candidates.sort(key=lambda c: (not c["likely_conflict"], -c["similarity"]))
-        return {"statement": statement, "finding_id": finding_id, "candidates": candidates}
-
-    def confirm_conflict(
-        self, finding_id: int, conflicting_id: int, confirmed_by: str, note: str | None = None
-    ) -> dict[str, Any]:
-        """A person confirms two findings contradict. Both become 'contested'.
-
-        Their previous statuses and validations are kept in the record.
-        """
-        if finding_id == conflicting_id:
-            raise CoreError("a finding cannot conflict with itself")
-        with self._conn() as conn:
-            confirmed_by = self._person(conn, confirmed_by, "confirmed_by")
-            rows = [self._row(conn, finding_id), self._row(conn, conflicting_id)]
-            exists = conn.execute(
-                "SELECT 1 FROM conflicts WHERE (finding_id = ? AND conflicting_id = ?) "
-                "OR (finding_id = ? AND conflicting_id = ?)",
-                (finding_id, conflicting_id, conflicting_id, finding_id),
-            ).fetchone()
-            if exists:
-                raise CoreError(f"findings {finding_id} and {conflicting_id} are already flagged")
-            conn.execute(
-                "INSERT INTO conflicts (finding_id, conflicting_id, flagged_by, flagged_at, note) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (finding_id, conflicting_id, confirmed_by, _now(), (note or "").strip() or None),
-            )
-            for row, other in ((rows[0], conflicting_id), (rows[1], finding_id)):
-                self._log(
-                    conn, row["id"], "contested", confirmed_by,
-                    conflicts_with=other, previous_status=row["status"], note=note,
-                )
-                if row["status"] != "contested":
-                    conn.execute("UPDATE findings SET status = 'contested' WHERE id = ?", (row["id"],))
-                # Tell anyone who made a decision with it.
-                for u in conn.execute(
-                    "SELECT decision_id FROM decision_uses WHERE finding_id = ?", (row["id"],)
-                ).fetchall():
-                    self._log(conn, row["id"], "decision_at_risk", confirmed_by, None, u["decision_id"])
-        return {"findings": [self.get(finding_id), self.get(conflicting_id)]}
-
-    def link(
-        self, from_id: int, to_id: int, type: str, by: str, note: str | None = None
-    ) -> dict[str, Any]:
-        """Say how one finding relates to another.
-
-        supports: from_id is evidence for to_id (added to to_id's evidence links).
-        extends: from_id builds on to_id.
-        duplicates: the two say the same thing.
-        contradicts: a confirmed conflict; both become contested (see confirm_conflict).
-        """
-        if type not in LINK_TYPES:
-            raise CoreError(f"type must be one of {LINK_TYPES}")
-        from_id, to_id = int(from_id), int(to_id)
-        if from_id == to_id:
-            raise CoreError("a finding cannot be linked to itself")
-        if type == "contradicts":
-            return self.confirm_conflict(from_id, to_id, by, note)
-        with self._conn() as conn:
-            by = self._person(conn, by, "by")
-            self._row(conn, from_id)
-            target = self._row(conn, to_id)
-            if type == "supports":
-                evidence = json.loads(target["evidence_links"])
-                if from_id in evidence:
-                    raise CoreError(f"finding {from_id} already supports {to_id}")
-                conn.execute(
-                    "UPDATE findings SET evidence_links = ? WHERE id = ?",
-                    (json.dumps(sorted(evidence + [from_id])), to_id),
-                )
-            else:
-                exists = conn.execute(
-                    "SELECT 1 FROM links WHERE type = ? AND ((from_id = ? AND to_id = ?) "
-                    "OR (type = 'duplicates' AND from_id = ? AND to_id = ?))",
-                    (type, from_id, to_id, to_id, from_id),
-                ).fetchone()
-                if exists:
-                    raise CoreError(f"findings {from_id} and {to_id} are already linked as {type}")
-                conn.execute(
-                    "INSERT INTO links (from_id, to_id, type, by, at, note) VALUES (?, ?, ?, ?, ?, ?)",
-                    (from_id, to_id, type, by, _now(), _clean(note)),
-                )
-            for fid in (from_id, to_id):
-                self._log(conn, fid, "linked", by, type=type, source=from_id, target=to_id, note=_clean(note))
-        return {"findings": [self.get(from_id), self.get(to_id)]}
-
-    def checkout(self, finding_id: int, who: str) -> dict[str, Any]:
-        """Mark a finding as being worked on. Advisory: never refuses."""
-        with self._conn() as conn:
-            row = self._row(conn, finding_id)
-            who = self._person(conn, who, "who")
-            warnings = self._checkout_warning(row, who)
-            conn.execute(
-                "UPDATE findings SET checked_out_by = ?, checked_out_at = ? WHERE id = ?",
-                (who, _now(), finding_id),
-            )
-            self._log(conn, finding_id, "checked_out", who, previous_holder=row["checked_out_by"])
-        return {"finding": self.get(finding_id), "warnings": warnings}
-
-    def release(self, finding_id: int, who: str) -> dict[str, Any]:
-        with self._conn() as conn:
-            row = self._row(conn, finding_id)
-            who = self._person(conn, who, "who")
-            warnings = []
-            if not row["checked_out_by"]:
-                warnings.append(f"finding {finding_id} was not checked out")
-            else:
-                warnings = self._checkout_warning(row, who)
-            conn.execute(
-                "UPDATE findings SET checked_out_by = NULL, checked_out_at = NULL WHERE id = ?",
-                (finding_id,),
-            )
-            self._log(conn, finding_id, "released", who, previous_holder=row["checked_out_by"])
-        return {"finding": self.get(finding_id), "warnings": warnings}
+        for d in queue["decisions_at_risk"]:
+            for lid in d["at_risk"]:
+                x = next(x for x in d["learnings"] if x["id"] == lid)
+                candidates.append(step(f"risk:{d['id']}:{lid}", "at_risk", "A decision of yours relies on something now contested",
+                                       f"\"{d['title']}\" used #{lid}: \"{_short(x['statement'])}\"", "Take a look",
+                                       "open-learning", learning_id=lid, decision_id=d["id"]))
+        for w in queue["waiting_on_me"]:
+            r, lrn = w["request"], w["learning"]
+            candidates.append(step(f"review:{r['id']}", "review", f"{r['asked_by']} asked you to review a learning",
+                                   f"\"{_short(lrn['statement'])}\"" + (f" Note: \"{r['note']}\"" if r["note"] else ""),
+                                   "Review", "review", learning_id=lrn["id"]))
+        for lrn in queue["drafts"]:
+            candidates.append(step(f"confirm:{lrn['id']}", "confirm", "Confirm your AI draft",
+                                   f"\"{_short(lrn['statement'])}\" Check it before anyone is asked to review it.",
+                                   "Confirm", "confirm", learning_id=lrn["id"]))
+        for fb in queue["feedback_on_mine"]:
+            latest = max(r["id"] for r in fb["reviews"])
+            r = next(r for r in fb["reviews"] if r["id"] == latest)
+            candidates.append(step(f"revise:{fb['learning']['id']}:{latest}", "revise",
+                                   f"{r['by']} {VERDICT_SAID[r['verdict']]} your learning",
+                                   f"\"{_short(fb['learning']['statement'])}\"" + (f" They said: \"{r['note']}\"" if r["note"] else ""),
+                                   "Revise", "revise", learning_id=fb["learning"]["id"]))
+        for s in requests:
+            candidates.append(step(f"request:{s['id']}", "request", "A research request is waiting",
+                                   f"\"{_short(s['question'])}\" asked by {s['requested_by']}", "Take a look",
+                                   "open-study", study_id=s["id"]))
+        for e in digest:
+            if e["importance"] <= NEWS and not e["seen"] and e["kind"] not in ("moment", "review_asked", "decision_at_risk"):
+                candidates.append(step(f"e{e['id']}", "news", "Something you follow changed", e["text"],
+                                       "See what changed", "open-learning", learning_id=e["learning_id"]))
+        for s in studies:
+            if s["needs"]:
+                label = ", ".join(n["label"].lower() for n in s["needs"])
+                candidates.append(step(f"study:{s['id']}:{s['status']}", "study", "Your study needs its next detail",
+                                       f"\"{_short(s['question'])}\" needs: {label}", "Add it", "study-details",
+                                       study_id=s["id"]))
+        for d in queue["outcomes_due"]:
+            candidates.append(step(f"outcome:{d['id']}", "outcome", "What happened?",
+                                   f"You decided \"{d['title']}\". Now that some time has passed, how did it go?",
+                                   "Add what happened", "outcome", decision_id=d["id"]))
+        chosen = next((c for c in candidates if c["key"] not in skip), None)
+        if chosen is None:
+            chosen = {
+                "stakeholder": step("suggest", "suggest", "Nothing is waiting on you",
+                                    "Before your next decision, check what the team already knows.", "Search learnings",
+                                    "search"),
+                "researcher": step("suggest", "suggest", "Nothing is waiting on you",
+                                   "Start a study tied to a decision, or look for learnings ready to promote.",
+                                   "Start a study", "new-study"),
+            }.get(queue["role"], step("suggest", "suggest", "Nothing is waiting on you",
+                                      "Write down something you learned. One sentence is enough.", "Add a learning", "add"))
+        moment = next((e for e in digest if e["kind"] == "moment" and not e["seen"]), None)
+        return {"who": who, "step": chosen, "later": max(0, len([c for c in candidates if c["key"] not in skip]) - 1),
+                "moment": {"key": f"e{moment['id']}", "text": moment["text"], "at": moment["at"]} if moment else None}

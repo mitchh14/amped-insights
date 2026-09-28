@@ -1,4 +1,4 @@
-"""Load the sample findings into a new database.
+"""Load the sample learnings into a new database.
 
 Usage: python scripts/seed.py [db_path]   (defaults to ANCHOR_DB or anchor.db)
 """

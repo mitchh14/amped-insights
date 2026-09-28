@@ -15,19 +15,19 @@ from .core import CoreError, Store
 
 # POST /api/<action> maps straight onto a core function. No other write path.
 ACTIONS = (
-    "whoami", "set_role",
-    "start_study", "update_study", "request_research",
-    "propose", "promote", "revise", "validate", "request_validation", "withdraw_request",
-    "link", "check_conflict", "confirm_conflict", "checkout", "release",
+    "whoami", "set_person",
+    "start_study", "update_study", "ask_for_research",
+    "add", "confirm", "promote", "revise", "review", "ask_for_review", "withdraw_request",
+    "link", "check_conflict", "working_on", "follow", "mark_seen",
     "log_decision", "update_decision",
 )
 
 # GET /api/<route> maps onto a core read. {x} is a path value passed first;
 # query string values are passed by name when the function takes them.
 READS = (
-    ("findings", "query"),
-    ("findings/{id}", "get"),
-    ("findings/{id}/history", "history"),
+    ("learnings", "query"),
+    ("learnings/{id}", "get"),
+    ("learnings/{id}/history", "history"),
     ("studies", "list_studies"),
     ("studies/{id}", "get_study"),
     ("decisions", "list_decisions"),
@@ -35,6 +35,8 @@ READS = (
     ("people", "people"),
     ("people/{name}", "person"),
     ("queue", "my_queue"),
+    ("next", "next_step"),
+    ("digest", "digest"),
     ("activity", "activity"),
     ("config", "team_config"),
 )
