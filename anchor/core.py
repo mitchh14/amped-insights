@@ -1327,12 +1327,15 @@ class Store:
             decision["credits"] = self._credits(conn, [f["id"] for f in used])
         return decision
 
+    CREDIT_FOR = {"approve": "validated", "changes_requested": "suggested changes", "disagree": "challenged"}
+
     def _credits(self, conn, finding_ids: list[int]) -> list[dict[str, Any]]:
         """Everyone in the chain behind these findings, and what they did.
 
-        Walks each finding's evidence and promotion history back to the start.
-        Listed by name, not ranked: this is about seeing the collaboration
-        behind a decision, not scoring it.
+        Walks each finding's evidence, revisions, and promotions back to the
+        start. Reviewers who suggested changes or challenged a finding are
+        credited too: catching a problem is part of getting it right. Listed by
+        name, not ranked: this shows the collaboration behind a decision.
         """
         seen: set[int] = set()
         credit: dict[str, list[dict[str, Any]]] = {}
@@ -1351,19 +1354,18 @@ class Store:
             seen.add(fid)
             row = self._row(conn, fid)
             add(row["owner"], "proposed", finding_id=fid)
-            for v in self._approvals(conn, fid):
-                add(v["validated_by"], "validated", finding_id=fid)
+            for v in self._current_reviews(conn, fid):
+                add(v["validated_by"], self.CREDIT_FOR[v["outcome"]], finding_id=fid)
             if row["study_id"]:
                 study = self._study_row(conn, row["study_id"])
                 if study["owner"]:
                     add(study["owner"], "ran study", study_id=study["id"])
             stack.extend(json.loads(row["evidence_links"]))
-            if row["promoted_from"]:
-                stack.append(row["promoted_from"])
+            stack.extend(x for x in (row["promoted_from"], row["revises"]) if x)
         out = []
         for name in sorted(credit, key=str.lower):
-            role = self._role_of(conn, name)
-            out.append({**self._person_dict(name, role), "contributions": credit[name]})
+            items = sorted(credit[name], key=lambda c: (c.get("study_id") is None, c.get("finding_id") or 0))
+            out.append({**self._person_dict(name, self._role_of(conn, name)), "contributions": items})
         return out
 
     def get_decision(self, decision_id: int) -> dict[str, Any]:

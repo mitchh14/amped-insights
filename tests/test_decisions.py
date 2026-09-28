@@ -78,3 +78,14 @@ def test_decisions_over_the_api(store):
     assert handle(store, "GET", "/api/decisions")[1][0]["title"] == "Go"
     assert handle(store, "GET", "/api/people/Morgan")[1]["decisions_made"][0]["title"] == "Go"
     assert handle(store, "GET", "/api/people/Nobody")[0] == 400
+
+
+def test_credit_follows_revisions_and_counts_feedback(store):
+    fid = store.propose("Long forms drive abandonment", "hypothesis", "Jo")["finding"]["id"]
+    store.validate(fid, "Dana", "Scope it to mobile web", outcome="changes_requested")
+    new = store.revise(fid, "Jo", "Long forms drive abandonment on mobile web")["finding"]["id"]
+    store.validate(new, "Dana")
+    credits = {c["name"]: c["contributions"] for c in store.log_decision("Go", "Morgan", [new])["decision"]["credits"]}
+    assert credits["Dana"] == [{"did": "suggested changes", "finding_id": fid},
+                               {"did": "validated", "finding_id": new}]
+    assert credits["Jo"] == [{"did": "proposed", "finding_id": fid}, {"did": "proposed", "finding_id": new}]
