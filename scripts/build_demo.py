@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # Only the stdlib parts of the package. The MCP server needs the mcp SDK and has no use in a browser.
-PY_FILES = ["__init__.py", "core.py", "api.py", "seed.py"]
+PY_FILES = ["__init__.py", "config.py", "core.py", "api.py", "seed.py"]
 
 
 def build(out: Path, pyodide_url: str | None) -> None:

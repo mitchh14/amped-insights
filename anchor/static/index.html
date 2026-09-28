@@ -4,241 +4,826 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ANCHOR</title>
+<link rel="icon" href="data:,">
 <style>
-  body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1200px; padding: 16px; color: #222; background: #fff; }
-  h1 { margin: 0 0 4px; font-size: 22px; }
-  h2 { font-size: 17px; margin: 0 0 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
-  .layout { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; }
-  @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
-  section { margin-bottom: 24px; }
-  input, select, textarea, button { font: inherit; padding: 4px 6px; }
-  textarea { width: 100%; box-sizing: border-box; }
-  button { cursor: pointer; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
-  .card { border: 1px solid #bbb; padding: 10px; margin: 8px 0; }
-  .card.tier-data_point { border-left: 6px solid #6b7280; }
-  .card.tier-hypothesis { border-left: 6px dashed #d97706; }
-  .card.tier-insight    { border-left: 6px double #2563eb; }
-  .card.status-contested { background: #fff4f4; }
-  .tag { display: inline-block; font-size: 12px; padding: 1px 6px; border: 1px solid #999; margin-right: 4px; }
-  .tier-tag-data_point { background: #eee; }
-  .tier-tag-hypothesis { background: #fef3c7; }
-  .tier-tag-insight { background: #dbeafe; }
-  .st-proposed { background: #fff; }
-  .st-validated { background: #dcfce7; }
-  .st-contested { background: #fecaca; }
-  .muted { color: #666; font-size: 13px; }
-  .statement { font-size: 15px; margin: 6px 0; }
-  ul { margin: 4px 0; padding-left: 20px; }
-  .versions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .versions > div { border: 1px solid #e99; padding: 6px; background: #fff; }
-  .warn { color: #92400e; }
-  .err { color: #b91c1c; }
-  .feed li { margin-bottom: 4px; }
-  a { color: #1d4ed8; }
-  .card, .statement { overflow-wrap: anywhere; }
-  /* Messages float at the bottom so they are seen wherever you tapped. Tap to dismiss. */
-  #msg:not(:empty) { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 600px; margin: 0 auto;
-    background: #fff; border: 1px solid currentColor; padding: 8px 12px; box-shadow: 0 2px 8px rgba(0,0,0,.15); z-index: 10; cursor: pointer; }
-  @media (max-width: 600px) {
-    button, select, input { min-height: 40px; }
-    .row > input, .row > select { flex: 1 1 140px; min-width: 0; }
+  :root {
+    --bg: #f7f7f5; --surface: #ffffff; --surface-2: #f1f1ee; --line: #e3e3de; --line-strong: #cfcfc8;
+    --text: #1d1d1b; --muted: #6b6b66; --accent: #2458c6; --accent-soft: #e8eefb;
+    --ok: #1f7a4d; --ok-soft: #e3f3ea; --bad: #b42318; --bad-soft: #fdeceb; --warn: #9a5b00; --warn-soft: #fdf3e1;
+    --dp: #6b6b66; --hyp: #c27a00; --ins: #2458c6;
+    --radius: 10px; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --surface: #1d1d1b; --surface-2: #252523; --line: #2f2f2c; --line-strong: #41413d;
+      --text: #ecece8; --muted: #a0a09a; --accent: #8fb0f5; --accent-soft: #1f2a44;
+      --ok: #6fcf9d; --ok-soft: #173326; --bad: #f28b82; --bad-soft: #3a1c1a; --warn: #f0b95a; --warn-soft: #3a2c12;
+      --dp: #a0a09a; --hyp: #f0b95a; --ins: #8fb0f5; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  h1, h2, h3 { line-height: 1.25; margin: 0; }
+  h1 { font-size: 22px; font-weight: 650; }
+  h2 { font-size: 16px; font-weight: 650; margin: 0 0 10px; }
+  h3 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
+  p { margin: 0 0 8px; }
+  input, select, textarea, button { font: inherit; color: inherit; }
+  input, select, textarea { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 10px; width: 100%; }
+  textarea { resize: vertical; min-height: 64px; }
+  input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { cursor: pointer; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 8px; padding: 6px 12px; white-space: nowrap; }
+  button:hover { background: var(--surface-2); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (prefers-color-scheme: dark) { button.primary { color: #10131a; } }
+  button.link { border: 0; background: none; color: var(--accent); padding: 0; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+  label.inline { display: inline-flex; gap: 6px; align-items: center; color: var(--text); font-size: 14px; margin: 4px 12px 4px 0; }
+  label.inline input { width: auto; }
+
+  /* Shell */
+  .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 10px 20px;
+    background: var(--surface); border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 750; letter-spacing: .08em; font-size: 15px; color: var(--text); }
+  .brand small { font-weight: 400; letter-spacing: 0; color: var(--muted); margin-left: 8px; }
+  .me { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  .shell { display: grid; grid-template-columns: 200px minmax(0, 1fr); max-width: 1200px; margin: 0 auto; }
+  nav.side { position: sticky; top: 53px; align-self: start; padding: 20px 12px; display: flex; flex-direction: column; gap: 2px; }
+  nav.side a { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; color: var(--text); }
+  nav.side a:hover { background: var(--surface-2); text-decoration: none; }
+  nav.side a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .count { font-size: 12px; background: var(--accent); color: #fff; border-radius: 99px; padding: 0 7px; font-weight: 600; }
+  main { padding: 20px 24px 80px; min-width: 0; }
+  .page-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .page-head .sub { color: var(--muted); margin-top: 2px; }
+  .page-head .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: start; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .panel > h2:first-child { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .hint { background: var(--accent-soft); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px; }
+  .hint b { display: block; margin-bottom: 2px; }
+  .ai { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .ai::before { content: "With your AI: "; font-weight: 600; }
+  .empty { color: var(--muted); font-size: 14px; padding: 6px 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .spread { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; }
+  .kv dt { color: var(--muted); font-size: 13px; }
+  .kv dd { margin: 0; }
+
+  /* Findings */
+  .item { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .item:first-of-type { border-top: 0; }
+  .item .body { min-width: 0; flex: 1; }
+  .item .stmt { overflow-wrap: anywhere; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .mark { flex: none; width: 10px; height: 10px; margin-top: 7px; border: 2px solid var(--dp); }
+  .mark.data_point { border-radius: 2px; background: var(--dp); }
+  .mark.hypothesis { border-radius: 50%; border-style: dashed; border-color: var(--hyp); }
+  .mark.insight { transform: rotate(45deg); border-color: var(--ins); background: var(--ins); }
+  .pill { display: inline-block; font-size: 12px; line-height: 18px; padding: 0 8px; border-radius: 99px; border: 1px solid var(--line-strong); color: var(--muted); white-space: nowrap; }
+  .pill.tier-data_point { color: var(--dp); }
+  .pill.tier-hypothesis { color: var(--hyp); border-color: var(--hyp); border-style: dashed; }
+  .pill.tier-insight { color: var(--ins); border-color: var(--ins); }
+  .pill.validated, .pill.approve, .pill.done { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+  .pill.contested, .pill.disagree { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+  .pill.changes_requested, .pill.requested { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+  .pill.running, .pill.planned { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  .person { color: var(--text); white-space: nowrap; }
+  .role { font-size: 11px; padding: 0 6px; border-radius: 4px; margin-left: 4px; border: 1px solid var(--line-strong); color: var(--muted); vertical-align: 1px; }
+  .role.trusted { background: var(--text); border-color: var(--text); color: var(--surface); }
+  .trust { font-size: 13px; }
+  .trust.none { color: var(--muted); }
+  .alert { border-radius: 8px; padding: 8px 12px; margin: 8px 0; font-size: 14px; }
+  .alert.bad { background: var(--bad-soft); color: var(--bad); }
+  .alert.warn { background: var(--warn-soft); color: var(--warn); }
+  .alert.ok { background: var(--ok-soft); color: var(--ok); }
+  .detail .statement { font-size: 19px; line-height: 1.4; margin: 6px 0 4px; overflow-wrap: anywhere; }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; }
+  .tools.more { gap: 6px 16px; margin-top: 10px; font-size: 14px; }
+  .meta span { white-space: nowrap; }
+  .versions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .versions > div { border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  .review { padding: 8px 0; border-top: 1px solid var(--line); }
+  .review.old { opacity: .6; }
+  .review:first-of-type { border-top: 0; }
+  .feed { list-style: none; padding: 0; margin: 0; font-size: 14px; }
+  .feed li { padding: 6px 0; border-top: 1px solid var(--line); }
+  .feed li:first-child { border-top: 0; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tabs button { border-radius: 99px; }
+  .tabs button.on { background: var(--text); color: var(--surface); border-color: var(--text); }
+  .search { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .search input { flex: 1 1 220px; width: auto; }
+  .search select { width: auto; }
+
+  /* Dialog and pickers */
+  dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(560px, calc(100vw - 24px)); background: var(--surface); color: var(--text); box-shadow: 0 10px 40px rgba(0,0,0,.2); }
+  dialog::backdrop { background: rgba(20,20,18,.45); }
+  dialog form { padding: 18px 20px; max-height: 85vh; overflow: auto; }
+  dialog .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .picker .results { border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow: auto; }
+  .picker .results:empty { display: none; }
+  .picker .results button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0; border-top: 1px solid var(--line); white-space: normal; }
+  .picker .results button:first-child { border-top: 0; }
+  .chip { display: inline-flex; gap: 6px; align-items: center; background: var(--surface-2); border-radius: 99px; padding: 2px 4px 2px 10px; margin: 6px 6px 0 0; font-size: 13px; }
+  .chip button { border: 0; background: none; padding: 0 6px; }
+  .who-list { display: grid; gap: 6px; margin-top: 8px; }
+  .who-list button { text-align: left; display: flex; justify-content: space-between; }
+  #toast:not(:empty) { position: fixed; left: 16px; right: 16px; bottom: 76px; max-width: 560px; margin: 0 auto; z-index: 20; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+
+  @media (max-width: 860px) {
+    .grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 720px) {
+    .top { padding: 10px 16px; }
+    .brand small, .acting { display: none; }
+    .shell { display: block; }
+    nav.side { position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 6; flex-direction: row; justify-content: space-around;
+      padding: 4px; gap: 0; background: var(--surface); border-top: 1px solid var(--line); overflow-x: auto; }
+    nav.side a { flex-direction: column; gap: 0; padding: 6px 8px; font-size: 12px; min-width: 56px; justify-content: center; }
+    nav.side .count { font-size: 10px; padding: 0 5px; }
+    main { padding: 16px 16px 90px; }
     .versions { grid-template-columns: 1fr; }
+    button, select, input { min-height: 40px; }
   }
 </style>
 </head>
 <body>
-<h1>ANCHOR</h1>
-<div class="muted">Amped Network for Credible Hypotheses, Observations, and Research. Prototype: every action here goes through the same core functions as the MCP server.</div>
-<div class="row">
-  <label>Acting as <input id="me" placeholder="your name"></label>
-  <span id="msg"></span>
+<header class="top">
+  <a class="brand" href="#/home">ANCHOR<small>shared, checkable research findings</small></a>
+  <div class="me" id="me"></div>
+</header>
+<div class="shell">
+  <nav class="side" id="nav"></nav>
+  <main id="main"><div class="empty">Loading...</div></main>
 </div>
-
-<div class="layout">
-<div>
-  <section>
-    <h2>Propose a finding</h2>
-    <textarea id="p-statement" rows="2" placeholder="What did you find?"></textarea>
-    <div class="row">
-      <select id="p-tier">
-        <option value="data_point">data point</option>
-        <option value="hypothesis">hypothesis</option>
-        <option value="insight">insight</option>
-      </select>
-      <input id="p-evidence" placeholder="evidence ids, e.g. 1, 3" size="18">
-      <button id="p-check">Check for conflicts</button>
-      <button id="p-submit">Propose</button>
-    </div>
-    <div id="p-result"></div>
-  </section>
-
-  <section>
-    <h2>Findings</h2>
-    <div class="row">
-      <input id="f-q" placeholder="topic or question">
-      <select id="f-tier"><option value="">any tier</option><option value="data_point">data point</option><option value="hypothesis">hypothesis</option><option value="insight">insight</option></select>
-      <select id="f-status"><option value="">any status</option><option>proposed</option><option>validated</option><option>contested</option></select>
-    </div>
-    <div id="findings"></div>
-  </section>
-</div>
-
-<div>
-  <section>
-    <h2>Validation queue</h2>
-    <div id="queue"></div>
-  </section>
-  <section>
-    <h2>Recent activity</h2>
-    <ul class="feed" id="feed"></ul>
-  </section>
-</div>
-</div>
+<dialog id="dlg"><form method="dialog" id="dlg-form"></form></dialog>
+<div id="toast" class="alert"></div>
 
 <script>
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const TIER = { data_point: "data point", hypothesis: "hypothesis", insight: "insight" };
-const when = (t) => t ? new Date(t).toLocaleString() : "";
+// ---------------------------------------------------------------------------
+// ANCHOR web app. Plain HTML and JS with no build step, so the same page runs
+// against the local server and inside the Pyodide demo. Every action calls the
+// same core functions as the MCP server.
+// ---------------------------------------------------------------------------
 
-try { $("me").value = localStorage.getItem("anchor-me") || ""; } catch (e) {}
-$("me").addEventListener("change", () => { try { localStorage.setItem("anchor-me", $("me").value); } catch (e) {} });
-const me = () => {
-  const v = $("me").value.trim();
-  if (!v) { flash("Enter your name in 'Acting as' first.", true); $("me").focus(); }
+const $ = (sel, el = document) => el.querySelector(sel);
+const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const enc = encodeURIComponent;
+
+const S = { me: null, config: null, people: {}, queue: null };
+
+const NAV = {
+  home: "Home", studies: "Studies", findings: "Findings", explore: "Explore", validate: "Validate", decisions: "Decisions",
+};
+const OUTCOME = { approve: "Approved", changes_requested: "Asked for changes", disagree: "Disagreed" };
+const STUDY_STATUS = { requested: "Requested", planned: "Planned", running: "Running", done: "Done", closed: "Closed" };
+const LINK_TYPE = { supports: "supports", extends: "extends", duplicates: "duplicates", contradicts: "contradicts" };
+
+// -- data --------------------------------------------------------------------
+
+async function call(path, body) {
+  const res = await fetch(path, body ? { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) } : {});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "request failed");
+  return data;
+}
+const get = (path) => call("/api/" + path);
+const post = (action, body) => call("/api/" + action, body);
+
+function toast(text, kind = "warn") {
+  const t = $("#toast");
+  t.className = "alert " + kind;
+  t.textContent = text || "";
+  clearTimeout(toast.timer);
+  if (text) toast.timer = setTimeout(() => (t.textContent = ""), 7000);
+}
+$("#toast").onclick = () => toast("");
+
+async function loadPeople() {
+  S.people = Object.fromEntries((await get("people")).map((p) => [p.name.toLowerCase(), p]));
+}
+
+// -- small pieces ------------------------------------------------------------
+
+const tierLabel = (t) => S.config.tiers[t] || t;
+const roleOf = (name) => S.people[(name || "").toLowerCase()];
+function when(t) {
+  if (!t) return "";
+  const s = (Date.now() - new Date(t)) / 1000;
+  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  for (const [unit, n] of [["year", 31536000], ["month", 2592000], ["day", 86400], ["hour", 3600], ["minute", 60]]) {
+    if (Math.abs(s) >= n) return rtf.format(-Math.round(s / n), unit);
+  }
+  return "just now";
+}
+function person(name, role) {
+  if (!name) return "";
+  const p = roleOf(name);
+  const r = role || p?.role;
+  const info = S.config.roles[r];
+  const badge = info ? `<span class="role ${info.trusted ? "trusted" : ""}" title="${info.trusted ? "Trusted role" : "Role"}">${esc(info.label)}</span>` : "";
+  return `<a class="person" href="#/people/${enc(name)}">${esc(name)}</a>${badge}`;
+}
+const tier = (t) => `<span class="pill tier-${t}">${esc(tierLabel(t))}</span>`;
+const status = (s) => `<span class="pill ${s}">${esc(s)}</span>`;
+const fref = (f) => `<a href="#/findings/${f.id}">#${f.id}</a>`;
+const trustLine = (f) => `<span class="trust ${f.trust.approvals ? "" : "none"}">${esc(f.trust.summary)}</span>`;
+
+function item(f, extra = "") {
+  return `<div class="item"><span class="mark ${f.tier}" title="${esc(tierLabel(f.tier))}"></span><div class="body">
+    <a class="stmt" href="#/findings/${f.id}">${esc(f.statement)}</a>
+    <div class="meta">${tier(f.tier)} ${status(f.status)} ${f.trust ? trustLine(f) : ""}</div>
+    <div class="meta">#${f.id} by ${person(f.owner, f.owner_role)}${f.study ? ` in <a href="#/studies/${f.study.id}">${esc(f.study.title)}</a>` : ""}</div>
+    ${extra}</div></div>`;
+}
+const summary = (f) => `<div class="item"><span class="mark ${f.tier}"></span><div class="body">
+  <a class="stmt" href="#/findings/${f.id}">${esc(f.statement)}</a>
+  <div class="meta">${tier(f.tier)} ${status(f.status)} #${f.id} by ${person(f.owner)}</div></div></div>`;
+const list = (items, render, empty) => items.length ? items.map(render).join("") : `<div class="empty">${empty}</div>`;
+const panel = (title, body, right = "") => `<section class="panel"><h2><span>${title}</span>${right}</h2>${body}</section>`;
+const aiTip = (text) => `<div class="ai">${text}</div>`;
+
+// -- identity ----------------------------------------------------------------
+
+function renderMe() {
+  $("#me").innerHTML = S.me
+    ? `<span class="muted acting">Acting as</span> ${person(S.me.name)} <button class="link" data-act="who">change</button>`
+    : `<button data-act="who">Who are you?</button>`;
+}
+
+function chooseWho(firstTime) {
+  const groups = Object.entries(S.config.roles).map(([key, r]) => {
+    const people = Object.values(S.people).filter((p) => p.role === key);
+    if (!people.length) return "";
+    return `<h3>${esc(r.label)}</h3><div class="who-list">${people.map((p) =>
+      `<button type="button" data-pick="${esc(p.name)}">${esc(p.name)}<span class="muted">${esc(r.label)}</span></button>`).join("")}</div>`;
+  }).join("");
+  openDialog(`<h2>${firstTime ? "Welcome. Who are you?" : "Switch person"}</h2>
+    <p class="muted">Your actions are recorded as you, with your role shown. Roles inform how much weight a validation carries. They never block you.</p>
+    ${groups}
+    <label>New here? Enter your name</label><input name="name" placeholder="Your name" autocomplete="name">`,
+    async (form) => setMe(form.name.value), { submit: "Continue" });
+  $$("[data-pick]", $("#dlg")).forEach((b) => b.onclick = () => { $("#dlg").close(); setMe(b.dataset.pick); });
+}
+
+async function setMe(name) {
+  if (!(name || "").trim()) throw new Error("Enter your name");
+  S.me = await post("whoami", { name });
+  try { localStorage.setItem("anchor-me", S.me.name); } catch (e) {}
+  await loadPeople();
+  renderMe();
+  route();
+}
+
+// -- dialogs -----------------------------------------------------------------
+
+function openDialog(html, onSubmit, opts = {}) {
+  const dlg = $("#dlg"), form = $("#dlg-form");
+  form.innerHTML = `${html}<div class="alert bad" id="dlg-err" hidden></div>
+    <div class="foot"><button type="button" value="cancel" data-close>Cancel</button>
+    ${onSubmit ? `<button class="primary" value="ok">${opts.submit || "Save"}</button>` : ""}</div>`;
+  $("[data-close]", form).onclick = () => dlg.close();
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const keepOpen = (await onSubmit(form)) === true;
+      if (!keepOpen) dlg.close();
+    } catch (err) {
+      const box = $("#dlg-err"); box.hidden = false; box.textContent = err.message;
+    }
+  };
+  $$(".picker", form).forEach(wirePicker);
+  dlg.showModal();
+  const first = $("input, textarea, select", form); if (first && !opts.noFocus) first.focus();
+}
+
+// A search box that picks one or more findings. Picked ids are read with picked(form, name).
+function pickerHtml(name, { multi = true, exclude = [], preset = [] } = {}) {
+  return `<div class="picker" data-name="${name}" data-multi="${multi}" data-exclude="${exclude.join(",")}">
+    <input placeholder="Search findings by topic" data-q>
+    <div class="results"></div><div class="picked">${preset.map(chip).join("")}</div></div>`;
+}
+const chip = (f) => `<span class="chip" data-id="${f.id}">#${f.id} ${esc(f.statement.slice(0, 50))}${f.statement.length > 50 ? "..." : ""}<button type="button" aria-label="Remove">&times;</button></span>`;
+function wirePicker(el) {
+  const out = $(".results", el), picked = $(".picked", el), exclude = el.dataset.exclude.split(",").map(Number);
+  let timer;
+  $("[data-q]", el).oninput = (e) => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const q = e.target.value.trim();
+      if (!q) { out.innerHTML = ""; return; }
+      const found = (await get(`findings?q=${enc(q)}&limit=8`)).filter((f) => !exclude.includes(f.id));
+      out.innerHTML = found.map((f) => `<button type="button" data-id="${f.id}">${tier(f.tier)} ${status(f.status)} #${f.id} ${esc(f.statement)}</button>`).join("")
+        || `<div class="empty" style="padding:8px">No match</div>`;
+      $$("button", out).forEach((b) => b.onclick = () => {
+        const f = found.find((x) => x.id === Number(b.dataset.id));
+        if (el.dataset.multi !== "true") picked.innerHTML = "";
+        if (!$(`[data-id="${f.id}"]`, picked)) picked.insertAdjacentHTML("beforeend", chip(f));
+        out.innerHTML = ""; e.target.value = "";
+      });
+    }, 200);
+  };
+  picked.onclick = (e) => { if (e.target.closest("button")) e.target.closest(".chip").remove(); };
+}
+const picked = (form, name) => $$(`.picker[data-name="${name}"] .chip`, form).map((c) => Number(c.dataset.id));
+
+// Run an action, show its warnings, and refresh.
+async function act(action, body, done) {
+  const r = await post(action, body);
+  const warnings = r.warnings || [];
+  toast(warnings.length ? warnings.join(" ") : done || "Saved.", warnings.length ? "warn" : "ok");
+  await Promise.all([loadPeople(), refreshQueue()]);
+  await route();
+  return r;
+}
+const needMe = () => { if (!S.me) { chooseWho(true); throw new Error("Choose who you are first"); } return S.me.name; };
+
+// -- views -------------------------------------------------------------------
+
+const views = {};
+
+views.home = async () => {
+  const me = needMe();
+  const role = S.me.role;
+  const stakeholder = role === "stakeholder";
+  const [queue, studies, requests, contested, feed, decisions] = await Promise.all([
+    get(`queue?who=${enc(me)}`), get(`studies?owner=${enc(me)}`), get("studies?status=requested"),
+    get("findings?status=contested&limit=5"), get("activity?limit=15"), get(`decisions?made_by=${enc(me)}`),
+  ]);
+  const waiting = queue.waiting_on_me, feedback = queue.feedback_on_mine, atRisk = queue.decisions_at_risk;
+  const firstTime = !waiting.length && !feedback.length && !studies.length && !decisions.length;
+
+  const hint = stakeholder
+    ? `<div class="hint"><b>Find what we already know before you decide.</b>Search trusted insights below. When you use one, log the decision so the research behind it gets credit and you hear if it changes. Nothing trusted yet? Ask for research.</div>`
+    : firstTime
+      ? `<div class="hint"><b>Start with what is waiting on you.</b>Review a finding in <a href="#/validate">Validate</a>, capture what you learned in <a href="#/findings">Findings</a>, or start a <a href="#/studies">study</a> tied to a decision.</div>`
+      : "";
+
+  const reviewItem = (w) => item(w.finding, `<div class="meta">Asked by ${person(w.request.requested_by)} ${when(w.request.at)}${w.request.note ? `: "${esc(w.request.note)}"` : ""}</div>
+    <div class="tools"><button data-act="review" data-id="${w.finding.id}">Review</button></div>`);
+  const feedbackItem = (fb) => item(fb.finding, fb.reviews.map((r) => `<div class="meta"><span class="pill ${r.outcome}">${OUTCOME[r.outcome]}</span> ${person(r.validated_by, r.role)} ${r.note ? `"${esc(r.note)}"` : ""}</div>`).join("")
+    + `<div class="tools"><button data-act="revise" data-id="${fb.finding.id}">Revise</button></div>`);
+  const decisionItem = (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a>
+    <div class="meta">${when(d.at)} · ${d.findings.length} finding(s) used${d.outcome ? " · outcome recorded" : ""}</div>
+    ${d.at_risk.length ? `<div class="alert bad">Something this relied on is now contested: ${d.at_risk.map((id) => `<a href="#/findings/${id}">#${id}</a>`).join(", ")}</div>` : ""}</div></div>`;
+
+  const left = stakeholder
+    ? panel("Trusted insights", `<form class="search" data-form="home-search"><input name="q" placeholder="What do we know about...?"><button class="primary">Search</button></form><div id="home-results"></div>`)
+      + panel("Your decisions", list(decisions, decisionItem, "No decisions logged yet. When you use an insight, log it from the insight's page or in Decisions."),
+          `<a href="#/decisions">Log a decision</a>`)
+    : (atRisk.length ? panel("Decisions at risk", list(atRisk, decisionItem, "")) : "")
+      + panel(`Waiting on you`, list(waiting, reviewItem, "Nothing is waiting on you. Anyone can still review anything in Validate."), `<a href="#/validate">All reviews</a>`)
+      + (feedback.length ? panel("Feedback on your findings", list(feedback, feedbackItem, "")) : "")
+      + panel("Your studies", list(studies, studyItem, "No studies yet."), `<button class="link" data-act="new-study">Start a study</button>`)
+      + (S.config.roles[role]?.trusted ? panel("Research requests", list(requests, studyItem, "No open requests."), "") : "");
+
+  const right = (stakeholder
+      ? (atRisk.length ? panel("At risk", list(atRisk, decisionItem, "")) : "")
+        + panel("Ask for research", `<p class="muted">Cannot find what you need? Ask the research team. It lands as a draft study they can pick up.</p><button data-act="ask" class="primary">Ask a question</button>`)
+      : panel("Recent conflicts", list(contested, summary, "No contested findings.")))
+    + panel("Recent activity", `<ul class="feed">${feed.map(feedItem).join("")}</ul>`);
+
+  return `<div class="page-head"><div><h1>Hi ${esc(me)}</h1><div class="sub">${esc(S.config.roles[role]?.label || role)}</div></div></div>
+    ${hint}<div class="grid"><div>${left}</div><div>${right}</div></div>
+    ${aiTip(stakeholder ? `ask your AI tool to "find insights for a decision". It will check ANCHOR and say how much each one is trusted.` : `ask your AI tool to "review my queue", and it will walk you through each request here.`)}`;
+};
+
+function feedItem(e) {
+  const d = e.detail || {};
+  const say = {
+    proposed: d.promoted_from ? `promoted #${d.promoted_from} to` : d.revises ? `revised #${d.revises} as` : "proposed",
+    validated: "validated", changes_requested: "asked for changes on", disagreed: "disagreed with",
+    status_changed: `moved ${d.from} to ${d.to}:`, contested: `flagged a conflict with #${d.conflicts_with} on`,
+    checked_out: "checked out", released: "released", promoted: `promoted to #${d.to}:`, revised: `revised as #${d.to}:`, linked: `linked (${d.type})`,
+    review_requested: `asked ${d.person || "any " + (S.config.roles[d.role]?.label || d.role)} to review`,
+    request_withdrawn: "withdrew a review request on", used_in_decision: "used in a decision:",
+    decision_at_risk: "put a decision at risk by contesting", decision_logged: "logged a decision",
+    decision_updated: "updated a decision", study_started: "started a study", study_updated: "updated a study",
+    research_requested: "asked for research", joined: "joined as " + (S.config.roles[d.role]?.label || d.role),
+    role_set: `set ${d.person}'s role to ${S.config.roles[d.role]?.label || d.role}`,
+  }[e.kind] || e.kind.replace(/_/g, " ");
+  const what = e.finding_id ? `<a href="#/findings/${e.finding_id}">#${e.finding_id}</a> <span class="muted">${esc((e.statement || "").slice(0, 60))}</span>`
+    : e.decision_id && !e.study_id ? `<a href="#/decisions/${e.decision_id}">${esc(e.decision_title)}</a>`
+    : e.study_id ? `<a href="#/studies/${e.study_id}">${esc(e.study_title)}</a>` : "";
+  return `<li>${person(e.actor)} ${esc(say)} ${what} <span class="muted">${when(e.at)}</span></li>`;
+}
+
+function studyItem(s) {
+  return `<div class="item"><div class="body"><a href="#/studies/${s.id}">${esc(s.title)}</a>
+    <div class="meta"><span class="pill ${s.status}">${STUDY_STATUS[s.status]}</span>
+      ${s.owner ? person(s.owner) : `asked by ${person(s.requested_by)}`} · ${s.finding_count ?? 0} finding(s)</div>
+    ${s.decision ? `<div class="meta">Serves: ${esc(s.decision)}</div>` : ""}</div></div>`;
+}
+
+views.studies = async () => {
+  const all = await get("studies");
+  const groups = ["requested", "running", "planned", "done", "closed"].map((st) => {
+    const these = all.filter((s) => s.status === st);
+    return these.length ? panel(STUDY_STATUS[st], these.map(studyItem).join("")) : "";
+  }).join("");
+  return `<div class="page-head"><div><h1>Studies</h1><div class="sub">Why we looked, the decision it serves, and how. Findings in a study carry this with them.</div></div>
+    <div class="actions"><button data-act="ask">Ask for research</button><button class="primary" data-act="new-study">Start a study</button></div></div>
+    ${groups || `<div class="hint"><b>No studies yet.</b>Start one with its objective and the decision it serves, then capture findings into it.</div>`}
+    ${aiTip(`try the "Plan a study" prompt. It checks what is already known before you start.`)}`;
+};
+
+views.study = async (id) => {
+  const s = await get(`studies/${id}`);
+  const fields = S.config.study.fields.map((f) => `<dt>${esc(f.label)}</dt><dd>${esc(s.fields[f.key]) || `<span class="muted">not set</span>`}</dd>`).join("")
+    + Object.entries(s.fields).filter(([k]) => !S.config.study.fields.some((f) => f.key === k)).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  const byTier = Object.keys(S.config.tiers).map((t) =>
+    `<h3>${esc(tierLabel(t))} (${s.findings_by_tier[t].length})</h3>${list(s.findings_by_tier[t], (f) => item(f), "None yet.")}`).join("");
+  const pickUp = s.status === "requested"
+    ? `<div class="alert warn">Requested by ${person(s.requested_by)}${s.from_decision ? ` from the decision <a href="#/decisions/${s.from_decision.id}">${esc(s.from_decision.title)}</a>` : ""}${s.from_query ? ` after searching "${esc(s.from_query)}"` : ""}. Nobody has picked it up yet.
+       <div class="tools"><button class="primary" data-act="pick-up" data-id="${s.id}">I will take this</button><button data-act="study-status" data-id="${s.id}" data-status="closed">Close it</button></div></div>` : "";
+  const next = { planned: "running", running: "done" }[s.status];
+  return `<div class="page-head"><div><div class="muted"><a href="#/studies">Studies</a></div><h1>${esc(s.title)}</h1>
+      <div class="meta"><span class="pill ${s.status}">${STUDY_STATUS[s.status]}</span> ${s.owner ? `owned by ${person(s.owner)}` : ""}</div></div>
+    <div class="actions">${next ? `<button data-act="study-status" data-id="${s.id}" data-status="${next}">Mark ${STUDY_STATUS[next].toLowerCase()}</button>` : ""}
+      <button data-act="edit-study" data-id="${s.id}">Edit</button>
+      ${s.status !== "requested" ? `<button class="primary" data-act="propose" data-study="${s.id}">Add a finding</button>` : ""}</div></div>
+    ${pickUp}
+    <div class="grid"><div>${panel("Findings", byTier)}</div><div>
+      ${panel("The chain", `<dl class="kv"><dt>Objective</dt><dd>${esc(s.objective) || `<span class="muted">not set</span>`}</dd>
+        <dt>Decision it serves</dt><dd>${esc(s.decision) || `<span class="muted">not set</span>`}</dd>
+        <dt>Method</dt><dd>${esc(s.method) || `<span class="muted">not set</span>`}</dd>
+        <dt>Sample</dt><dd>${esc(s.sample) || `<span class="muted">not set</span>`}</dd>${fields}</dl>`)}
+      ${panel("History", `<ul class="feed">${s.history.slice().reverse().map((h) => `<li>${person(h.actor)} ${esc(h.kind.replace(/_/g, " "))}${h.detail.changed ? `: ${esc(h.detail.changed.join(", "))}` : ""} <span class="muted">${when(h.at)}</span></li>`).join("")}</ul>`)}
+    </div></div>`;
+};
+
+views.findings = async () => {
+  const p = new URLSearchParams(location.hash.split("?")[1] || "");
+  const q = p.get("q") || "", t = p.get("tier") || "", st = p.get("status") || "";
+  const found = await get(`findings?q=${enc(q)}&tier=${t}&status=${st}&limit=200`);
+  const opt = (v, cur, label) => `<option value="${v}" ${v === cur ? "selected" : ""}>${esc(label)}</option>`;
+  const noneTrusted = q && !found.some((f) => f.status === "validated");
+  return `<div class="page-head"><div><h1>Findings</h1><div class="sub">Everything the team knows, at every level of confidence.</div></div>
+    <div class="actions"><button class="primary" data-act="propose">New finding</button></div></div>
+    <form class="search" data-form="findings-search">
+      <input name="q" value="${esc(q)}" placeholder="Topic or question">
+      <select name="tier">${opt("", t, "Any tier")}${Object.keys(S.config.tiers).map((k) => opt(k, t, tierLabel(k))).join("")}</select>
+      <select name="status">${opt("", st, "Any status")}${["proposed", "validated", "contested"].map((k) => opt(k, st, k)).join("")}</select>
+      <button>Search</button></form>
+    ${noneTrusted ? `<div class="alert warn">Nothing validated matches "${esc(q)}" yet. <button class="link" data-act="ask" data-query="${esc(q)}">Ask for research</button></div>` : ""}
+    <section class="panel">${list(found, (f) => item(f), "No findings match.")}</section>
+    ${aiTip(`try "Synthesize my notes" to turn raw notes into data points and hypotheses with evidence links.`)}`;
+};
+
+views.finding = async (id) => {
+  const f = await get(`findings/${id}`);
+  const mine = S.me && S.me.name.toLowerCase() === f.owner.toLowerCase();
+  const rel = (title, items, render = summary) => items.length ? `<h3>${title}</h3>${items.map(render).join("")}` : "";
+  const linked = (x) => `<div class="item"><span class="mark ${x.finding.tier}"></span><div class="body">
+    <a class="stmt" href="#/findings/${x.finding.id}">${esc(x.finding.statement)}</a>
+    <div class="meta">${tier(x.finding.tier)} ${status(x.finding.status)} linked by ${person(x.by)} ${when(x.at)}</div>
+    ${x.note ? `<div class="meta">"${esc(x.note)}"</div>` : ""}</div></div>`;
+  const conflicts = f.conflicts.map((c) => `<div class="alert bad"><b>Conflict</b> flagged by ${esc(c.flagged_by)} ${when(c.flagged_at)}${c.note ? `: "${esc(c.note)}"` : ""}
+      <div class="versions"><div><b>This finding</b><br>${esc(f.statement)}</div><div><b><a href="#/findings/${c.with.id}">#${c.with.id}</a></b> ${status(c.with.status)}<br>${esc(c.with.statement)}</div></div></div>`).join("");
+  // A promotion is also an evidence link; show it once, as the promotion.
+  const promotedIds = f.promoted_to.map((x) => x.id);
+  const connections = rel("Supported by", f.evidence.filter((x) => x.id !== f.promoted_from?.id))
+    + rel("Supports", f.cited_by.filter((x) => !promotedIds.includes(x.id)))
+    + rel("Extends", f.links.extends, linked) + rel("Extended by", f.links.extended_by, linked) + rel("Duplicates", f.links.duplicates, linked)
+    + rel("Promoted from", f.promoted_from ? [f.promoted_from] : []) + rel("Promoted to", f.promoted_to)
+    + rel("Revises", f.revises ? [f.revises] : []) + rel("Revised as", f.revised_as);
+  const reviews = f.validations.map((v) => `<div class="review ${v.current ? "" : "old"}">
+      <div class="spread"><span><span class="pill ${v.outcome}">${OUTCOME[v.outcome]}</span> ${person(v.validated_by, v.role)}</span><span class="muted">${when(v.validated_at)}</span></div>
+      ${v.basis ? `<div class="muted">${esc(S.config.checks[v.basis] || v.basis)}</div>` : ""}
+      ${v.note ? `<div>"${esc(v.note)}"</div>` : ""}${v.current ? "" : `<div class="muted">Earlier review, replaced by a later one</div>`}</div>`).join("");
+  const requests = f.open_requests.map((r) => `<div class="meta">Waiting on ${r.person ? person(r.person) : `any ${esc(S.config.roles[r.role]?.label || r.role)}`}, asked by ${esc(r.requested_by)} ${when(r.at)}
+      ${mine || (S.me && r.requested_by === S.me.name) ? `<button class="link" data-act="withdraw" data-id="${r.id}">withdraw</button>` : ""}</div>`).join("");
+  const promo = f.promotion ? `<div class="meta">${f.promotion.ready ? "Ready to promote" : "Not ready to promote yet"}${f.promotion.summary !== "no promotion rule set" ? `: ${esc(f.promotion.summary)}` : ""}${f.promotion.enforced ? " (required by the team)" : ""}</div>` : "";
+  return `<div class="page-head"><div><div class="muted"><a href="#/findings">Findings</a></div></div></div>
+    <div class="grid"><div>
+      <section class="panel detail">
+        <div class="row">${tier(f.tier)} ${status(f.status)} <span class="muted">#${f.id}</span></div>
+        <div class="statement">${esc(f.statement)}</div>
+        <div class="meta">Stated by ${person(f.owner, f.owner_role)} ${when(f.created_at)}${f.checked_out_by ? ` · being worked on by ${person(f.checked_out_by)}` : ""}</div>
+        <p style="margin-top:10px">${trustLine(f)}</p>
+        ${f.revised_as.length ? `<div class="alert warn">There is a newer version of this finding: ${f.revised_as.map(fref).join(", ")}</div>` : ""}
+        ${conflicts}
+        <div class="tools">
+          ${mine ? `<button class="primary" data-act="request" data-id="${f.id}">Ask for review</button>`
+            : `<button class="primary" data-act="review" data-id="${f.id}">Review</button><button data-act="request" data-id="${f.id}">Ask for review</button>`}
+          ${f.promotion ? `<button data-act="promote" data-id="${f.id}">Promote to ${esc(tierLabel({ data_point: "hypothesis", hypothesis: "insight" }[f.tier]))}</button>` : ""}
+          <button data-act="decide" data-id="${f.id}">Used this in a decision</button>
+        </div>
+        <div class="tools more">
+          <button class="link" data-act="revise" data-id="${f.id}">Revise</button>
+          <button class="link" data-act="link" data-id="${f.id}">Link to another finding</button>
+          <button class="link" data-act="conflicts" data-id="${f.id}">Check conflicts</button>
+          ${f.checked_out_by ? `<button class="link" data-act="release" data-id="${f.id}">Release</button>` : `<button class="link" data-act="checkout" data-id="${f.id}">I am working on this</button>`}
+        </div>
+        ${promo}${requests}
+        <div id="conflict-check"></div>
+      </section>
+      ${panel(`Reviews (${f.validations.length})`, reviews || `<div class="empty">No reviews yet. Anyone can review. Researchers and trusted reviewers carry the most weight.</div>`)}
+      ${panel("Connected", connections || `<div class="empty">Not linked to anything yet.</div>`)}
+    </div><div>
+      ${f.study ? panel("From the study", `<a href="#/studies/${f.study.id}">${esc(f.study.title)}</a><dl class="kv"><dt>Objective</dt><dd>${esc(f.study.objective) || "-"}</dd><dt>Decision</dt><dd>${esc(f.study.decision) || "-"}</dd></dl>`) : ""}
+      ${panel("Used in decisions", list(f.used_in, (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a><div class="meta">${person(d.made_by)} ${when(d.at)}</div></div></div>`, "Not used in a decision yet."))}
+      ${panel("History", `<ul class="feed" id="history"><li><button class="link" data-act="history" data-id="${f.id}">Show full history</button></li></ul>`)}
+    </div></div>`;
+};
+
+views.explore = async () => {
+  const p = new URLSearchParams(location.hash.split("?")[1] || "");
+  const q = p.get("q") || "";
+  const found = q ? await get(`findings?q=${enc(q)}&limit=20`) : [];
+  const connected = (f) => f.evidence.length + f.cited_by.length + f.conflicts.length + f.links.extends.length
+    + f.links.extended_by.length + f.links.duplicates.length + f.promoted_to.length + (f.promoted_from ? 1 : 0);
+  return `<div class="page-head"><div><h1>Explore</h1><div class="sub">Check before you claim: see what is already known, how it connects, and what conflicts.</div></div></div>
+    <div class="grid"><div>
+      ${panel("Search", `<form class="search" data-form="explore-search"><input name="q" value="${esc(q)}" placeholder="Topic or question"><button class="primary">Search</button></form>
+        ${q ? list(found, (f) => item(f, `<div class="meta">${connected(f)} connection(s) · ${f.used_in.length} decision(s)</div>`), `Nothing yet on "${esc(q)}". <button class="link" data-act="ask" data-query="${esc(q)}">Ask for research</button>`) : ""}`)}
+    </div><div>
+      ${panel("Check a claim", `<p class="muted">Paste a statement before you share it. ANCHOR looks for validated findings on the same topic that might disagree.</p>
+        <form data-form="claim"><textarea name="statement" placeholder="For example: shoppers do not mind long address forms"></textarea><div class="tools"><button class="primary">Check</button></div></form><div id="claim-result"></div>`)}
+    </div></div>
+    ${aiTip(`try "Check before I claim". Your AI will query ANCHOR and show trust and conflicts before you share something.`)}`;
+};
+
+views.validate = async () => {
+  const me = needMe();
+  const [queue, open, contested] = await Promise.all([get(`queue?who=${enc(me)}`), get("findings?status=proposed&limit=100"), get("findings?status=contested&limit=50")]);
+  const others = open.filter((f) => f.owner.toLowerCase() !== me.toLowerCase() && !f.validations.some((v) => v.current && v.validated_by === me));
+  const review = (f) => `<div class="tools"><button data-act="review" data-id="${f.id}">Review</button></div>`;
+  return `<div class="page-head"><div><h1>Validate</h1><div class="sub">Anyone can review. Every review shows who gave it, in what role, and how they checked.</div></div></div>
+    <div class="grid"><div>
+      ${panel("Waiting on you", list(queue.waiting_on_me, (w) => item(w.finding, `<div class="meta">Asked by ${person(w.request.requested_by)} ${when(w.request.at)}${w.request.note ? `: "${esc(w.request.note)}"` : ""}</div>${review(w.finding)}`), "Nothing is waiting on you."))}
+      ${panel("Open for anyone", list(others, (f) => item(f, review(f)), "No proposed findings need a review."))}
+    </div><div>
+      ${panel("Feedback on your findings", list(queue.feedback_on_mine, (fb) => item(fb.finding, fb.reviews.map((r) => `<div class="meta"><span class="pill ${r.outcome}">${OUTCOME[r.outcome]}</span> ${person(r.validated_by, r.role)} ${r.note ? `"${esc(r.note)}"` : ""}</div>`).join("") + `<div class="tools"><button data-act="revise" data-id="${fb.finding.id}">Revise</button></div>`), "No open feedback."))}
+      ${panel("You asked for reviews", list(queue.my_requests, (m) => `<div class="item"><div class="body">${fref(m.finding)} ${esc(m.finding.statement)}<div class="meta">Waiting on ${m.request.person ? person(m.request.person) : "any " + esc(S.config.roles[m.request.role]?.label || m.request.role)} <button class="link" data-act="withdraw" data-id="${m.request.id}">withdraw</button></div></div></div>`, "No open requests."))}
+      ${panel("Contested", list(contested, summary, "No contested findings."))}
+    </div></div>
+    ${aiTip(`try "Review my queue" or "Request validation".`)}`;
+};
+
+views.decisions = async () => {
+  const me = S.me?.name;
+  const all = await get("decisions");
+  const row = (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a>
+    <div class="meta">${person(d.made_by)} ${when(d.at)} · ${d.findings.length} finding(s)${d.outcome ? " · outcome recorded" : ""}</div>
+    ${d.at_risk.length ? `<div class="alert bad">Now contested: ${d.at_risk.map((id) => `<a href="#/findings/${id}">#${id}</a>`).join(", ")}</div>` : ""}</div></div>`;
+  const mine = all.filter((d) => me && d.made_by === me);
+  return `<div class="page-head"><div><h1>Decisions</h1><div class="sub">Record when research informs a decision. It credits everyone behind it, and warns you if something it relied on changes.</div></div>
+    <div class="actions"><button class="primary" data-act="decide">Log a decision</button></div></div>
+    <div class="grid"><div>${panel("All decisions", list(all, row, "No decisions logged yet."))}</div>
+    <div>${panel("Yours", list(mine, row, "None yet."))}</div></div>
+    ${aiTip(`try "Log a decision". Tell it what you decided and it will find the insights you used.`)}`;
+};
+
+views.decision = async (id) => {
+  const d = await get(`decisions/${id}`);
+  const used = d.findings.map((f) => `<div class="item"><span class="mark ${f.tier}"></span><div class="body"><a href="#/findings/${f.id}">${esc(f.statement)}</a>
+      <div class="meta">${tier(f.tier)} ${status(f.status)} ${f.status !== f.status_at_use ? `<span class="muted">(was ${esc(f.status_at_use)} when used)</span>` : ""}</div>
+      <div class="meta">${esc(f.trust)}</div></div></div>`).join("");
+  const credits = d.credits.map((c) => `<div class="item"><div class="body">${person(c.name, c.role)}
+      <div class="meta">${c.contributions.map((x) => `<span>${esc(x.did)} ${x.finding_id ? `<a href="#/findings/${x.finding_id}">#${x.finding_id}</a>` : `<a href="#/studies/${x.study_id}">the study</a>`}</span>`).join(" · ")}</div></div></div>`).join("");
+  return `<div class="page-head"><div><div class="muted"><a href="#/decisions">Decisions</a></div><h1>${esc(d.title)}</h1>
+      <div class="meta">Made by ${person(d.made_by)} ${when(d.at)}</div></div>
+    <div class="actions"><button data-act="ask" data-decision="${d.id}">Ask for research</button><button data-act="outcome" data-id="${d.id}">Add outcome</button></div></div>
+    ${d.at_risk.length ? `<div class="alert bad">Something this decision relied on is now contested. Take a look at ${d.at_risk.map((x) => `<a href="#/findings/${x}">#${x}</a>`).join(", ")}.</div>` : ""}
+    <div class="grid"><div>
+      ${d.note ? panel("Why", `<p>${esc(d.note)}</p>`) : ""}
+      ${panel("What it used", used || `<div class="empty">No findings linked.</div>`, `<button class="link" data-act="add-to-decision" data-id="${d.id}">Add a finding</button>`)}
+      ${panel("Outcome", d.outcome ? `<p>${esc(d.outcome)}</p>` : `<div class="empty">No outcome yet. Add one when you know what happened. If it raises a new question, ask for research.</div>`)}
+    </div><div>
+      ${panel("The people behind it", credits ? `<p class="muted">Everyone in the chain behind the findings used, listed by name.</p>${credits}` : `<div class="empty">No findings linked, so no one to credit yet.</div>`)}
+      ${panel("Research it raised", list(d.requests, studyItem, "None yet."))}
+    </div></div>`;
+};
+
+views.person = async (name) => {
+  const p = await get(`people/${enc(name)}`);
+  const isMe = S.me && S.me.name === p.name;
+  const roleSelect = `<select data-act="role" data-name="${esc(p.name)}">${Object.entries(S.config.roles).map(([k, r]) => `<option value="${k}" ${k === p.role ? "selected" : ""}>${esc(r.label)}</option>`).join("")}</select>`;
+  return `<div class="page-head"><div><h1>${esc(p.name)}</h1><div class="sub">${esc(p.role_label)}${p.trusted ? " · trusted role" : ""}${isMe ? " · you" : ""}</div></div>
+    <div class="actions"><label class="inline">Role ${roleSelect}</label></div></div>
+    <div class="grid"><div>${panel("Contributed to decisions", list(p.contributed_to, (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a>
+      <div class="meta">${d.contributions.map((x) => `${esc(x.did)} ${x.finding_id ? `#${x.finding_id}` : "the study"}`).join(", ")}</div></div></div>`, "Not yet. Work that informs a decision shows up here."))}</div>
+    <div>${panel("Decisions made", list(p.decisions_made, (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a><div class="meta">${when(d.at)}</div></div></div>`, "None."))}</div></div>`;
+};
+
+// -- actions -----------------------------------------------------------------
+
+const studyFieldsHtml = (s = {}) => `
+  <label>Title</label><input name="title" required value="${esc(s.title)}">
+  <label>Objective: what do we need to learn?</label><textarea name="objective">${esc(s.objective)}</textarea>
+  <label>Decision it serves</label><input name="decision" value="${esc(s.decision)}" placeholder="For example: whether to fund autofill in Q3">
+  <label>Method</label><input name="method" value="${esc(s.method)}">
+  <label>Sample</label><input name="sample" value="${esc(s.sample)}">
+  ${S.config.study.fields.map((f) => `<label>${esc(f.label)}${f.required ? " (the team asks for this)" : ""}</label>
+    <input name="field:${esc(f.key)}" value="${esc(s.fields?.[f.key])}" placeholder="${esc(f.help || "")}">`).join("")}`;
+const studyValues = (form) => {
+  const v = { fields: {} };
+  for (const [k, val] of new FormData(form)) k.startsWith("field:") ? (v.fields[k.slice(6)] = val) : (v[k] = val);
   return v;
 };
 
-$("msg").addEventListener("click", () => flash(""));
-function flash(text, isError) {
-  $("msg").className = isError ? "err" : "warn";
-  $("msg").textContent = text || "";
-}
-
-async function api(path, body) {
-  const res = await fetch(path, body ? { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) } : {});
-  const data = await res.json();
-  if (!res.ok) { flash(data.error || "request failed", true); throw new Error(data.error); }
-  flash((data.warnings || []).join("; "));
-  return data;
-}
-
-const tags = (f) =>
-  `<span class="tag tier-tag-${f.tier}">${TIER[f.tier]}</span><span class="tag st-${f.status}">${f.status}</span>`;
-const ref = (f) => `<a href="#f${f.id}">#${f.id}</a> ${tags(f)} ${esc(f.statement)} <span class="muted">(${esc(f.owner)})</span>`;
-
-function card(f) {
-  const vals = f.validations.length
-    ? `<ul>${f.validations.map(v => `<li>${esc(v.validated_by)} <span class="muted">${when(v.validated_at)}</span>${v.note ? ` : ${esc(v.note)}` : ""}</li>`).join("")}</ul>`
-    : `<div class="muted">No validations yet.</div>`;
-  const ev = f.evidence.length
-    ? `<ul>${f.evidence.map(e => `<li>${ref(e)}</li>`).join("")}</ul>` : `<div class="muted">No evidence linked.</div>`;
-  const cited = f.cited_by.length
-    ? `<div><b>Supports</b><ul>${f.cited_by.map(e => `<li>${ref(e)}</li>`).join("")}</ul></div>` : "";
-  const conflicts = f.conflicts.map(c => `
-    <div><b>Conflict</b> <span class="muted">flagged by ${esc(c.flagged_by)} ${when(c.flagged_at)}${c.note ? ` : ${esc(c.note)}` : ""}</span>
-      <div class="versions">
-        <div><b>This version (#${f.id})</b><br>${esc(f.statement)}<br><span class="muted">${esc(f.owner)}</span></div>
-        <div><b>Conflicting version (<a href="#f${c.with.id}">#${c.with.id}</a>)</b> ${tags(c.with)}<br>${esc(c.with.statement)}<br><span class="muted">${esc(c.with.owner)}</span></div>
-      </div></div>`).join("");
-  const co = f.checked_out_by
-    ? `<div class="warn">Checked out by ${esc(f.checked_out_by)} since ${when(f.checked_out_at)}</div>` : "";
-  return `<div class="card tier-${f.tier} status-${f.status}" id="f${f.id}">
-    <div>#${f.id} ${tags(f)} <span class="muted">stated by ${esc(f.owner)}, ${when(f.created_at)}</span></div>
-    <div class="statement">${esc(f.statement)}</div>
-    ${co}
-    <div><b>Evidence</b>${ev}</div>
-    ${cited}
-    <div><b>Validated by (${f.validations.length})</b>${vals}</div>
-    ${conflicts}
-    <div class="row">
-      <button data-act="validate" data-id="${f.id}">Validate</button>
-      ${f.checked_out_by ? `<button data-act="release" data-id="${f.id}">Release</button>` : `<button data-act="checkout" data-id="${f.id}">Check out</button>`}
-      <button data-act="conflicts" data-id="${f.id}">Check conflicts</button>
-      <button data-act="history" data-id="${f.id}">History</button>
-    </div>
-    <div id="extra-${f.id}"></div>
-  </div>`;
-}
-
-function candidatesHtml(result, fromId) {
-  if (!result.candidates.length) return `<div class="muted">No validated findings on a similar topic.</div>`;
-  return `<div><b>Validated findings on a similar topic</b> (a human decides if these truly conflict)</div>` +
-    result.candidates.map(c => `<div class="card tier-${c.finding.tier}">
-      ${ref(c.finding)}
-      <div class="muted">similarity ${c.similarity}, shared words: ${esc(c.shared_words.join(", "))}</div>
-      <div class="${c.likely_conflict ? "err" : "muted"}">${c.signals.length ? "Signals: " + esc(c.signals.join("; ")) : "No contradiction signals, may be a duplicate or related."}</div>
-      ${fromId ? `<button data-act="confirm" data-id="${fromId}" data-other="${c.finding.id}">Confirm real conflict</button>` : ""}
-    </div>`).join("");
-}
-
-async function refresh() {
-  const params = new URLSearchParams({ q: $("f-q").value, tier: $("f-tier").value, status: $("f-status").value });
-  const [findings, queue, feed] = await Promise.all([
-    api("/api/findings?" + params), api("/api/findings?status=proposed"), api("/api/activity?limit=40"),
-  ]);
-  $("findings").innerHTML = findings.map(card).join("") || `<div class="muted">No findings match.</div>`;
-  $("queue").innerHTML = queue.map(f => `<div class="card tier-${f.tier}">
-      ${ref(f)}<div class="muted">${f.evidence_links.length} evidence link(s)</div>
-      <button data-act="validate" data-id="${f.id}">Validate</button></div>`).join("")
-    || `<div class="muted">Nothing waiting for validation.</div>`;
-  $("feed").innerHTML = feed.map(e => {
-    let what = e.kind.replace("_", " ");
-    if (e.kind === "status_changed") what = `moved ${e.detail.from} to ${e.detail.to}`;
-    if (e.kind === "contested") what = `contested (conflicts with #${e.detail.conflicts_with})`;
-    return `<li><span class="muted">${when(e.at)}</span> <b>${esc(e.actor)}</b> ${esc(what)} <a href="#f${e.finding_id}">#${e.finding_id}</a> <span class="muted">${esc((e.statement || "").slice(0, 70))}</span></li>`;
-  }).join("");
-}
-
-function evidenceIds() {
-  return $("p-evidence").value.split(/[\s,]+/).filter(Boolean).map(Number);
-}
-
-$("p-check").onclick = async () => {
-  const r = await api("/api/check_conflict", { statement: $("p-statement").value });
-  $("p-result").innerHTML = candidatesHtml(r, null);
+const actions = {
+  who: () => chooseWho(false),
+  "new-study": () => openDialog(`<h2>Start a study</h2><p class="muted">Only a title is needed. The objective and decision make its findings easier to trust later.</p>${studyFieldsHtml()}`,
+    async (form) => { const r = await act("start_study", { ...studyValues(form), owner: needMe() }, "Study started."); location.hash = `#/studies/${r.study.id}`; }, { submit: "Start" }),
+  "edit-study": async (b) => { const s = await get(`studies/${b.dataset.id}`);
+    openDialog(`<h2>Edit study</h2>${studyFieldsHtml(s)}`, (form) => act("update_study", { study_id: s.id, by: needMe(), ...studyValues(form) })); },
+  "study-status": (b) => act("update_study", { study_id: Number(b.dataset.id), by: needMe(), status: b.dataset.status }),
+  "pick-up": (b) => act("update_study", { study_id: Number(b.dataset.id), by: needMe(), status: "planned", owner: needMe() }, "It is yours. Add the objective, method, and sample when you know them."),
+  ask: (b) => openDialog(`<h2>Ask for research</h2><p class="muted">It lands as a draft study for the research team to pick up.</p>
+      <label>Your question</label><textarea name="question" required>${esc(b.dataset.query ? `What do we know about ${b.dataset.query}?` : "")}</textarea>
+      ${b.dataset.decision ? "" : `<label>Which decision would this inform?</label><input name="decision" placeholder="Helps the team prioritize">`}
+      ${S.config.study.fields.map((f) => `<label>${esc(f.label)}</label><input name="field:${esc(f.key)}" placeholder="${esc(f.help || "")}">`).join("")}`,
+    async (form) => { const v = studyValues(form);
+      const r = await act("request_research", { question: v.question, decision: v.decision, fields: v.fields, requested_by: needMe(),
+        from_query: b.dataset.query || null, from_decision_id: b.dataset.decision ? Number(b.dataset.decision) : null }, "Asked. The research team will see it in Studies.");
+      location.hash = `#/studies/${r.study.id}`; }, { submit: "Ask" }),
+  propose: (b) => proposeDialog(b.dataset.study ? Number(b.dataset.study) : null),
+  review: async (b) => { const f = await get(`findings/${b.dataset.id}`);
+    openDialog(`<h2>Review</h2><p>${esc(f.statement)}</p>
+      <label>Your review</label>
+      ${Object.entries(OUTCOME).map(([k, l], i) => `<label class="inline"><input type="radio" name="outcome" value="${k}" ${i ? "" : "checked"}>${{ approve: "Approve", changes_requested: "Ask for changes", disagree: "Disagree" }[k]}</label>`).join("")}
+      <label>How did you check? (optional)</label><select name="basis"><option value="">Choose one</option>${Object.entries(S.config.checks).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+      <label>Note (optional): what to change, or why</label><textarea name="note"></textarea>
+      <p class="muted">Only approvals mark a finding validated. Asking for changes or disagreeing is shown to everyone but never contests it on its own.</p>`,
+      (form) => act("validate", { finding_id: f.id, validated_by: needMe(), outcome: form.outcome.value, basis: form.basis.value || null, note: form.note.value }, "Review recorded."), { submit: "Submit review" }); },
+  request: async (b) => { const f = await get(`findings/${b.dataset.id}`);
+    const people = Object.values(S.people).filter((p) => p.name.toLowerCase() !== f.owner.toLowerCase());
+    openDialog(`<h2>Ask for review</h2><p class="muted">${esc(f.statement)}</p>
+      <label>Any one of a role</label>${Object.entries(S.config.roles).map(([k, r]) => `<label class="inline"><input type="checkbox" name="role" value="${k}">Any ${esc(r.label.toLowerCase())}</label>`).join("")}
+      <label>Or specific people</label>${people.map((p) => `<label class="inline"><input type="checkbox" name="person" value="${esc(p.name)}">${esc(p.name)} <span class="muted">${esc(p.role_label)}</span></label>`).join("")}
+      <label>Note (optional)</label><input name="note" placeholder="For example: before Friday's planning">`,
+      (form) => { const d = new FormData(form);
+        return act("request_validation", { finding_id: f.id, requested_by: needMe(), people: d.getAll("person"), roles: d.getAll("role"), note: d.get("note") }, "Asked. It is in their queue."); }, { submit: "Ask" }); },
+  withdraw: (b) => act("withdraw_request", { request_id: Number(b.dataset.id), by: needMe() }, "Request withdrawn."),
+  promote: async (b) => { const f = await get(`findings/${b.dataset.id}`);
+    const to = tierLabel({ data_point: "hypothesis", hypothesis: "insight" }[f.tier]);
+    openDialog(`<h2>Promote to ${esc(to)}</h2>
+      <p class="muted">Creates a new ${esc(to.toLowerCase())} linked to this ${esc(tierLabel(f.tier).toLowerCase())}. The original stays as it is.</p>
+      ${f.promotion.ready ? "" : `<div class="alert ${f.promotion.enforced ? "bad" : "warn"}">Not ready by the team's rule: ${esc(f.promotion.summary)}.${f.promotion.enforced ? " The team requires this before promoting." : " You can still promote."}</div>`}
+      <p>${trustLine(f)}</p>
+      <label>What does the evidence now support?</label><textarea name="statement">${esc(f.statement)}</textarea>
+      <label>Why promote it? (optional)</label><input name="note">`,
+      async (form) => { const r = await act("promote", { finding_id: f.id, by: needMe(), statement: form.statement.value, note: form.note.value }, "Promoted.");
+        location.hash = `#/findings/${r.finding.id}`; }, { submit: "Promote" }); },
+  revise: async (b) => { const f = await get(`findings/${b.dataset.id}`);
+    const asks = f.validations.filter((v) => v.current && v.outcome !== "approve");
+    openDialog(`<h2>Revise</h2><p class="muted">Creates a new version linked to this one. The original and its reviews stay. Anyone who asked for changes is asked to look again.</p>
+      ${asks.map((v) => `<div class="alert warn">${esc(v.validated_by)}: ${esc(OUTCOME[v.outcome])}${v.note ? `, "${esc(v.note)}"` : ""}</div>`).join("")}
+      <label>New wording</label><textarea name="statement">${esc(f.statement)}</textarea><label>What changed? (optional)</label><input name="note">`,
+      async (form) => { const r = await act("revise", { finding_id: f.id, by: needMe(), statement: form.statement.value, note: form.note.value }, "Revised.");
+        location.hash = `#/findings/${r.finding.id}`; }, { submit: "Save new version" }); },
+  link: (b) => openDialog(`<h2>Link to another finding</h2>
+      <label>This finding...</label><select name="type">${Object.entries(LINK_TYPE).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
+      <label>...this one</label>${pickerHtml("to", { multi: false, exclude: [Number(b.dataset.id)] })}
+      <label>Note (optional)</label><input name="note">
+      <p class="muted">Contradicts marks both findings contested, so both sides stay visible until the conflict is resolved.</p>`,
+    (form) => { const to = picked(form, "to")[0]; if (!to) throw new Error("Pick a finding to link to");
+      return act("link", { from_id: Number(b.dataset.id), to_id: to, type: form.type.value, by: needMe(), note: form.note.value }, "Linked."); }, { submit: "Link" }),
+  conflicts: async (b) => { const r = await post("check_conflict", { finding_id: Number(b.dataset.id) }); $("#conflict-check").innerHTML = candidates(r, Number(b.dataset.id)); },
+  confirm: async (b) => { const note = prompt("Why do these conflict? (optional)"); if (note === null) return;
+    await act("confirm_conflict", { finding_id: Number(b.dataset.id), conflicting_id: Number(b.dataset.other), confirmed_by: needMe(), note }, "Both findings are now contested."); },
+  checkout: (b) => act("checkout", { finding_id: Number(b.dataset.id), who: needMe() }, "Marked as yours for now."),
+  release: (b) => act("release", { finding_id: Number(b.dataset.id), who: needMe() }, "Released."),
+  history: async (b) => { const h = await get(`findings/${b.dataset.id}/history`);
+    $("#history").innerHTML = h.slice().reverse().map((e) => feedItem({ ...e, finding_id: Number(b.dataset.id) })).join(""); },
+  decide: async (b) => { const preset = b.dataset.id ? [await get(`findings/${b.dataset.id}`)] : [];
+    const mine = S.me ? (await get(`decisions?made_by=${enc(S.me.name)}`)) : [];
+    openDialog(`<h2>Log a decision</h2><p class="muted">Takes under a minute. It credits the people behind the research, and you will see if something it relied on changes.</p>
+      <label>What did you decide?</label><input name="title" required placeholder="For example: fund address autofill in Q3">
+      <label>Findings you used</label>${pickerHtml("used", { preset })}
+      <label>Why (optional)</label><textarea name="note"></textarea>
+      ${mine.length && preset.length ? `<p class="muted">Or add it to one of your decisions: ${mine.slice(0, 5).map((d) => `<button type="button" class="link" data-add-to="${d.id}">${esc(d.title)}</button>`).join(" · ")}</p>` : ""}`,
+      async (form) => { const r = await act("log_decision", { title: form.title.value, made_by: needMe(), finding_ids: picked(form, "used"), note: form.note.value }, "Decision logged.");
+        location.hash = `#/decisions/${r.decision.id}`; }, { submit: "Log decision" });
+    $$("[data-add-to]", $("#dlg")).forEach((x) => x.onclick = async () => { $("#dlg").close();
+      await act("update_decision", { decision_id: Number(x.dataset.addTo), by: needMe(), add_finding_ids: [preset[0].id] }, "Added to the decision.");
+      location.hash = `#/decisions/${x.dataset.addTo}`; }); },
+  "add-to-decision": (b) => openDialog(`<h2>Add findings you used</h2>${pickerHtml("used")}`,
+    (form) => act("update_decision", { decision_id: Number(b.dataset.id), by: needMe(), add_finding_ids: picked(form, "used") })),
+  outcome: async (b) => { const d = await get(`decisions/${b.dataset.id}`);
+    openDialog(`<h2>What happened?</h2><textarea name="outcome">${esc(d.outcome)}</textarea>`,
+      (form) => act("update_decision", { decision_id: d.id, by: needMe(), outcome: form.outcome.value }, "Outcome saved. If it raised a new question, ask for research.")); },
 };
 
-$("p-submit").onclick = async () => {
-  const owner = me(); if (!owner) return;
-  const r = await api("/api/propose", { statement: $("p-statement").value, tier: $("p-tier").value, owner, evidence_links: evidenceIds() });
-  $("p-statement").value = ""; $("p-evidence").value = "";
-  $("p-result").innerHTML = `<div>Proposed <a href="#f${r.finding.id}">#${r.finding.id}</a>.</div>` +
-    (r.possible_conflicts.length ? candidatesHtml({ candidates: r.possible_conflicts }, r.finding.id) : "");
-  refresh();
-};
+function candidates(result, fromId) {
+  if (!result.candidates.length) return `<div class="alert ok">No validated findings on a similar topic.</div>`;
+  return `<h3>Validated findings on a similar topic</h3><p class="muted">A person decides if these truly conflict.</p>` + result.candidates.map((c) => `
+    <div class="item"><span class="mark ${c.finding.tier}"></span><div class="body"><a href="#/findings/${c.finding.id}">${esc(c.finding.statement)}</a>
+      <div class="meta">${status(c.finding.status)} shared words: ${esc(c.shared_words.join(", "))}</div>
+      <div class="meta" style="color:var(${c.likely_conflict ? "--bad" : "--muted"})">${c.signals.length ? "Signals: " + esc(c.signals.join("; ")) : "No contradiction signals. May be related or a duplicate."}</div>
+      ${fromId ? `<div class="tools"><button data-act="confirm" data-id="${fromId}" data-other="${c.finding.id}">Confirm real conflict</button></div>` : ""}</div></div>`).join("");
+}
+
+async function proposeDialog(studyId) {
+  const studies = (await get("studies")).filter((s) => !["requested", "closed"].includes(s.status));
+  openDialog(`<h2>New finding</h2>
+    <label>What did you find?</label><textarea name="statement" required></textarea>
+    <label>Tier</label><select name="tier">${Object.entries(S.config.tiers).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join("")}</select>
+    <p class="muted">A data point is a fact with no interpretation. A hypothesis is a read on what it might mean. An insight is safe to decide on.</p>
+    <label>Study (optional)</label><select name="study"><option value="">None</option>${studies.map((s) => `<option value="${s.id}" ${s.id === studyId ? "selected" : ""}>${esc(s.title)}</option>`).join("")}</select>
+    <label>Evidence: findings that support it</label>${pickerHtml("evidence")}
+    <div id="propose-result"></div>`,
+    async (form) => {
+      const r = await act("propose", { statement: form.statement.value, tier: form.tier.value, owner: needMe(),
+        evidence_links: picked(form, "evidence"), study_id: form.study.value ? Number(form.study.value) : null }, "Proposed.");
+      if (r.possible_conflicts.length) {
+        $("#dlg-form").innerHTML = `<h2>Proposed #${r.finding.id}</h2><div class="alert warn">It may contradict something already validated. Take a look.</div>
+          ${candidates({ candidates: r.possible_conflicts }, r.finding.id)}<div class="foot"><button type="button" onclick="document.getElementById('dlg').close()">Done</button></div>`;
+        return true;
+      }
+      location.hash = `#/findings/${r.finding.id}`;
+    }, { submit: "Propose" });
+}
+
+// -- routing and events --------------------------------------------------------
+
+const ROUTES = [
+  [/^#\/home$/, "home", "home"], [/^#\/studies$/, "studies", "studies"], [/^#\/studies\/(\d+)$/, "study", "studies"],
+  [/^#\/findings(\?.*)?$/, "findings", "findings"], [/^#\/findings\/(\d+)$/, "finding", "findings"],
+  [/^#\/explore(\?.*)?$/, "explore", "explore"], [/^#\/validate$/, "validate", "validate"],
+  [/^#\/decisions$/, "decisions", "decisions"], [/^#\/decisions\/(\d+)$/, "decision", "decisions"],
+  [/^#\/people\/(.+)$/, "person", null],
+];
+
+function renderNav(active) {
+  const waiting = S.queue ? S.queue.waiting_on_me.length + S.queue.feedback_on_mine.length : 0;
+  $("#nav").innerHTML = S.config.modes.map((m) => `<a href="#/${m}" class="${m === active ? "on" : ""}">${NAV[m]}${m === "validate" && waiting ? `<span class="count">${waiting}</span>` : ""}</a>`).join("");
+}
+
+async function refreshQueue() {
+  if (!S.me) return;
+  try { S.queue = await get(`queue?who=${enc(S.me.name)}`); } catch (e) {}
+}
+
+async function route() {
+  const match = ROUTES.map(([re, view, nav]) => [location.hash.match(re), view, nav]).find(([m]) => m);
+  if (!match) { location.hash = "#/home"; return; }
+  const [m, view, nav] = match;
+  renderNav(nav);
+  try {
+    const arg = m[1] && !m[1].startsWith("?") ? decodeURIComponent(m[1]) : undefined;
+    $("#main").innerHTML = await views[view](arg);
+  } catch (e) {
+    $("#main").innerHTML = S.me ? `<div class="alert bad">${esc(e.message)}</div>` : `<div class="hint"><b>Welcome to ANCHOR.</b>Choose who you are to get started.</div>`;
+  }
+}
 
 document.addEventListener("click", async (ev) => {
-  const b = ev.target.closest("button[data-act]"); if (!b) return;
-  const id = Number(b.dataset.id);
-  const act = b.dataset.act;
-  if (act === "conflicts") {
-    const r = await api("/api/check_conflict", { finding_id: id });
-    $("extra-" + id).innerHTML = candidatesHtml(r, id);
-    return;
-  }
-  if (act === "history") {
-    const h = await api(`/api/findings/${id}/history`);
-    $("extra-" + id).innerHTML = `<ul>${h.map(e => `<li><span class="muted">${when(e.at)}</span> ${esc(e.actor)} ${esc(e.kind)} <span class="muted">${esc(JSON.stringify(e.detail))}</span></li>`).join("")}</ul>`;
-    return;
-  }
-  const who = me(); if (!who) return;
-  if (act === "validate") await api("/api/validate", { finding_id: id, validated_by: who });
-  if (act === "checkout") await api("/api/checkout", { finding_id: id, who });
-  if (act === "release") await api("/api/release", { finding_id: id, who });
-  if (act === "confirm") {
-    const note = prompt("Why do these conflict? (optional)") ?? "";
-    await api("/api/confirm_conflict", { finding_id: id, conflicting_id: Number(b.dataset.other), confirmed_by: who, note });
-    b.closest(".card").remove();
-  }
-  refresh();
+  const b = ev.target.closest("[data-act]");
+  if (!b || b.tagName === "SELECT") return;
+  ev.preventDefault();
+  try { await actions[b.dataset.act](b); } catch (e) { toast(e.message, "bad"); }
 });
+document.addEventListener("change", async (ev) => {
+  const s = ev.target.closest("select[data-act=role]");
+  if (!s) return;
+  try { await act("set_role", { name: s.dataset.name, role: s.value, by: needMe() }, "Role updated. Everyone can see this change in the activity feed.");
+    if (S.me && S.me.name === s.dataset.name) S.me = await post("whoami", { name: S.me.name }); renderMe(); } catch (e) { toast(e.message, "bad"); }
+});
+document.addEventListener("submit", async (ev) => {
+  const form = ev.target.closest("form[data-form]");
+  if (!form) return;
+  ev.preventDefault();
+  const kind = form.dataset.form;
+  if (kind === "findings-search") location.hash = "#/findings?" + new URLSearchParams(new FormData(form));
+  if (kind === "explore-search") location.hash = "#/explore?" + new URLSearchParams(new FormData(form));
+  if (kind === "claim") $("#claim-result").innerHTML = candidates(await post("check_conflict", { statement: form.statement.value }), null);
+  if (kind === "home-search") {
+    const q = form.q.value.trim();
+    const found = (await get(`findings?q=${enc(q)}&limit=20`)).filter((f) => f.status === "validated" || f.tier === "insight");
+    $("#home-results").innerHTML = list(found, (f) => item(f), `Nothing trusted matches yet. <button class="link" data-act="ask" data-query="${esc(q)}">Ask for research</button>`);
+  }
+});
+window.addEventListener("hashchange", route);
 
-for (const id of ["f-q", "f-tier", "f-status"]) $(id).addEventListener("input", refresh);
-refresh();
-// Pick up changes made through MCP, unless a history or conflict panel is open.
-setInterval(() => { if (!document.querySelector('[id^="extra-"]:not(:empty)')) refresh(); }, 10000);
+// Pick up changes made elsewhere (another person, or an AI tool over MCP)
+// unless someone is typing or has a dialog open.
+setInterval(async () => {
+  const busy = $("#dlg").open || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName) || $("#history li:nth-child(2)") || $("#conflict-check:not(:empty)");
+  if (busy || !S.me) return;
+  await loadPeople(); await refreshQueue(); route();
+}, 15000);
+
+(async function start() {
+  S.config = await get("config");
+  await loadPeople();
+  let saved = null;
+  try { saved = localStorage.getItem("anchor-me"); } catch (e) {}
+  if (saved) { try { S.me = await post("whoami", { name: saved }); } catch (e) {} }
+  renderMe();
+  await refreshQueue();
+  if (!location.hash) location.hash = "#/home";
+  await route();
+  if (!S.me) chooseWho(true);
+})();
 </script>
 </body>
 </html>

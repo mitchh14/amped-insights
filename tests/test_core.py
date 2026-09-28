@@ -3,11 +3,6 @@ import pytest
 from anchor.core import CoreError, Store
 
 
-@pytest.fixture
-def store(tmp_path):
-    return Store(str(tmp_path / "test.db"))
-
-
 def test_propose_starts_as_proposed(store):
     f = store.propose("Mobile checkout conversion is 42 percent", "data_point", "ana")["finding"]
     assert f["status"] == "proposed"
@@ -127,7 +122,7 @@ def test_activity_feed(store):
     fid = store.propose("x is 1", "data_point", "ana")["finding"]["id"]
     store.validate(fid, "sam")
     store.checkout(fid, "sam")
-    kinds = [e["kind"] for e in store.activity()]
+    kinds = [e["kind"] for e in store.activity() if e["finding_id"]]
     assert kinds == ["checked_out", "status_changed", "validated", "proposed"]
 
 

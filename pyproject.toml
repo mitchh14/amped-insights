@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "ANCHOR (Amped Network for Credible Hypotheses, Observations, and Research): a shared, checkable layer of research findings"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-dependencies = ["mcp>=1.2"]
+dependencies = ["mcp>=1.2", "tomli>=2; python_version < \"3.11\""]
 
 [project.optional-dependencies]
 dev = ["pytest"]

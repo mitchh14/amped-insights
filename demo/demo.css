@@ -1,2 +1,3 @@
-.demo-banner { border: 1px solid #93c5fd; background: #eff6ff; padding: 10px 12px; margin: 0 0 16px; font-size: 14px; }
-.demo-banner .demo-tips { color: #444; margin-top: 4px; }
+.demo-banner { border-bottom: 1px solid var(--line); background: var(--accent-soft); padding: 10px 20px; font-size: 14px; }
+.demo-banner .demo-tips { color: var(--muted); margin-top: 4px; }
+.demo-banner .row { margin-top: 6px; }

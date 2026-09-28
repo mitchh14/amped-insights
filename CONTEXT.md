@@ -59,7 +59,7 @@ Three layers, one core:
 2. MCP server: a thin wrapper exposing the core layer's functions as tools. This is the primary way researchers, PMs, and enterprise AI agents interact with the system, directly inside whatever AI tool they already use (Claude, ChatGPT, an internal agent).
 3. Web app: a lightweight client on the same core functions, not a separate data path. Used for a live status view (what is checked out, what is in the validation queue, what got contested), for manual actions without opening an AI chat, and as the place an org connects its own AI tools or manages permissions.
 
-Roles and trusted reviewers are set up by the team that implements ANCHOR (a config file first, the web app later). The web app and the MCP server always write through the same core functions, so there is never a second, competing version of the truth.
+Roles and trusted reviewers are set up by the team that implements ANCHOR in `anchor.toml` (see [docs/SETUP.md](docs/SETUP.md)), and roles can also be changed from the web app, with every change logged. The web app and the MCP server always write through the same core functions, so there is never a second, competing version of the truth.
 
 ## Scope decision for v1
 

@@ -7,11 +7,6 @@ from anchor.core import Store
 from anchor.seed import seed
 
 
-@pytest.fixture
-def store(tmp_path):
-    return Store(str(tmp_path / "test.db"))
-
-
 def test_propose_then_query(store):
     status, r = handle(store, "POST", "/api/propose",
                        {"statement": "Conversion is 42 percent", "tier": "data_point", "owner": "ana"})
@@ -46,3 +41,5 @@ def test_seed_has_every_tier_and_a_contested_pair(store):
     findings = store.query("", limit=500)
     assert {f["tier"] for f in findings} == {"data_point", "hypothesis", "insight"}
     assert sum(f["status"] == "contested" for f in findings) == 2
+    assert store.list_studies(status="requested") and store.list_decisions()
+    assert {p["role"] for p in store.people()} >= {"researcher", "trusted_reviewer", "contributor", "stakeholder"}

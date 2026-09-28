@@ -54,16 +54,16 @@ flowchart LR
     U -. "nothing trusted yet?<br/>ask for research" .-> Q
 ```
 
-| Mode | Main user | Today | Planned |
+| Mode | Main user | Today | Next |
 |---|---|---|---|
-| 0. Set up | Research lead or team | README only | [#5](https://github.com/mitchh14/amped-insights/issues/5) |
-| 1. Plan and run research | Researcher, people who do research | Missing | [#6](https://github.com/mitchh14/amped-insights/issues/6) |
-| 2. Analyze and synthesize | Researcher, people who do research | `propose` with evidence links | [#7](https://github.com/mitchh14/amped-insights/issues/7) |
-| 3. Generate insights | Everyone, on purpose | Tier set when proposed | [#8](https://github.com/mitchh14/amped-insights/issues/8) |
-| 4. Explore connections | Everyone | `check_conflict` by shared words | [#9](https://github.com/mitchh14/amped-insights/issues/9) |
-| 5. Validate | Everyone can; researchers and trusted reviewers weigh most | Checkout and validate, no requests | [#10](https://github.com/mitchh14/amped-insights/issues/10) |
-| 6. Decide and use | Stakeholder | Missing | [#11](https://github.com/mitchh14/amped-insights/issues/11) |
-| Loop back | All | Missing | [#23](https://github.com/mitchh14/amped-insights/issues/23) |
+| 0. Set up | Research lead or team | `anchor.toml`, identity and roles, [SETUP.md](SETUP.md) | Guided first run [#38](https://github.com/mitchh14/amped-insights/issues/38) |
+| 1. Plan and run research | Researcher, people who do research | Studies with objective, decision, method, sample, team fields | [#6](https://github.com/mitchh14/amped-insights/issues/6) |
+| 2. Analyze and synthesize | Researcher, people who do research | `propose` into a study with evidence links | Evidence quality [#27](https://github.com/mitchh14/amped-insights/issues/27) |
+| 3. Generate insights | Everyone, on purpose | `promote` to a new linked finding, with an optional team rule | [#8](https://github.com/mitchh14/amped-insights/issues/8) |
+| 4. Explore connections | Everyone | Typed links, conflict check, Explore view | Explore view [#30](https://github.com/mitchh14/amped-insights/issues/30) |
+| 5. Validate | Everyone can; researchers and trusted reviewers weigh most | Review requests, outcomes, how I checked, trust by role, revise | Conflict resolution [#31](https://github.com/mitchh14/amped-insights/issues/31) |
+| 6. Decide and use | Stakeholder | Decision log with chain credit and at risk flags | Impact dashboard [#44](https://github.com/mitchh14/amped-insights/issues/44) |
+| Loop back | All | Research requests land as draft studies | |
 
 ## 2. Who does what, and where
 
@@ -133,14 +133,14 @@ stateDiagram-v2
     end note
 ```
 
-A hypothesis can also be promoted to an insight at any point by anyone ([#18](https://github.com/mitchh14/amped-insights/issues/18)). The trust shown on a finding comes from who validated it and in what role, for example "2 researcher, 1 peer" ([#21](https://github.com/mitchh14/amped-insights/issues/21)).
+Anyone can promote a data point to a hypothesis, or a hypothesis to an insight. Promotion creates a new finding linked back to the original, which stays as it was, so the chain from evidence to insight stays readable. A team can set a "ready to promote" rule in `anchor.toml`. Reviews can approve, ask for changes, or disagree, and when changes are asked for, the owner revises into a new, linked version. The trust shown on a finding comes from who validated it, in what role, and how they checked, for example "Validated by 2 researcher, 1 peer. How they checked: checked the source data (2)."
 
 | State | Today | Planned |
 |---|---|---|
 | Proposed, Validated, Contested | Yes | |
-| Validation requested | No | [#20](https://github.com/mitchh14/amped-insights/issues/20) |
-| Resolved and Superseded | No | [#31](https://github.com/mitchh14/amped-insights/issues/31) |
-| Used in decision | No | [#22](https://github.com/mitchh14/amped-insights/issues/22) |
+| Validation requested | Yes, shown as open review requests on the finding | |
+| Resolved and Superseded | Not yet. Revising creates a newer, linked version | [#31](https://github.com/mitchh14/amped-insights/issues/31) |
+| Used in decision | Yes, and the decision owner sees if it is later contested | |
 
 ## 4. Setting it up: a framework powered by your team
 
@@ -184,7 +184,8 @@ flowchart LR
 |---|---|---|
 | People, roles, trusted reviewers | `anchor.toml` | [#14](https://github.com/mitchh14/amped-insights/issues/14), [#15](https://github.com/mitchh14/amped-insights/issues/15) |
 | Tier names, study template, which steps to show | `anchor.toml` | [#15](https://github.com/mitchh14/amped-insights/issues/15) |
-| How to install and connect AI tools | `docs/SETUP.md` | [#16](https://github.com/mitchh14/amped-insights/issues/16) |
+| Promotion rules, and whether they are a signal or required | `anchor.toml` | [#18](https://github.com/mitchh14/amped-insights/issues/18) |
+| How to install and connect AI tools | [`docs/SETUP.md`](SETUP.md) | [#16](https://github.com/mitchh14/amped-insights/issues/16) |
 | Guided first run in the app | Web app | [#38](https://github.com/mitchh14/amped-insights/issues/38) |
 | Optional validation levels | `anchor.toml`, off by default | [#37](https://github.com/mitchh14/amped-insights/issues/37) |
 | Optional access controls and SSO | Admin, off by default | [#39](https://github.com/mitchh14/amped-insights/issues/39) |
