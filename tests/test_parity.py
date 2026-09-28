@@ -70,3 +70,17 @@ def test_identity_is_set_once_per_session(server):
 def test_query_suggests_asking_for_research(server):
     out = _call(server, "query", topic="why do people churn after trial")
     assert "request_research" in out["hint"]
+
+
+def test_every_work_mode_has_a_guided_prompt(server):
+    prompts = {p.name: p for p in asyncio.run(server.mcp.list_prompts())}
+    by_mode = {
+        "set up": "get_started", "plan": "plan_study", "analyze": "synthesize_notes",
+        "insights": "shape_insight", "explore": "check_before_claim",
+        "validate": "review_my_queue", "decide": "find_insights_for_decision",
+    }
+    assert set(by_mode.values()) | {"request_review", "log_decision"} <= set(prompts)
+    assert all(p.title and p.description for p in prompts.values())
+    text = asyncio.run(server.mcp.get_prompt("check_before_claim", {"claim": "Users hate forms"}))
+    body = text.messages[0].content.text
+    assert "Users hate forms" in body and "Never present a proposed or contested finding as settled" in body

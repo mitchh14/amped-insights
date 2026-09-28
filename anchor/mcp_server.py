@@ -28,7 +28,9 @@ mcp = _Server(
         "A shared layer of research findings at three tiers (data_point, hypothesis, "
         "insight) and three statuses (proposed, validated, contested). Query before "
         "generating new claims. Propose findings with evidence links where possible. "
-        "Never treat a proposed or contested finding as settled. "
+        "Never treat a proposed or contested finding as settled. When you mention a "
+        "finding, give its trust summary. Never validate on a person's behalf unless they "
+        "tell you their review. "
         "At the start of a session, call whoami; if no one is set, ask the person "
         "their name and call set_identity so their actions are recorded as them."
     ),
@@ -395,6 +397,144 @@ def team_config() -> dict[str, Any]:
     tier labels, the study template, promotion rules, and which work modes are on.
     Use these labels when talking to people."""
     return store.team_config()
+
+
+# ---------------------------------------------------------------------------
+# Guided prompts: one or more per work mode, so people can pick a task in
+# their AI tool's prompt picker instead of knowing which tools to call.
+# ---------------------------------------------------------------------------
+
+GROUND_RULES = """Ground rules for working with ANCHOR:
+- Start with whoami. If no one is set, ask the person their name and call set_identity.
+- Query before you claim anything. Say what ANCHOR already knows, and cite finding ids.
+- For every finding you mention, give its tier, its status, and its trust summary in plain words.
+- Never present a proposed or contested finding as settled. Say it is proposed or contested.
+- Surface conflicts. If a finding is contested, show both sides.
+- You draft; the person decides. Never validate on your own, and confirm with the person before proposing, promoting, or logging anything.
+- If you helped write a finding, say so in the statement's owner or note so the AI help is visible."""
+
+
+def _prompt(task: str, steps: str) -> str:
+    return f"{task}\n\n{steps}\n\n{GROUND_RULES}"
+
+
+@mcp.prompt(name="get_started", title="Get started with ANCHOR")
+def prompt_get_started() -> str:
+    """Set who you are and see what is waiting on you."""
+    return _prompt(
+        "Help me get started with ANCHOR, my team's shared layer of research findings.",
+        "1. Call whoami, and set_identity if needed.\n"
+        "2. Call team_config and explain, briefly, the tiers and roles in my team's words.\n"
+        "3. Call my_queue and tell me what is waiting on me, then suggest one next step.",
+    )
+
+
+@mcp.prompt(name="plan_study", title="Plan a study")
+def prompt_plan_study(question: str, decision: str = "") -> str:
+    """Mode 1: plan a study tied to a decision, after checking what is already known."""
+    return _prompt(
+        f"Help me plan a study to answer: {question}"
+        + (f"\nThe decision it serves: {decision}" if decision else ""),
+        "1. query the question first. If validated findings already answer it, say so plainly: "
+        "the best outcome may be no new study at all.\n"
+        "2. Check list_studies(status='requested') for a matching request I could pick up instead.\n"
+        "3. If a study is still needed, draft its objective, the decision it serves, method, sample, "
+        "and any team template fields from team_config. Ask me about anything unclear.\n"
+        "4. Once I agree, call start_study (or update_study to pick up a request).",
+    )
+
+
+@mcp.prompt(name="synthesize_notes", title="Synthesize my notes")
+def prompt_synthesize_notes(notes: str, study_id: str = "") -> str:
+    """Mode 2: turn raw notes into data points and hypotheses with evidence links."""
+    return _prompt(
+        "Help me turn these notes into findings:\n\n" + notes,
+        "1. Separate facts (data points, with no interpretation) from reads on what they mean (hypotheses).\n"
+        "2. For each, query for existing findings that already say it, support it, or conflict with it.\n"
+        "3. Show me the draft list: statement, tier, evidence links, and any duplicates or conflicts found.\n"
+        "4. Only after I approve each one, propose it"
+        + (f" with study_id={study_id}" if study_id else "")
+        + ", data points first so hypotheses can link to them as evidence.",
+    )
+
+
+@mcp.prompt(name="shape_insight", title="Shape an insight")
+def prompt_shape_insight(topic: str) -> str:
+    """Mode 3: find hypotheses that are ready to become insights, and promote with care."""
+    return _prompt(
+        f"Help me find what is ready to become an insight about: {topic}",
+        "1. query the topic for hypotheses. For each, get it and show its trust summary, evidence, "
+        "conflicts, and its promotion readiness under the team's rule.\n"
+        "2. Tell me which look ready and which do not, and why. Point out gaps honestly.\n"
+        "3. If I choose one, help me word the insight for what the evidence actually supports, "
+        "then call promote with that statement and a short note.",
+    )
+
+
+@mcp.prompt(name="check_before_claim", title="Check before I claim")
+def prompt_check_before_claim(claim: str) -> str:
+    """Mode 4: check a claim against what is known before sharing it."""
+    return _prompt(
+        f"Before I share this, check it against what we know: {claim}",
+        "1. query the claim and call check_conflict with it as the statement.\n"
+        "2. Tell me what supports it, what contradicts it, and what is only proposed or contested.\n"
+        "3. Give me a one line verdict: well supported, partly supported, contradicted, or unknown.\n"
+        "4. If nothing validated exists, offer request_research. If I want to record the claim, "
+        "offer to propose it with evidence links.",
+    )
+
+
+@mcp.prompt(name="request_review", title="Request validation")
+def prompt_request_review(finding_id: str) -> str:
+    """Mode 5: ask the right people to review a finding."""
+    return _prompt(
+        f"Help me get finding {finding_id} reviewed.",
+        "1. get the finding and summarize its trust so far.\n"
+        "2. Suggest who to ask, using people and team_config: trusted roles weigh most, and a "
+        "domain expert may be a trusted reviewer outside research.\n"
+        "3. After I choose, call request_validation with the people or roles and a short note.",
+    )
+
+
+@mcp.prompt(name="review_my_queue", title="Review my queue")
+def prompt_review_my_queue() -> str:
+    """Mode 5: work through reviews waiting on you and feedback on your findings."""
+    return _prompt(
+        "Walk me through my review queue in ANCHOR.",
+        "1. Call my_queue.\n"
+        "2. For each finding waiting on me, show its statement, evidence, study context, and "
+        "current trust. Ask me: approve, request changes, or disagree, how I checked, and a note. "
+        "Record exactly what I say with validate. Do not decide for me.\n"
+        "3. For feedback on my findings, show each concern and offer to revise.\n"
+        "4. Mention any decisions at risk because something they used is now contested.",
+    )
+
+
+@mcp.prompt(name="find_insights_for_decision", title="Find insights for a decision")
+def prompt_find_insights(decision: str) -> str:
+    """Mode 6: find what the team knows that bears on a decision."""
+    return _prompt(
+        f"I need to decide: {decision}\nWhat do we already know that bears on this?",
+        "1. query the decision's key topics. Lead with validated insights, then validated "
+        "hypotheses and data points. Clearly separate anything proposed or contested.\n"
+        "2. For each, give its trust summary and the study it came from, if any.\n"
+        "3. Say plainly where the evidence is thin. If nothing trusted exists, offer "
+        "request_research with the decision filled in.\n"
+        "4. When I decide, offer to log_decision with the findings I used.",
+    )
+
+
+@mcp.prompt(name="log_decision", title="Log a decision")
+def prompt_log_decision(decision: str) -> str:
+    """Mode 6: record a decision and the findings it used, in one step."""
+    return _prompt(
+        f"Log this decision in ANCHOR: {decision}",
+        "1. Ask which findings I used, or query to help me find them.\n"
+        "2. Show their current status and trust, and warn me about anything not validated.\n"
+        "3. Call log_decision with a clear title, the finding ids, and my note.\n"
+        "4. Show who gets credit in the chain. Ask if there is an outcome to add later, or a new "
+        "question to raise with request_research(from_decision_id=...).",
+    )
 
 
 def main() -> None:
