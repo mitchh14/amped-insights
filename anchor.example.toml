@@ -3,53 +3,58 @@
 # Copy this file to anchor.toml (or point ANCHOR_CONFIG at it) and change it to
 # fit how your team works. Every section is optional. Anything you leave out
 # uses the open default, so a team can start with an empty file and add
-# structure only where it helps.
+# structure only where it helps. The words used here are defined in
+# docs/GLOSSARY.md.
 #
 # Changes take effect the next time the web app or MCP server starts.
 #
-# Note for TOML: plain settings like the two below must come before the first
+# Note for TOML: plain settings like the ones below must come before the first
 # [section] header.
 
 # Role given to a name the first time it shows up. Anyone not listed under
 # [people] gets this role until someone changes it.
-default_role = "contributor"
+default_role = "pwdr"
+
+# SMEs: people whose reviews show as "Checked by an SME". Anyone can be an
+# SME, whatever their role: a researcher, a data science lead, a PM who knows
+# the area best. Everyone else's reviews show as "Checked by peers".
+# This list is the source of truth for the people it names.
+smes = []
+# smes = ["Sam", "Dana"]
+
+# Days after a decision before the app asks what happened.
+outcome_after_days = 28
+
+# Moments of joy people see: when their work is used in a decision ("used"),
+# someone builds on it ("built_on"), an SME approves it or an insight is
+# checked ("checked"), and milestones ("milestone"). Leave the list empty to
+# turn them off. Moments never compare people.
+moments = ["used", "built_on", "checked", "milestone"]
 
 # Which work modes the app shows in its navigation. Leave out any your team
 # does not use yet. Everything still works over MCP.
-modes = ["home", "studies", "findings", "explore", "validate", "decisions"]
+modes = ["home", "studies", "learnings", "review", "decisions"]
 
 
 # ---------------------------------------------------------------------------
 # Roles
 #
-# Roles inform, they never block. Each validation shows the validator's role,
-# and each finding shows a summary like "2 researcher, 1 peer".
-#
-# trusted = true means validations from this role count as trusted. Everyone
-# else's count as peer. Rename labels freely. You can add your own roles too,
-# for example a data science lead whose checks you want to weigh like a
-# researcher's.
+# A role says what someone mainly does. It shapes their home page and never
+# changes how much their review counts (that is what smes is for). Rename
+# labels freely, and add your own roles.
 # ---------------------------------------------------------------------------
 
 [roles.researcher]
 label = "Researcher"
-trusted = true
 
-[roles.trusted_reviewer]
-label = "Trusted reviewer"
-trusted = true
-
-[roles.contributor]
-label = "People who do research"
-trusted = false
+[roles.pwdr]
+label = "PwDR"
 
 [roles.stakeholder]
 label = "Stakeholder"
-trusted = false
 
 # [roles.data_science]
 # label = "Data science"
-# trusted = true
 
 # ---------------------------------------------------------------------------
 # People
@@ -57,54 +62,54 @@ trusted = false
 # Name = role. This file is the source of truth for everyone listed here: their
 # role is reset to this value each time ANCHOR starts. People who are not
 # listed can still join. They get the default role on first use.
-#
-# Trusted reviewers can sit outside the research team, for example a domain
-# expert in finance or a data science lead.
 # ---------------------------------------------------------------------------
 
 [people]
 # "Sam" = "researcher"
 # "Lee" = "researcher"
-# "Dana" = "trusted_reviewer"
-# "Jordan" = "contributor"
+# "Dana" = "pwdr"
+# "Jordan" = "pwdr"
 # "Morgan" = "stakeholder"
 
 
 # ---------------------------------------------------------------------------
-# Tier labels
+# Level labels
 #
-# What your team calls each tier. The meaning stays the same: a data point is
-# a fact with no interpretation, a hypothesis is a read on what it might mean,
-# and an insight is safe to build decisions on.
+# What your team calls each level. The meaning stays the same: an observation
+# is what we saw, a finding is what we think it means (not yet an insight), and
+# an insight is what it means for us and what to do about it.
 # ---------------------------------------------------------------------------
 
-[tiers]
-data_point = "Data point"
-hypothesis = "Hypothesis"
+[levels]
+observation = "Observation"
+finding = "Finding"
 insight = "Insight"
 
 
 # ---------------------------------------------------------------------------
 # How I checked
 #
-# When someone validates, they can say how they checked. These are the
-# choices they see. Rename them to match your team's language.
+# When someone reviews, they can say how they checked. These are the choices
+# they see. Rename them to match your team's language.
 # ---------------------------------------------------------------------------
 
 [checks]
-evidence = "Reviewed the evidence"
+evidence = "Read the evidence"
 source_data = "Checked the source data"
-reproduced = "Reproduced it"
-judgment = "Domain judgment"
+reran = "Reran it"
+judgment = "Expert judgment"
 
 
 # ---------------------------------------------------------------------------
 # Study template
 #
-# Every study captures its objective, the decision it serves, method, and
-# sample. Add the fields your team also needs. required = true shows a warning
-# when the field is empty. It never blocks, so people can start a study and
-# fill in details later.
+# A study starts with its question and the decision it serves. Method and who
+# took part are asked for when it is marked running, and "what we learned"
+# when it is finished. Add the fields your team also needs.
+#
+# ask_at is the stage the app asks for the field: start, running (the
+# default), or finished. required = true shows a warning at that stage when
+# the field is empty. It never blocks.
 #
 # Tip: if your team already has an intake form or tracker, add a field for
 # its link so every study points back to it.
@@ -114,6 +119,7 @@ judgment = "Domain judgment"
 # key = "intake_link"
 # label = "Intake ticket"
 # help = "Link to the request in your team's tracker"
+# ask_at = "start"
 
 # [[study.fields]]
 # key = "participants"
@@ -124,25 +130,23 @@ judgment = "Domain judgment"
 # key = "deadline"
 # label = "Decision date"
 # help = "When the decision this study serves will be made"
+# ask_at = "start"
 
 
 # ---------------------------------------------------------------------------
 # Promotion
 #
-# Anyone can promote a data point to a hypothesis, or a hypothesis to an
-# insight. Promotion creates a new, linked finding, so the original stays as
-# it was.
+# Anyone can promote an observation to a finding, or a finding to an insight.
+# Promotion adds a new, linked learning, so the original stays as it was.
 #
-# Set rules below to show when a finding is "ready to promote". A finding is
-# ready when any rule is met. With no rules, every finding is ready.
+# Set rules below to show when a learning is "ready to promote". A learning is
+# ready when any rule is met. With no rules, the app does not mention it.
 #
 # enforce = "signal" shows readiness but lets anyone promote at any time.
 # enforce = "required" stops promotion until a rule is met.
 # ---------------------------------------------------------------------------
 
 [promote]
-# min_validations = 2           # this many approvals from anyone
-# min_trusted_validations = 1   # or this many from trusted roles
-# trusted_roles_ready = true    # or the person promoting has a trusted role
+# min_approvals = 2       # this many approvals from anyone
+# min_sme_approvals = 1   # or this many from SMEs
 enforce = "signal"
-

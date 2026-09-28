@@ -1,50 +1,52 @@
 from anchor.api import handle
 
 
-def test_trust_summary_by_role_and_how_checked(make_store):
-    store = make_store({"people": {"Sam": "researcher", "Lee": "researcher", "Dana": "trusted_reviewer"}})
-    fid = store.propose("Long address forms drive mobile abandonment", "hypothesis", "Jo")["finding"]["id"]
-    assert store.get(fid)["trust"]["summary"] == "Not validated yet."
+def test_one_trust_state_and_a_plain_summary(make_store):
+    store = make_store({"smes": ["Sam", "Dana"]})
+    lid = store.add("Long address forms drive mobile abandonment", "finding", "Jo")["learning"]["id"]
+    assert store.get(lid)["trust"]["summary"] == "Not reviewed yet."
 
-    store.validate(fid, "Kim", "Looks right to me")
-    store.validate(fid, "Sam", basis="source_data")
-    store.validate(fid, "Lee", basis="reproduced")
-    store.validate(fid, "Dana", "Scope it to mobile web", outcome="changes_requested")
-    f = store.get(fid)
-    assert f["trust"]["by_role"] == {"peer": 1, "researcher": 2}
-    assert (f["trust"]["trusted"], f["trust"]["peer"], f["trust"]["changes_requested"]) == (2, 1, 1)
+    store.review(lid, "Kim", note="Looks right to me")
+    assert store.get(lid)["trust"]["state"] == "checked_by_peers"
+    store.review(lid, "Sam", how="source_data")
+    store.review(lid, "Lee", how="reran")
+    assert store.get(lid)["trust"]["state"] == "checked_by_sme"
+    store.review(lid, "Dana", "changes", note="Scope it to mobile web")
+    f = store.get(lid)
+    assert (f["trust"]["state"], f["chip"]["label"]) == ("needs_changes", "Needs changes")
+    assert (f["trust"]["sme"], f["trust"]["peer"], f["trust"]["changes"]) == (1, 2, 1)
     assert f["trust"]["summary"] == (
-        "Validated by 2 researcher, 1 peer. "
-        "How they checked: checked the source data (1), reproduced it (1). "
+        "Checked by 1 SME and 2 peers. "
+        "How they checked: checked the source data (1), reran it (1). "
         "1 asks for changes."
     )
-    # Trusted reviews are listed first, each with its role.
-    assert [(v["validated_by"], v["role_label"]) for v in f["validations"]] == [
-        ("Sam", "Researcher"), ("Lee", "Researcher"), ("Dana", "Trusted reviewer"),
-        ("Kim", "People who do research"),
-    ]
+    # SME reviews are listed first, each with its role.
+    assert [(v["by"], v["sme"]) for v in f["reviews"]] == [
+        ("Sam", True), ("Dana", True), ("Kim", False), ("Lee", False)]
+    store.review(lid, "Lee", "disagree", note="Our A/B test says otherwise")
+    assert store.get(lid)["chip"]["label"] == "Contested"
 
 
-def test_role_is_recorded_as_it_was_at_review_time(make_store):
-    store = make_store()
-    fid = store.propose("x is 1", "data_point", "Jo")["finding"]["id"]
-    store.validate(fid, "Sam")
-    store.set_role("Sam", "researcher", by="Lee")
-    v = store.get(fid)["validations"][0]
-    assert v["role"] == "contributor" and v["trusted"] is False
-    assert store.get(fid)["trust"]["summary"] == "Validated by 1 peer."
+def test_sme_standing_is_kept_as_it_was_at_review_time(store):
+    lid = store.add("x is 1", "observation", "Jo")["learning"]["id"]
+    store.review(lid, "Sam")
+    store.set_person("Sam", "Lee", sme=True)
+    assert store.get(lid)["reviews"][0]["sme"] is False
+    assert store.get(lid)["trust"]["summary"] == "Checked by 1 peer."
 
 
-def test_custom_trusted_role_counts_as_trusted(make_store):
-    store = make_store({"roles": {"data_science": {"label": "Data science", "trusted": True}},
-                        "people": {"Ren": "data_science"}})
-    fid = store.propose("Conversion is 42 percent", "data_point", "Jo")["finding"]["id"]
-    store.validate(fid, "Ren", basis="source_data")
-    assert store.get(fid)["trust"]["summary"].startswith("Validated by 1 data science.")
+def test_the_latest_review_counts(store):
+    lid = store.add("Long forms drive abandonment", "finding", "Jo")["learning"]["id"]
+    store.review(lid, "Sam", "changes", note="Narrow it")
+    assert store.get(lid)["trust"]["state"] == "needs_changes"
+    store.review(lid, "Sam", note="Fine now")
+    f = store.get(lid)
+    assert f["trust"]["state"] == "checked_by_peers"
+    assert [(v["verdict"], v["current"]) for v in f["reviews"]] == [("approve", True), ("changes", False)]
 
 
 def test_trust_is_in_query_results(store):
-    fid = store.propose("Mobile checkout conversion is 42 percent", "data_point", "Jo")["finding"]["id"]
-    store.validate(fid, "Sam")
-    hit = handle(store, "GET", "/api/findings?q=checkout")[1][0]
-    assert hit["trust"]["summary"] == "Validated by 1 peer."
+    lid = store.add("Mobile checkout conversion is 42 percent", "observation", "Jo")["learning"]["id"]
+    store.review(lid, "Sam")
+    hit = handle(store, "GET", "/api/learnings?q=checkout")[1][0]
+    assert hit["trust"]["summary"] == "Checked by 1 peer." and hit["chip"]["key"] == "checked_by_peers"
