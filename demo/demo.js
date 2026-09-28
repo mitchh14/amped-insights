@@ -106,6 +106,7 @@ open_store()
     await ready;
     pyodide.globals.get("open_store")(true);
     await sync(false);
+    try { localStorage.removeItem("anchor-me"); } catch (e) {}
     location.hash = "";
     location.reload();
   }
@@ -116,15 +117,13 @@ open_store()
     banner.innerHTML = `
       <div><b>Demo.</b> This runs entirely in your browser. Nothing you type leaves your device.
         <span id="demo-status">Loading (the first visit takes a few seconds)...</span></div>
-      <div class="demo-tips">Try it: validate a finding, open the contested pair to see both sides,
-        or propose something that contradicts a validated finding and check for conflicts.</div>
+      <div class="demo-tips">Try it: pick a person to see their home. Be Morgan (stakeholder) to find
+        insights and see the decision they informed, or Sam (researcher) to work through reviews,
+        studies, and research requests. Switch person any time at the top.</div>
       <div class="row"><button id="demo-reset" type="button">Reset demo</button>
         <a href="https://github.com/mitchh14/amped-insights">Source on GitHub</a></div>`;
     document.body.prepend(banner);
     document.getElementById("demo-reset").onclick = reset;
-
-    const me = document.getElementById("me");
-    if (me && !me.value) me.value = "Demo visitor";
 
     const status = document.getElementById("demo-status");
     ready.then(

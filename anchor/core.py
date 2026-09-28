@@ -381,7 +381,7 @@ class Store:
 
     @staticmethod
     def _study_summary(row: sqlite3.Row) -> dict[str, Any]:
-        return {k: row[k] for k in ("id", "title", "objective", "decision", "status", "owner")}
+        return {k: row[k] for k in ("id", "title", "objective", "decision", "status", "owner", "requested_by")}
 
     def _study_warnings(self, study: dict[str, Any]) -> list[str]:
         """Gentle nudges toward a complete chain. Never blocks."""
