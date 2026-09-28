@@ -109,6 +109,14 @@ def release(finding_id: int, who: str) -> dict[str, Any]:
     return _call(store.release, finding_id, who)
 
 
+@mcp.tool()
+def team_config() -> dict[str, Any]:
+    """How this team has set up ANCHOR: role names and which roles are trusted,
+    tier labels, the study template, promotion rules, and which work modes are on.
+    Use these labels when talking to people."""
+    return store.team_config()
+
+
 def main() -> None:
     mcp.run()
 

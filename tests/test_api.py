@@ -7,11 +7,6 @@ from anchor.core import Store
 from anchor.seed import seed
 
 
-@pytest.fixture
-def store(tmp_path):
-    return Store(str(tmp_path / "test.db"))
-
-
 def test_propose_then_query(store):
     status, r = handle(store, "POST", "/api/propose",
                        {"statement": "Conversion is 42 percent", "tier": "data_point", "owner": "ana"})

@@ -15,6 +15,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
+from . import config as config_mod
+
 TIERS = ("data_point", "hypothesis", "insight")
 STATUSES = ("proposed", "validated", "contested")
 
@@ -175,8 +177,15 @@ MIN_SHARED_WORDS = 2
 
 
 class Store:
-    def __init__(self, path: str = DEFAULT_DB_PATH):
+    def __init__(self, path: str = DEFAULT_DB_PATH, config: dict | None = None):
+        """Open (or create) the database at path.
+
+        config is a full team config from config.load() or config.from_dict().
+        When left out, it is loaded from ANCHOR_CONFIG or ./anchor.toml, and
+        falls back to the open defaults.
+        """
         self.path = path
+        self.config = config if config is not None else config_mod.load()
         with self._conn() as conn:
             conn.executescript(SCHEMA)
 
@@ -295,6 +304,10 @@ class Store:
         }
 
     # -- read --------------------------------------------------------------
+
+    def team_config(self) -> dict[str, Any]:
+        """Display labels and team choices: roles, tiers, study template, modes."""
+        return config_mod.public(self.config)
 
     def get(self, finding_id: int) -> dict[str, Any]:
         with self._conn() as conn:

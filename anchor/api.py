@@ -25,6 +25,8 @@ def handle(store: Store, method: str, path: str, body: Any = None) -> tuple[int,
             q = {k: v[0] for k, v in parse_qs(url.query).items() if v and v[0]}
             if parts == ["api", "findings"]:
                 return 200, store.query(q.get("q", ""), tier=q.get("tier"), status=q.get("status"), limit=500)
+            if parts == ["api", "config"]:
+                return 200, store.team_config()
             if parts == ["api", "activity"]:
                 return 200, store.activity(int(q.get("limit", 50)))
             if len(parts) == 3 and parts[:2] == ["api", "findings"]:
