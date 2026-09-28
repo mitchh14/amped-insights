@@ -18,6 +18,8 @@ The rule: each thing gets one word, and each word means one thing. A learning is
 
 Two questions tell the levels apart. Does it read into what we saw? If not, it is an observation. Does it say why it matters to us? If so, it is an insight. Anything in between is a finding.
 
+"Level" only ever means this. How loudly the app shows something is its **importance** (do now, glance, on request, record), never its level.
+
 Anyone can add a learning at any level. Level says how far a learning goes, not how far to trust it. An insight nobody has reviewed shows **Not reviewed** next to it. See Trust.
 
 **Hypothesis** is not a level. It is what a study sets out to test, before any research happens.
@@ -114,6 +116,7 @@ One learning shows one trust state. When more than one could apply, the first ma
 | Instead of | Say |
 |---|---|
 | finding (as the umbrella), claim | learning |
+| tier, kind | level |
 | data point | observation |
 | hypothesis (as a level) | finding |
 | propose | add |
