@@ -226,6 +226,16 @@ def check_conflict(
 
 
 @mcp.tool()
+def link(from_id: int, to_id: int, type: str, note: str | None = None) -> dict[str, Any]:
+    """Say how two findings relate. type is one of:
+    supports (from_id is evidence for to_id), extends (from_id builds on to_id),
+    duplicates (they say the same thing), or contradicts (a human has confirmed
+    they conflict; both become contested). get shows every link from both sides.
+    """
+    return _call(lambda: store.link(from_id, to_id, type, _who(None), note))
+
+
+@mcp.tool()
 def checkout(finding_id: int, who: str | None = None) -> dict[str, Any]:
     """Mark a finding as being worked on by someone. Advisory only: returns a
     warning if someone else already has it, but does not block."""

@@ -23,6 +23,9 @@ STATUSES = ("proposed", "validated", "contested")
 # closed: ended without running, for example answered by existing findings.
 STUDY_STATUSES = ("requested", "planned", "running", "done", "closed")
 STUDY_TEXT_FIELDS = ("title", "objective", "decision", "method", "sample")
+# How one finding relates to another. "supports" is stored as an evidence
+# link and "contradicts" as a confirmed conflict, so each fact lives in one place.
+LINK_TYPES = ("supports", "extends", "duplicates", "contradicts")
 
 DEFAULT_DB_PATH = os.environ.get("ANCHOR_DB", "anchor.db")
 
@@ -57,6 +60,19 @@ CREATE TABLE IF NOT EXISTS conflicts (
     flagged_by      TEXT NOT NULL,
     flagged_at      TEXT NOT NULL,
     note            TEXT
+);
+
+-- Other ways two findings relate. A extends B: A builds on B.
+-- Duplicates reads the same from both sides.
+CREATE TABLE IF NOT EXISTS links (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_id  INTEGER NOT NULL REFERENCES findings(id),
+    to_id    INTEGER NOT NULL REFERENCES findings(id),
+    type     TEXT NOT NULL CHECK (type IN ('extends', 'duplicates')),
+    by       TEXT NOT NULL,
+    at       TEXT NOT NULL,
+    note     TEXT,
+    UNIQUE (from_id, to_id, type)
 );
 
 -- Why we looked, what decision it serves, and how it was studied. Findings
@@ -424,6 +440,16 @@ class Store:
             self._summary(r)
             for r in conn.execute("SELECT * FROM findings WHERE promoted_from = ? ORDER BY id", (fid,))
         ]
+        links = {"extends": [], "extended_by": [], "duplicates": []}
+        for l in conn.execute(
+            "SELECT * FROM links WHERE from_id = ? OR to_id = ? ORDER BY id", (fid, fid)
+        ):
+            outgoing = l["from_id"] == fid
+            other = self._row(conn, l["to_id"] if outgoing else l["from_id"])
+            group = l["type"] if outgoing or l["type"] == "duplicates" else "extended_by"
+            links[group].append(
+                {"finding": self._summary(other), "by": l["by"], "at": l["at"], "note": l["note"]}
+            )
         return {
             "id": fid,
             "statement": row["statement"],
@@ -436,6 +462,7 @@ class Store:
             "evidence_links": evidence_ids,
             "evidence": evidence,
             "cited_by": cited_by,
+            "links": links,
             "promoted_from": self._summary(prow) if prow else None,
             "promoted_to": promoted_to,
             "promotion": self._readiness(conn, row) if row["tier"] in NEXT_TIER else None,
@@ -896,6 +923,51 @@ class Store:
                 if row["status"] != "contested":
                     conn.execute("UPDATE findings SET status = 'contested' WHERE id = ?", (row["id"],))
         return {"findings": [self.get(finding_id), self.get(conflicting_id)]}
+
+    def link(
+        self, from_id: int, to_id: int, type: str, by: str, note: str | None = None
+    ) -> dict[str, Any]:
+        """Say how one finding relates to another.
+
+        supports: from_id is evidence for to_id (added to to_id's evidence links).
+        extends: from_id builds on to_id.
+        duplicates: the two say the same thing.
+        contradicts: a confirmed conflict; both become contested (see confirm_conflict).
+        """
+        if type not in LINK_TYPES:
+            raise CoreError(f"type must be one of {LINK_TYPES}")
+        from_id, to_id = int(from_id), int(to_id)
+        if from_id == to_id:
+            raise CoreError("a finding cannot be linked to itself")
+        if type == "contradicts":
+            return self.confirm_conflict(from_id, to_id, by, note)
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            self._row(conn, from_id)
+            target = self._row(conn, to_id)
+            if type == "supports":
+                evidence = json.loads(target["evidence_links"])
+                if from_id in evidence:
+                    raise CoreError(f"finding {from_id} already supports {to_id}")
+                conn.execute(
+                    "UPDATE findings SET evidence_links = ? WHERE id = ?",
+                    (json.dumps(sorted(evidence + [from_id])), to_id),
+                )
+            else:
+                exists = conn.execute(
+                    "SELECT 1 FROM links WHERE type = ? AND ((from_id = ? AND to_id = ?) "
+                    "OR (type = 'duplicates' AND from_id = ? AND to_id = ?))",
+                    (type, from_id, to_id, to_id, from_id),
+                ).fetchone()
+                if exists:
+                    raise CoreError(f"findings {from_id} and {to_id} are already linked as {type}")
+                conn.execute(
+                    "INSERT INTO links (from_id, to_id, type, by, at, note) VALUES (?, ?, ?, ?, ?, ?)",
+                    (from_id, to_id, type, by, _now(), _clean(note)),
+                )
+            for fid in (from_id, to_id):
+                self._log(conn, fid, "linked", by, type=type, source=from_id, target=to_id, note=_clean(note))
+        return {"findings": [self.get(from_id), self.get(to_id)]}
 
     def checkout(self, finding_id: int, who: str) -> dict[str, Any]:
         """Mark a finding as being worked on. Advisory: never refuses."""
