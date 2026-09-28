@@ -16,7 +16,7 @@ def test_outcomes_are_individual_and_latest_counts(store):
     f = store.validate(fid, "Sam", "Scope is right now")["finding"]
     assert f["status"] == "validated"
     assert [(v["validated_by"], v["outcome"], v["current"]) for v in f["validations"]] == [
-        ("Sam", "changes_requested", False), ("Lee", "disagree", True), ("Sam", "approve", True),
+        ("Lee", "disagree", True), ("Sam", "approve", True), ("Sam", "changes_requested", False),
     ]
     with pytest.raises(CoreError):
         store.validate(fid, "Sam")  # already approved

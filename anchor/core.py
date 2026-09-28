@@ -451,14 +451,21 @@ class Store:
             )
         ]
         current = {r["id"] for r in self._current_reviews(conn, fid)}
-        validations = [
-            {**dict(r), "current": r["id"] in current}
-            for r in conn.execute(
-                "SELECT id, validated_by, role, outcome, basis, validated_at, note FROM validations "
-                "WHERE finding_id = ? ORDER BY id",
-                (fid,),
-            )
-        ]
+        validations = []
+        for r in conn.execute(
+            # Reviews from before roles were recorded show the reviewer's role today.
+            "SELECT v.id, v.validated_by, COALESCE(v.role, p.role) AS role, v.outcome, v.basis, "
+            "v.validated_at, v.note FROM validations v LEFT JOIN people p ON p.name = v.validated_by "
+            "WHERE v.finding_id = ? ORDER BY v.id",
+            (fid,),
+        ):
+            v = dict(r)
+            v["role_label"] = self._role_label(v["role"])
+            v["trusted"] = self._trusted(v["role"])
+            v["current"] = v["id"] in current
+            validations.append(v)
+        # Current reviews first, trusted roles first within them, then oldest first.
+        validations.sort(key=lambda v: (not v["current"], not v["trusted"], v["id"]))
         requests = [
             dict(r)
             for r in conn.execute(
@@ -513,6 +520,7 @@ class Store:
             "promoted_from": self._summary(prow) if prow else None,
             "promoted_to": promoted_to,
             "promotion": self._readiness(conn, row) if row["tier"] in NEXT_TIER else None,
+            "trust": self._trust([v for v in validations if v["current"]]),
             "validations": validations,
             "open_requests": requests,
             "conflicts": conflicts,
@@ -853,6 +861,52 @@ class Store:
 
     def _trusted(self, role: str | None) -> bool:
         return bool(role and self.config["roles"].get(role, {}).get("trusted"))
+
+    def _role_label(self, role: str | None) -> str | None:
+        return self.config["roles"].get(role, {}).get("label", role) if role else None
+
+    def _trust(self, current: list[dict[str, Any]]) -> dict[str, Any]:
+        """How much to lean on a finding, from who reviewed it, in what role, and how.
+
+        Trusted roles are counted by role. Everyone else counts as a peer.
+        The summary is plain text so the app and AI tools say the same thing.
+        """
+        approvals = [v for v in current if v["outcome"] == "approve"]
+        by_role: dict[str, int] = {}
+        for v in approvals:
+            key = v["role"] if v["trusted"] else "peer"
+            by_role[key] = by_role.get(key, 0) + 1
+        checked: dict[str, int] = {}
+        for v in approvals:
+            if v["basis"]:
+                checked[v["basis"]] = checked.get(v["basis"], 0) + 1
+        changes = sum(v["outcome"] == "changes_requested" for v in current)
+        disagree = sum(v["outcome"] == "disagree" for v in current)
+
+        order = [r for r in self.config["roles"] if self._trusted(r)] + ["peer"]
+        who = ", ".join(
+            f"{by_role[r]} {'peer' if r == 'peer' else self._role_label(r).lower()}"
+            for r in order if by_role.get(r)
+        )
+        parts = [f"Validated by {who}." if who else "Not validated yet."]
+        if checked:
+            labels = self.config["checks"]
+            parts.append("How they checked: " + ", ".join(
+                f"{labels.get(k, k).lower()} ({n})" for k, n in checked.items()) + ".")
+        if changes:
+            parts.append(f"{changes} {'asks' if changes == 1 else 'ask'} for changes.")
+        if disagree:
+            parts.append(f"{disagree} {'disagrees' if disagree == 1 else 'disagree'}.")
+        return {
+            "approvals": len(approvals),
+            "trusted": sum(n for r, n in by_role.items() if r != "peer"),
+            "peer": by_role.get("peer", 0),
+            "by_role": by_role,
+            "checked": checked,
+            "changes_requested": changes,
+            "disagree": disagree,
+            "summary": " ".join(parts),
+        }
 
     def _readiness(self, conn, row: sqlite3.Row, promoter: str | None = None) -> dict[str, Any]:
         """Whether a finding meets the team's promotion rule. Any one rule is enough."""
