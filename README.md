@@ -8,7 +8,7 @@ An open source framework for research teams. A shared, checkable layer of resear
 
 **Setting it up for your team?** Start with [docs/SETUP.md](docs/SETUP.md).
 
-See [PRINCIPLES.md](PRINCIPLES.md) for the why, [CONTEXT.md](CONTEXT.md) for the background and architecture, and [docs/FLOW.md](docs/FLOW.md) for the full research loop, who does what, and the roadmap.
+See [PRINCIPLES.md](PRINCIPLES.md) for the why, [CONTEXT.md](CONTEXT.md) for the background and architecture, and [docs/FLOW.md](docs/FLOW.md) for the full research loop, who does what, and the roadmap. The words we use are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md).
 
 It closes the research loop end to end:
 
@@ -34,6 +34,7 @@ anchor/
   static/index.html   the web app, organized by work mode
 anchor.example.toml   every team choice, explained
 docs/SETUP.md     setup guide for a research lead
+docs/GLOSSARY.md  the words ANCHOR uses, and what each means
 scripts/seed.py   loads the sample team into a new database
 scripts/build_demo.py  builds the static browser demo
 demo/             browser demo loader (Pyodide)
