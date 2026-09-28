@@ -99,7 +99,16 @@ def query(
     validators, and any confirmed conflicts. Optional filters: tier (data_point,
     hypothesis, insight) and status (proposed, validated, contested).
     """
-    return _call(lambda: {"findings": store.query(topic, tier=tier, status=status, limit=limit)})
+    def run():
+        findings = store.query(topic, tier=tier, status=status, limit=limit)
+        out: dict[str, Any] = {"findings": findings}
+        if topic.strip() and not any(f["status"] == "validated" for f in findings):
+            out["hint"] = (
+                "Nothing validated matches this yet. Say so plainly, and offer to ask the "
+                "research team with request_research(question=..., from_query=topic)."
+            )
+        return out
+    return _call(run)
 
 
 @mcp.tool()
@@ -151,6 +160,24 @@ def start_study(
     Capture findings into it with propose(study_id=...)."""
     return _call(lambda: store.start_study(
         title, _who(None), objective, decision, method, sample, status, fields))
+
+
+@mcp.tool()
+def request_research(
+    question: str,
+    decision: str | None = None,
+    from_decision_id: int | None = None,
+    from_query: str | None = None,
+    fields: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Ask the research team a question. It lands as a study with status
+    'requested' for them to pick up. Say which decision it would inform.
+    Link where it came from: from_decision_id when a decision's outcome raised
+    it, or from_query when a search found nothing trusted. Suggest this when
+    query returns nothing validated. fields holds any intake fields from the
+    team's study template (see team_config)."""
+    return _call(lambda: store.request_research(
+        question, _who(None), decision, from_decision_id, from_query, fields))
 
 
 @mcp.tool()

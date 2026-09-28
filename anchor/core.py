@@ -583,6 +583,8 @@ class Store:
             self._full(conn, r)
             for r in conn.execute("SELECT * FROM findings WHERE study_id = ? ORDER BY id", (row["id"],))
         ]
+        drow = conn.execute("SELECT * FROM decisions WHERE id = ?", (row["from_decision_id"],)).fetchone()
+        study["from_decision"] = {k: drow[k] for k in ("id", "title", "made_by", "at")} if drow else None
         study["findings_by_tier"] = {t: [f for f in findings if f["tier"] == t] for t in TIERS}
         study["finding_count"] = len(findings)
         study["history"] = [
@@ -751,6 +753,44 @@ class Store:
             self._log(conn, None, "study_started", owner, sid, status=status)
         study = self.get_study(sid)
         return {"study": study, "warnings": self._study_warnings(study)}
+
+    def request_research(
+        self,
+        question: str,
+        requested_by: str,
+        decision: str | None = None,
+        from_decision_id: int | None = None,
+        from_query: str | None = None,
+        fields: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Ask a research question. It lands as a study with status 'requested'
+        for the research team to pick up (update_study to planned, with an owner)
+        or close.
+
+        Link it to where it came from: a decision whose outcome raised the
+        question (from_decision_id), or a search that found nothing trusted
+        (from_query). fields holds any intake fields the team added to its study
+        template, such as a link to its own tracker.
+        """
+        question = self._require_name(question, "question")
+        with self._conn() as conn:
+            requested_by = self._person(conn, requested_by, "requested_by")
+            if from_decision_id is not None:
+                drow = self._decision_row(conn, int(from_decision_id))
+                from_decision_id = drow["id"]
+                decision = _clean(decision) or drow["title"]
+            cur = conn.execute(
+                "INSERT INTO studies (title, decision, status, fields, requested_by, from_decision_id, "
+                "from_query, created_at) VALUES (?, ?, 'requested', ?, ?, ?, ?, ?)",
+                (question, _clean(decision), json.dumps(_clean_fields(fields)), requested_by,
+                 from_decision_id, _clean(from_query), _now()),
+            )
+            sid = cur.lastrowid
+            self._log(conn, None, "research_requested", requested_by, sid, from_decision_id,
+                      from_query=_clean(from_query))
+        study = self.get_study(sid)
+        warnings = [] if study["decision"] else ["say which decision this would inform, so it can be prioritized"]
+        return {"study": study, "warnings": warnings}
 
     def update_study(self, study_id: int, by: str, **changes: Any) -> dict[str, Any]:
         """Change a study's details, status, or owner. Template fields are merged.

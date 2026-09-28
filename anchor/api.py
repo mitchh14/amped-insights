@@ -15,7 +15,7 @@ from .core import CoreError, Store
 # POST /api/<action> maps straight onto a core function. No other write path.
 ACTIONS = (
     "whoami", "set_role",
-    "start_study", "update_study",
+    "start_study", "update_study", "request_research",
     "log_decision", "update_decision",
     "propose", "promote", "validate", "request_validation", "withdraw_request", "link", "check_conflict", "confirm_conflict", "checkout", "release",
 )
