@@ -190,14 +190,52 @@ def list_studies(status: str | None = None, owner: str | None = None) -> dict[st
 
 
 @mcp.tool()
-def validate(finding_id: int, note: str | None = None, validated_by: str | None = None) -> dict[str, Any]:
-    """Record that a person has validated a finding, with an optional note on why.
+def validate(
+    finding_id: int,
+    outcome: str = "approve",
+    note: str | None = None,
+    basis: str | None = None,
+    validated_by: str | None = None,
+) -> dict[str, Any]:
+    """Review a finding. outcome is approve, changes_requested (say what to
+    change in note), or disagree (say why in note). basis is how the reviewer
+    checked: a key from team_config's checks (for example evidence, source_data,
+    reproduced, judgment).
 
-    The first validation moves a proposed finding to 'validated'. Each validation
-    stays visible individually. The owner cannot validate their own finding.
+    Each review stays visible with the reviewer's role. A person's latest
+    review is the one that counts. A finding is validated while at least one
+    current review approves it. The owner cannot review their own finding.
+    Only record a review the person actually gave; never review on your own.
     validated_by defaults to this session's identity.
     """
-    return _call(lambda: store.validate(finding_id, _who(validated_by), note))
+    return _call(lambda: store.validate(finding_id, _who(validated_by), note, outcome, basis))
+
+
+@mcp.tool()
+def request_validation(
+    finding_id: int,
+    people: list[str] | None = None,
+    roles: list[str] | None = None,
+    note: str | None = None,
+) -> dict[str, Any]:
+    """Ask named people, or anyone in a role (for example ["researcher"]), to
+    review a finding. It shows in their queue until one of them reviews it."""
+    return _call(lambda: store.request_validation(finding_id, _who(None), people, roles, note))
+
+
+@mcp.tool()
+def withdraw_request(request_id: int) -> dict[str, Any]:
+    """Withdraw an open review request that is no longer needed."""
+    return _call(lambda: store.withdraw_request(request_id, _who(None)))
+
+
+@mcp.tool()
+def my_queue(who: str | None = None) -> dict[str, Any]:
+    """What is waiting on this person: findings they were asked to review,
+    their own findings where a reviewer asked for changes or disagreed, and
+    review requests they made that are still open. who defaults to this
+    session's identity."""
+    return _call(lambda: store.my_queue(_who(who)))
 
 
 @mcp.tool()

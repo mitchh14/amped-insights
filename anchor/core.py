@@ -26,6 +26,10 @@ STUDY_TEXT_FIELDS = ("title", "objective", "decision", "method", "sample")
 # How one finding relates to another. "supports" is stored as an evidence
 # link and "contradicts" as a confirmed conflict, so each fact lives in one place.
 LINK_TYPES = ("supports", "extends", "duplicates", "contradicts")
+# A review's outcome. Only approve counts toward a finding being validated.
+OUTCOMES = ("approve", "changes_requested", "disagree")
+OUTCOME_EVENT = {"approve": "validated", "changes_requested": "changes_requested", "disagree": "disagreed"}
+REQUEST_STATUSES = ("open", "done", "withdrawn")
 
 DEFAULT_DB_PATH = os.environ.get("ANCHOR_DB", "anchor.db")
 
@@ -42,14 +46,34 @@ CREATE TABLE IF NOT EXISTS findings (
     checked_out_at  TEXT
 );
 
--- One row per validation action. Never collapsed into a single flag.
+-- One row per review. Never collapsed into a single flag. A person can
+-- review again (for example approve after asking for changes); their latest
+-- review is the one that counts, and earlier ones stay visible.
 CREATE TABLE IF NOT EXISTS validations (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     finding_id    INTEGER NOT NULL REFERENCES findings(id),
     validated_by  TEXT NOT NULL,
     validated_at  TEXT NOT NULL,
     note          TEXT,
-    UNIQUE (finding_id, validated_by)
+    outcome       TEXT NOT NULL DEFAULT 'approve' CHECK (outcome IN {OUTCOMES}),
+    basis         TEXT,  -- how the reviewer checked (a key from the team's checks)
+    role          TEXT   -- the reviewer's role when they reviewed
+);
+
+-- A request for someone, or anyone in a role, to review a finding.
+-- Closed by any review from that person or role. Nobody needs to be asked.
+CREATE TABLE IF NOT EXISTS validation_requests (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    finding_id    INTEGER NOT NULL REFERENCES findings(id),
+    requested_by  TEXT NOT NULL,
+    person        TEXT,  -- one of person or role is set
+    role          TEXT,
+    note          TEXT,
+    at            TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'open' CHECK (status IN {REQUEST_STATUSES}),
+    closed_by     TEXT,
+    closed_at     TEXT,
+    outcome       TEXT
 );
 
 -- A confirmed contradiction between two findings. Both stay visible.
@@ -259,12 +283,27 @@ class Store:
         self.path = path
         self.config = config if config is not None else config_mod.load()
         with self._conn() as conn:
+            self._rebuild_old_validations(conn)
             conn.executescript(SCHEMA)
             for table, column, decl in MIGRATIONS:
                 have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
                 if column not in have:
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
             self._sync_people(conn)
+
+    @staticmethod
+    def _rebuild_old_validations(conn) -> None:
+        """The first release allowed one validation per person. Lift that in place."""
+        have = {r["name"] for r in conn.execute("PRAGMA table_info(validations)")}
+        if not have or "outcome" in have:
+            return
+        conn.execute("ALTER TABLE validations RENAME TO validations_v1")
+        conn.executescript(SCHEMA)
+        conn.execute(
+            "INSERT INTO validations (id, finding_id, validated_by, validated_at, note) "
+            "SELECT id, finding_id, validated_by, validated_at, note FROM validations_v1"
+        )
+        conn.execute("DROP TABLE validations_v1")
 
     def _sync_people(self, conn) -> None:
         """Make sure every name on record is a person with a role.
@@ -411,12 +450,20 @@ class Store:
                 (fid,),
             )
         ]
+        current = {r["id"] for r in self._current_reviews(conn, fid)}
         validations = [
+            {**dict(r), "current": r["id"] in current}
+            for r in conn.execute(
+                "SELECT id, validated_by, role, outcome, basis, validated_at, note FROM validations "
+                "WHERE finding_id = ? ORDER BY id",
+                (fid,),
+            )
+        ]
+        requests = [
             dict(r)
             for r in conn.execute(
-                "SELECT v.validated_by, p.role, v.validated_at, v.note FROM validations v "
-                "LEFT JOIN people p ON p.name = v.validated_by "
-                "WHERE v.finding_id = ? ORDER BY v.validated_at, v.id",
+                "SELECT id, requested_by, person, role, note, at FROM validation_requests "
+                "WHERE finding_id = ? AND status = 'open' ORDER BY id",
                 (fid,),
             )
         ]
@@ -467,6 +514,7 @@ class Store:
             "promoted_to": promoted_to,
             "promotion": self._readiness(conn, row) if row["tier"] in NEXT_TIER else None,
             "validations": validations,
+            "open_requests": requests,
             "conflicts": conflicts,
             "checked_out_by": row["checked_out_by"],
             "checked_out_at": row["checked_out_at"],
@@ -789,13 +837,19 @@ class Store:
                       to=fid, from_tier=row["tier"], to_tier=to_tier, note=_clean(note))
         return self._created(fid, warnings)
 
-    def _approvals(self, conn, finding_id: int) -> list[sqlite3.Row]:
-        """The validations that currently count as approval, with the validator's role."""
+    @staticmethod
+    def _current_reviews(conn, finding_id: int) -> list[sqlite3.Row]:
+        """Each reviewer's latest review of a finding. Earlier ones are history."""
         return conn.execute(
-            "SELECT v.validated_by, p.role FROM validations v "
-            "LEFT JOIN people p ON p.name = v.validated_by WHERE v.finding_id = ?",
+            "SELECT * FROM validations v WHERE finding_id = ? AND id = "
+            "(SELECT MAX(id) FROM validations w WHERE w.finding_id = v.finding_id "
+            "AND w.validated_by = v.validated_by) ORDER BY id",
             (finding_id,),
         ).fetchall()
+
+    def _approvals(self, conn, finding_id: int) -> list[sqlite3.Row]:
+        """Reviews that currently count as approval."""
+        return [r for r in self._current_reviews(conn, finding_id) if r["outcome"] == "approve"]
 
     def _trusted(self, role: str | None) -> bool:
         return bool(role and self.config["roles"].get(role, {}).get("trusted"))
@@ -823,36 +877,163 @@ class Store:
             "enforced": rules["enforce"] == "required",
         }
 
-    def validate(self, finding_id: int, validated_by: str, note: str | None = None) -> dict[str, Any]:
-        """Add one validation record. The first one moves 'proposed' to 'validated'.
+    def validate(
+        self,
+        finding_id: int,
+        validated_by: str,
+        note: str | None = None,
+        outcome: str = "approve",
+        basis: str | None = None,
+    ) -> dict[str, Any]:
+        """Review a finding: approve it, request changes, or disagree.
 
-        A contested finding keeps its 'contested' status: more validations are
-        recorded and visible, but they do not silently resolve the conflict.
+        Each review stays visible individually, with the reviewer's role. A
+        person can review again; their latest review is the one that counts.
+        A finding is validated while at least one current review approves it.
+        Requesting changes or disagreeing never contests a finding on its own;
+        a conflict is confirmed separately.
+
+        Any open review request for this person, or for their role, closes.
         """
+        if outcome not in OUTCOMES:
+            raise CoreError(f"outcome must be one of {OUTCOMES}")
+        if basis is not None and basis not in self.config["checks"]:
+            raise CoreError(f"basis must be one of {tuple(self.config['checks'])}")
         with self._conn() as conn:
             row = self._row(conn, finding_id)
             validated_by = self._person(conn, validated_by, "validated_by")
             if row["owner"] == validated_by:
                 raise CoreError("a finding cannot be validated by its own owner")
             warnings = self._checkout_warning(row, validated_by)
-            try:
-                conn.execute(
-                    "INSERT INTO validations (finding_id, validated_by, validated_at, note) "
-                    "VALUES (?, ?, ?, ?)",
-                    (finding_id, validated_by, _now(), (note or "").strip() or None),
-                )
-            except sqlite3.IntegrityError:
-                raise CoreError(f"{validated_by} has already validated finding {finding_id}") from None
-            self._log(conn, finding_id, "validated", validated_by, note=note)
-            if row["status"] == "proposed":
-                conn.execute("UPDATE findings SET status = 'validated' WHERE id = ?", (finding_id,))
-                self._log(
-                    conn, finding_id, "status_changed", validated_by,
-                    **{"from": "proposed", "to": "validated"},
-                )
-            elif row["status"] == "contested":
-                warnings.append("finding is contested; validation recorded but status stays contested")
+            last = conn.execute(
+                "SELECT outcome FROM validations WHERE finding_id = ? AND validated_by = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (finding_id, validated_by),
+            ).fetchone()
+            if last and last["outcome"] == outcome:
+                said = "validated" if outcome == "approve" else f"given '{outcome}' on"
+                raise CoreError(f"{validated_by} has already {said} finding {finding_id}")
+            role = self._role_of(conn, validated_by)
+            conn.execute(
+                "INSERT INTO validations (finding_id, validated_by, validated_at, note, outcome, basis, role) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (finding_id, validated_by, _now(), _clean(note), outcome, basis, role),
+            )
+            self._log(conn, finding_id, OUTCOME_EVENT[outcome], validated_by,
+                      note=_clean(note), outcome=outcome, basis=basis, role=role)
+            conn.execute(
+                "UPDATE validation_requests SET status = 'done', closed_by = ?, closed_at = ?, outcome = ? "
+                "WHERE finding_id = ? AND status = 'open' AND (person = ? OR role = ?)",
+                (validated_by, _now(), outcome, finding_id, validated_by, role),
+            )
+            if row["status"] == "contested":
+                warnings.append("finding is contested; review recorded but status stays contested")
+            else:
+                status = "validated" if self._approvals(conn, finding_id) else "proposed"
+                if status != row["status"]:
+                    conn.execute("UPDATE findings SET status = ? WHERE id = ?", (status, finding_id))
+                    self._log(conn, finding_id, "status_changed", validated_by,
+                              **{"from": row["status"], "to": status})
         return {"finding": self.get(finding_id), "warnings": warnings}
+
+    def request_validation(
+        self,
+        finding_id: int,
+        requested_by: str,
+        people: list[str] | None = None,
+        roles: list[str] | None = None,
+        note: str | None = None,
+    ) -> dict[str, Any]:
+        """Ask named people, or anyone in a role (for example any researcher), to
+        review a finding. It shows up in their queue until they review it.
+        Anyone can still review without being asked."""
+        people = [p for p in (people or []) if (p or "").strip()]
+        roles = list(roles or [])
+        if not people and not roles:
+            raise CoreError("name at least one person or role to ask")
+        for role in roles:
+            if role not in self.config["roles"]:
+                raise CoreError(f"role must be one of {tuple(self.config['roles'])}")
+        warnings, made = [], []
+        with self._conn() as conn:
+            row = self._row(conn, finding_id)
+            requested_by = self._person(conn, requested_by, "requested_by")
+            targets = [("person", self._person(conn, p, "people")) for p in people]
+            targets += [("role", r) for r in roles]
+            for kind, who in targets:
+                if kind == "person" and who == row["owner"]:
+                    warnings.append(f"{who} owns this finding, so they cannot review it; skipped")
+                    continue
+                if conn.execute(
+                    f"SELECT 1 FROM validation_requests WHERE finding_id = ? AND status = 'open' AND {kind} = ?",
+                    (finding_id, who),
+                ).fetchone():
+                    warnings.append(f"{who} already has an open request for this finding; skipped")
+                    continue
+                cur = conn.execute(
+                    f"INSERT INTO validation_requests (finding_id, requested_by, {kind}, note, at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (finding_id, requested_by, who, _clean(note), _now()),
+                )
+                made.append(cur.lastrowid)
+                self._log(conn, finding_id, "review_requested", requested_by,
+                          **{kind: who}, request_id=cur.lastrowid, note=_clean(note))
+        return {"finding": self.get(finding_id), "request_ids": made, "warnings": warnings}
+
+    def withdraw_request(self, request_id: int, by: str) -> dict[str, Any]:
+        """Withdraw an open review request, for example when it is no longer needed."""
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            req = conn.execute("SELECT * FROM validation_requests WHERE id = ?", (request_id,)).fetchone()
+            if req is None:
+                raise CoreError(f"request {request_id} does not exist")
+            if req["status"] != "open":
+                raise CoreError(f"request {request_id} is already {req['status']}")
+            conn.execute(
+                "UPDATE validation_requests SET status = 'withdrawn', closed_by = ?, closed_at = ? WHERE id = ?",
+                (by, _now(), request_id),
+            )
+            self._log(conn, req["finding_id"], "request_withdrawn", by, request_id=request_id)
+        return {"finding": self.get(req["finding_id"]), "warnings": []}
+
+    def my_queue(self, who: str) -> dict[str, Any]:
+        """What is waiting on a person.
+
+        waiting_on_me: findings someone asked this person (or their role) to review.
+        feedback_on_mine: their own findings where a current review asks for
+        changes or disagrees.
+        my_requests: review requests they made that are still open.
+        """
+        with self._conn() as conn:
+            who = self._person(conn, who, "who")
+            role = self._role_of(conn, who)
+            waiting = []
+            for req in conn.execute(
+                "SELECT r.*, f.owner FROM validation_requests r JOIN findings f ON f.id = r.finding_id "
+                "WHERE r.status = 'open' AND (r.person = ? OR r.role = ?) AND f.owner != ? ORDER BY r.id",
+                (who, role, who),
+            ):
+                mine = [r for r in self._current_reviews(conn, req["finding_id"]) if r["validated_by"] == who]
+                if mine and mine[0]["outcome"] == "approve":
+                    continue  # already approved before the request came in
+                waiting.append({"request": self._request(req), "finding": self._full(conn, self._row(conn, req["finding_id"]))})
+            feedback = []
+            for row in conn.execute("SELECT * FROM findings WHERE owner = ? ORDER BY id DESC", (who,)):
+                concerns = [dict(r) for r in self._current_reviews(conn, row["id"]) if r["outcome"] != "approve"]
+                if concerns:
+                    feedback.append({"finding": self._full(conn, row), "reviews": concerns})
+            mine = [
+                {"request": self._request(r), "finding": self._summary(self._row(conn, r["finding_id"]))}
+                for r in conn.execute(
+                    "SELECT * FROM validation_requests WHERE requested_by = ? AND status = 'open' ORDER BY id",
+                    (who,),
+                )
+            ]
+        return {"who": who, "role": role, "waiting_on_me": waiting, "feedback_on_mine": feedback, "my_requests": mine}
+
+    @staticmethod
+    def _request(r: sqlite3.Row) -> dict[str, Any]:
+        return {k: r[k] for k in ("id", "finding_id", "requested_by", "person", "role", "note", "at", "status")}
 
     def check_conflict(
         self, statement: str | None = None, finding_id: int | None = None

@@ -47,5 +47,7 @@ def test_old_database_upgrades_in_place(tmp_path):
     sid = store.start_study("Checkout", "Sam")["study"]["id"]
     new = store.propose("Drop off is on the address step", "data_point", "Ana", study_id=sid)
     assert new["finding"]["study"]["id"] == sid
+    # One review per person is lifted: Sam can change their mind.
+    assert store.validate(1, "Sam", outcome="disagree")["finding"]["status"] == "proposed"
     # Opening it again is a no-op.
-    assert Store(path, config.from_dict()).get(1)["status"] == "validated"
+    assert len(Store(path, config.from_dict()).get(1)["validations"]) == 2

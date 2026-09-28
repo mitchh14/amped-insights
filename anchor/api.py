@@ -16,7 +16,7 @@ from .core import CoreError, Store
 ACTIONS = (
     "whoami", "set_role",
     "start_study", "update_study",
-    "propose", "promote", "validate", "link", "check_conflict", "confirm_conflict", "checkout", "release",
+    "propose", "promote", "validate", "request_validation", "withdraw_request", "link", "check_conflict", "confirm_conflict", "checkout", "release",
 )
 
 
@@ -37,6 +37,8 @@ def handle(store: Store, method: str, path: str, body: Any = None) -> tuple[int,
                 return 200, store.list_studies(status=q.get("status"), owner=q.get("owner"))
             if len(parts) == 3 and parts[:2] == ["api", "studies"]:
                 return 200, store.get_study(int(parts[2]))
+            if parts == ["api", "queue"]:
+                return 200, store.my_queue(q.get("who", ""))
             if parts == ["api", "activity"]:
                 return 200, store.activity(int(q.get("limit", 50)))
             if len(parts) == 3 and parts[:2] == ["api", "findings"]:
