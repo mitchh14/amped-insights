@@ -2,72 +2,76 @@
 
 **A**mped **N**etwork for **C**redible **H**ypotheses, **O**bservations, and **R**esearch
 
-See [PRINCIPLES.md](PRINCIPLES.md) for why this exists and the values behind it. This doc covers the build: schema, actions, architecture.
+See [PRINCIPLES.md](PRINCIPLES.md) for why this exists and the values behind it. This doc covers the build: schema, actions, architecture. The words are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md).
 
 ## The problem
 
-As AI makes it fast for anyone to generate an analysis or a claim about users, the risk is not slow research. It is ungrounded research. Findings live in decks, docs, and chat threads with no shared place to check what the organization already knows. People re-research questions that already have answers, contradictions pile up quietly, and nobody can tell what is still true, what was a one-time guess, or what has been checked at all.
+As AI makes it fast for anyone to generate an analysis or a claim about users, the risk is not slow research. It is ungrounded research. What teams learn lives in decks, docs, and chat threads with no shared place to check what the organization already knows. People re-research questions that already have answers, contradictions pile up quietly, and nobody can tell what is still true, what was a one-time guess, or what has been checked at all.
 
-The fix is not a better search tool. It is a shared, checkable layer of findings, at different levels of confidence, that any person or AI agent can query before generating something new, and that stays honest about who said what and how sure anyone should be.
+The fix is not a better search tool. It is a shared, checkable layer of learnings, at different levels, that any person or AI agent can query before generating something new, and that stays honest about who said what, whether an AI drafted it, and how sure anyone should be.
 
 ## Why now
 
-Researcher roles are shifting from executing every study personally to orchestrating and curating a shared body of knowledge that AI agents and other contributors can draw from and add to. This framework is built for that shift. Researchers become the people who hold and grow the trust layer, not the only people allowed to produce findings.
+Researcher roles are shifting from executing every study personally to orchestrating and curating a shared body of knowledge that AI agents and other contributors can draw from and add to. This framework is built for that shift. Researchers become the people who hold and grow the trust layer, not the only people allowed to produce insights.
 
 ## Core principles
 
 1. Transparency over authority. The system does not grant credibility by role. It makes the basis for credibility visible: who stated something, what evidence backs it, who reviewed it. Trust is earned by the work, not handed out by a badge.
-2. Not all findings are equal, and the system should never pretend they are. A raw data point, an unproven hypothesis, and a validated insight are different things and should look different.
-3. More than one person can validate a finding. Validations are shown individually, not merged into a single verdict, so agreement and disagreement are both visible.
-4. Contradictions get surfaced, not hidden or silently overwritten. When a new finding conflicts with a validated one, both stay visible and the conflict triggers a re-evaluation, with the history of what changed and why kept intact.
-5. Framework over system. This should be a small set of primitives (propose, validate, query, check for duplicates or conflicts) that teams can run and adapt themselves, not a heavy platform people have to migrate into.
+2. Not all learnings are equal, and the system should never pretend they are. An observation, a finding, and an insight are different things, and one that nobody has reviewed looks different from one an SME has checked.
+3. More than one person can review a learning. Reviews are shown individually, not merged into a single verdict, so agreement and disagreement are both visible.
+4. Contradictions get surfaced, not hidden or silently overwritten. When a new learning conflicts with a checked one, both stay visible as Contested and the conflict triggers a re-evaluation, with the history of what changed and why kept intact.
+5. Framework over system. This should be a small set of primitives (add, confirm, review, query, check for conflicts) that teams can run and adapt themselves, not a heavy platform people have to migrate into.
 6. Data stays where the org already trusts it, self-hosted by default, no required outbound calls, storage that stays boring and inspectable so the data always stays yours. See PRINCIPLES.md for the full reasoning.
-7. Everyone generates insights, by design. Validation is open to everyone, with varied trust: the most trusted validations come from researchers and trusted reviewers the team names. Roles inform, they never block.
+7. Everyone generates insights, by design. Review is open to everyone, with varied trust: the most trusted reviews come from the SMEs the team names, from any team. Roles inform, they never block.
 8. Fit the team, not the other way around. Teams trust different roles differently and work in their own ways. Setup bends ANCHOR to the team. Defaults are open, and the people implementing it decide how much structure to add.
 
 ## The user types
 
-Everyone generates insights. That is the intended state. Anyone can also validate, but trust varies by who is validating, and the system shows that instead of blocking anyone.
+Everyone generates insights. That is the intended state. Anyone can also review, but trust varies by who is reviewing, and the system shows that instead of blocking anyone.
 
-- Researchers: the core users. They are accountable for the trust layer, and their validations carry the most weight. They are the ones most likely to chase down contradictions and follow up on hypotheses tied to real decisions, because they have the most at stake in getting it right.
-- Trusted reviewers: people the team chooses to give validation standing, inside or outside the research team (for example a data science lead or a domain expert). Their validations are weighted like a researcher's.
-- People who do research: everyone else contributing findings. PMs, analysts, designers, ops folks, and AI agents acting on someone's behalf. They propose, connect, and generate insights, and they can validate each other's work. Their validations are shown as peer validations.
-- Stakeholders: the people who use insights to make decisions. They find trusted insights, record when they used one, and raise new questions that start the next round of research.
+- Researchers: accountable for the trust layer. They are the ones most likely to chase down contradictions and follow up on findings tied to real decisions, because they have the most at stake in getting it right. The framework lets the most engaged people lead; it does not make researchers look more important than anyone else.
+- PwDR (people who do research): everyone else contributing learnings. PMs, analysts, designers, ops folks. They add, connect, and generate insights, and they review each other's work.
+- Stakeholders: the people who use learnings to make decisions. They find checked learnings, record when they used one, say what happened, and raise new questions that start the next round of research.
+- SMEs: not a role but a standing the team gives people it trusts in an area, inside or outside research (for example a data science lead or a domain expert). Their approvals show as "Checked by an SME".
+- AI agents: not a role but an origin. What an AI drafts is marked as such, always has a named owner, and stays a draft until that owner confirms it.
 
 See [docs/FLOW.md](docs/FLOW.md) for how these people move through the work modes.
 
-## The three tiers of a finding
+## The three levels of a learning
 
-1. Data point: a fact or observation with no interpretation attached (example: mobile checkout conversion is 42 percent). Can be validated on accuracy alone, since there is no judgment call involved.
-2. Hypothesis or observation: someone's read on what a data point or pattern might mean. Not yet safe to act on. This tier needs the most guardrails since it is the easiest thing to generate quickly and the easiest to mistake for something solid.
-3. Validated insight: a hypothesis that has been through peer review and promoted. Safe to build recommendations or decisions on.
+1. Observation: what we saw or measured, with no reading into it (example: mobile checkout conversion is 42 percent). Can be checked on accuracy alone.
+2. Finding: a pattern or reading across observations. Not yet an insight. This level needs the most guardrails since it is the easiest thing to generate quickly and the easiest to mistake for something solid.
+3. Insight: what a finding means for us, and what to do about it.
 
-Escalation path: data point supports a hypothesis, hypothesis gets reviewed and becomes an insight.
+Level says how far a learning goes, not how far to trust it. Anyone can add at any level, and one nobody has reviewed says so. A hypothesis is what a study sets out to test, not a level.
 
-## Validation model
+Escalation path: observations support a finding, and a checked finding is promoted to an insight.
 
-- Each finding carries: who stated it, what evidence backs it (linked data points or sources), and a list of who validated it and when.
-- Multiple validators are allowed and expected. Their individual validations stay visible, not collapsed into one status. Each one shows the validator's role, so a researcher or trusted reviewer validation reads differently from a peer one.
-- A finding can be contested. If a new finding conflicts with an already-validated one, the system flags both as contested rather than silently favoring one.
+## Trust model
+
+- Each learning carries: who stated it, whether an AI drafted it and whether its owner confirmed it, what evidence backs it, and each review with who gave it, their role, whether they are an SME, and how they checked.
+- Multiple reviewers are allowed and expected. Their reviews stay visible individually, never collapsed. The learning shows one trust state, worked out from them: Not reviewed, Needs changes, Checked by peers, Checked by an SME, or Contested.
+- If a new learning conflicts with a checked one, a person can confirm the conflict and both become Contested rather than silently favoring one.
 - Resolution updates the record but never erases the prior state. The history of "this used to be believed, here is why it changed" is part of what makes the source of truth credible over time.
 
 ## Architecture shape
 
 Three layers, one core:
 
-1. Core layer: the data store and the logic for propose, validate, query, check for duplicates or conflicts, checkout. No UI opinion.
+1. Core layer: the data store and the logic for add, confirm, review, query, check for conflicts, the digest, and the next step. No UI opinion.
 2. MCP server: a thin wrapper exposing the core layer's functions as tools. This is the primary way researchers, PMs, and enterprise AI agents interact with the system, directly inside whatever AI tool they already use (Claude, ChatGPT, an internal agent).
-3. Web app: a lightweight client on the same core functions, not a separate data path. Used for a live status view (what is checked out, what is in the validation queue, what got contested), for manual actions without opening an AI chat, and as the place an org connects its own AI tools or manages permissions.
+3. Web app: a lightweight client on the same core functions, not a separate data path. It shows each person one next step and what changed for them, is a full place to work without opening an AI chat, and is where an org connects its own AI tools or manages permissions.
 
-Roles and trusted reviewers are set up by the team that implements ANCHOR in `anchor.toml` (see [docs/SETUP.md](docs/SETUP.md)), and roles can also be changed from the web app, with every change logged. The web app and the MCP server always write through the same core functions, so there is never a second, competing version of the truth.
+Roles and SMEs are set up by the team that implements ANCHOR in `anchor.toml` (see [docs/SETUP.md](docs/SETUP.md)), and can also be changed from the web app, with every change logged. The web app and the MCP server always write through the same core functions, so there is never a second, competing version of the truth.
 
 ## Scope decision for v1
 
 Keep the schema and actions as small as possible:
-- A finding only needs three things to exist: what it says, which tier it is (data point, hypothesis, insight), and its status (proposed, validated, contested).
-- Everything else (assignment, full provenance chain, links between findings) is metadata added over time, not required at creation.
-- Validation should be a single action, not a form.
+- A learning only needs three things to exist: what it says, its level, and its owner. Its stage and origin default to shared and person.
+- Everything else (study, evidence, links, reviews) is added over time, not required at creation.
+- Reviewing is a single action with one follow-up, not a form.
+- Nobody runs ANCHOR yet, so there is no migration code. Old ways are dropped freely.
 
 ## Open source and built together
 
-ANCHOR is open source. It is meant to be shared, forked, adapted, and improved by the research teams who use it, and to open a wider conversation about how research findings stay trustworthy as AI makes claims faster to produce. See [docs/FLOW.md](docs/FLOW.md) for the roadmap.
+ANCHOR is open source. It is meant to be shared, forked, adapted, and improved by the research teams who use it, and to open a wider conversation about how what a team learns stays trustworthy as AI makes claims faster to produce. See [docs/FLOW.md](docs/FLOW.md) for the roadmap.

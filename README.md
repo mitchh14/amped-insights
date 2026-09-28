@@ -2,24 +2,25 @@
 
 **A**mped **N**etwork for **C**redible **H**ypotheses, **O**bservations, and **R**esearch
 
-An open source framework for research teams. A shared, checkable layer of research findings that people and AI agents can query before making new claims, and that stays honest about who said what and how sure anyone should be. Use it, adapt it to how your team works, and help shape it. The roadmap is in [issue #47](https://github.com/mitchh14/amped-insights/issues/47).
+An open source framework for research teams. A shared, checkable layer of what the team has learned, that people and AI tools can query before making new claims, and that stays honest about who said what, whether an AI drafted it, and how far to trust it. Use it, adapt it to how your team works, and help shape it. The roadmap is in [issue #47](https://github.com/mitchh14/amped-insights/issues/47).
 
 **[Try the demo](https://mitchh14.github.io/amped-insights/)** in any browser, on desktop or phone. It runs the real Python core in your browser, so nothing you type leaves your device. See [Browser demo](#browser-demo) for how it works.
 
 **Setting it up for your team?** Start with [docs/SETUP.md](docs/SETUP.md).
 
-See [PRINCIPLES.md](PRINCIPLES.md) for the why, [CONTEXT.md](CONTEXT.md) for the background and architecture, and [docs/FLOW.md](docs/FLOW.md) for the full research loop, who does what, and the roadmap. The words we use are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md).
+See [PRINCIPLES.md](PRINCIPLES.md) for the why, [CONTEXT.md](CONTEXT.md) for the background and architecture, [docs/FLOW.md](docs/FLOW.md) for the full research loop and who does what, and [docs/EXPERIENCE.md](docs/EXPERIENCE.md) for how the app decides what to show. The words we use are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md).
 
 It closes the research loop end to end:
 
-1. **Plan**: a study records why we looked, the decision it serves, the method, and the sample. Findings inside it carry that context.
-2. **Analyze and generate insights**: anyone proposes data points, hypotheses, and insights with evidence, and promotes one tier up. Promotion creates a new, linked finding, so the chain stays readable.
-3. **Explore**: typed links (supports, extends, duplicates, contradicts), and contradictions surface instead of hiding.
-4. **Validate**: anyone reviews (approve, request changes, or disagree) and says how they checked. Each finding shows a trust summary by role, like "Validated by 2 researcher, 1 peer". Owners ask named people or a role for review, and revise when asked.
-5. **Decide**: a stakeholder logs a decision and the findings used, which credits everyone in the chain behind it and flags the decision if something it used is later contested.
-6. **Loop back**: a decision or an empty search raises a research request, which lands as a draft study.
+1. **Plan**: a study starts with its question and the decision it serves. Method and who took part are asked for when it is running, and what we learned when it is finished. Learnings inside it carry that context.
+2. **Learn**: anyone adds a learning at one of three levels: an observation (what we saw), a finding (what we think it means, not yet an insight), or an insight (what it means for us and what to do). Promotion takes one up a level as a new, linked learning.
+3. **Show who made it**: every learning records whether a person wrote it, a person worked with AI, or an AI agent made it. Anything made with AI is a draft until its owner confirms it, and the record keeps whether they changed the AI's wording.
+4. **Connect**: links (supports, builds on, same as, conflicts with), and conflicts surface instead of hiding.
+5. **Review**: anyone reviews (approve, ask for changes, or disagree) and says how they checked. Each learning shows one trust state: Not reviewed, Needs changes, Checked by peers, Checked by an SME, or Contested.
+6. **Decide**: a stakeholder logs a decision and the learnings it relied on, which credits everyone in the chain and flags the decision if something it relied on is later contested. The app asks what happened later.
+7. **Loop back**: a decision or an empty search raises a research request.
 
-The same actions work the same way from an AI tool (MCP) or the web app, because both call the same core functions. A team shapes it with one plain config file, `anchor.toml`.
+Each person sees one next step, what changed for them, and moments when their work mattered. The same actions work the same way from an AI tool (MCP) or the web app, because both call the same core functions. A team shapes it with one plain config file, `anchor.toml`.
 
 ## Layout
 
@@ -31,10 +32,11 @@ anchor/
   seed.py         a sample team walking the full loop (used by scripts/seed.py and the demo)
   mcp_server.py   MCP tools and guided prompts, a thin wrapper on core
   web.py          small JSON API + static page, also a thin wrapper on core
-  static/index.html   the web app, organized by work mode
+  static/index.html   the web app: one next step, then short lists, then folded detail
 anchor.example.toml   every team choice, explained
 docs/SETUP.md     setup guide for a research lead
 docs/GLOSSARY.md  the words ANCHOR uses, and what each means
+docs/EXPERIENCE.md  how the app decides what to show, and when
 scripts/seed.py   loads the sample team into a new database
 scripts/build_demo.py  builds the static browser demo
 demo/             browser demo loader (Pyodide)
@@ -58,7 +60,7 @@ The database path is `anchor.db` in the current folder unless you set `ANCHOR_DB
 
 ## Browser demo
 
-The demo is the same web page and the same Python code, running inside the browser with [Pyodide](https://pyodide.org) (Python compiled to WebAssembly). `demo/demo.js` loads `core.py`, `api.py`, and `seed.py`, and answers the page's `/api/` requests in the browser instead of sending them to a server. The database is SQLite, stored in the browser's IndexedDB, so changes stay put between visits. "Reset demo" reloads the sample team. Pick any person to see their role's home: Morgan (stakeholder) or Sam (researcher) are good places to start.
+The demo is the same web page and the same Python code, running inside the browser with [Pyodide](https://pyodide.org) (Python compiled to WebAssembly). `demo/demo.js` loads `core.py`, `api.py`, and `seed.py`, and answers the page's `/api/` requests in the browser instead of sending them to a server. The database is SQLite, stored in the browser's IndexedDB, so changes stay put between visits. "Reset demo" reloads the sample team. Pick any person to see their next step: Jordan confirms an AI draft, Sam (an SME) reviews, and Morgan (stakeholder) says what happened after a decision.
 
 There is no server, so there is nothing to host or secure. Each visitor has their own copy of the data.
 
@@ -101,21 +103,22 @@ Point the web app and the MCP server at the same database file and changes from 
 
 ## Data model
 
-Everything is plain SQLite tables. Older databases upgrade in place when opened.
+Everything is plain SQLite tables. There is no migration code yet: an older database is refused with a clear message, so start a new file.
 
-- **findings**: `statement`, `tier` (data_point, hypothesis, insight), `status` (proposed, validated, contested), `owner`, `evidence_links`, `study_id`, `promoted_from`, `revises`, checkout fields.
-- **validations**: one row per review, never collapsed. `outcome` (approve, changes_requested, disagree), `basis` (how they checked), the reviewer's `role` at the time, `note`. A person's latest review counts; earlier ones stay visible.
-- **validation_requests**: who was asked to review (a person or anyone in a role), and whether it is open, done, or withdrawn.
-- **links**: extends and duplicates between findings. Supports is an evidence link and contradicts is a conflict, so each fact lives in one place.
-- **conflicts**: confirmed contradictions. Both sides stay visible.
-- **studies**: title, objective, the decision it serves, method, sample, status (requested, planned, running, done, closed), owner, team template `fields`, and where a request came from.
-- **decisions** and **decision_uses**: what was decided, by whom, the findings used and their status at the time, and the outcome.
-- **people**: name and role. Names match without regard to case.
-- **events**: append only log of every action. Drives the activity feed and keeps prior state.
+- **learnings**: `statement`, `level` (observation, finding, insight), `stage` (draft, shared, replaced), `origin` (person, person_with_ai, ai_agent), `owner`, `evidence`, `study_id`, `promoted_from`, `revises`, and who is working on it. Trust is not stored: it is worked out from reviews and conflicts.
+- **reviews**: one row per review, never collapsed. `verdict` (approve, changes, disagree), `how` they checked, `note`, and the reviewer's `role` and SME standing at the time. A person's latest review counts; earlier ones stay visible.
+- **review_requests**: who was asked (a person, anyone in a role, or any SME), and whether it is open, done, or withdrawn.
+- **links**: builds_on and same_as. Supports is evidence and conflicts_with is a conflict, so each fact lives in one place.
+- **conflicts**: confirmed conflicts. Both sides stay visible.
+- **studies**: the question, the decision it serves, an optional hypothesis, method, sample, what we learned, stage (requested, planned, running, finished, dropped), owner, team template `fields`, and where a request came from.
+- **decisions** and **decision_uses**: what was decided, by whom, the learnings it relied on and their trust at the time, and the outcome once known.
+- **people**: name, role, and whether they are an SME. Names match without regard to case.
+- **follows** and **seen**: what a person follows, and what they have seen or set aside with "Not now".
+- **events**: append only record of every action. Drives history, the digest, and moments.
 
 ## Actions
 
-Every action is one core function, served by the web API and by an MCP tool with the same name, so the app and an AI tool can always do the same things. A test (`tests/test_parity.py`) fails if a core action is missing from either.
+Every action is one core function, served by the web API and by an MCP tool, so the app and an AI tool can always do the same things. A test (`tests/test_parity.py`) fails if a core action is missing from either.
 
 In MCP, the person's name is set once per session with `set_identity` (or the `ANCHOR_USER` environment variable) and every tool acts as them.
 
@@ -123,53 +126,56 @@ In MCP, the person's name is set once per session with `set_identity` (or the `A
 |---|---|---|---|
 | Set up | `whoami(name)` | `whoami`, `set_identity` | `POST /api/whoami` |
 | Set up | `people()`, `person(name)` | `people`, `person` | `GET /api/people`, `/api/people/{name}` |
-| Set up | `set_role(name, role, by)` | `set_role` | `POST /api/set_role` |
+| Set up | `set_person(name, by, role, sme)` | `set_person` | `POST /api/set_person` |
 | Set up | `team_config()` | `team_config` | `GET /api/config` |
-| Plan | `start_study(title, owner, objective, decision, method, sample, status, fields)` | `start_study` | `POST /api/start_study` |
+| Home | `next_step(who)` | `next_step` | `GET /api/next?who=` |
+| Home | `digest(who, since, limit)` | `whats_new` | `GET /api/digest?who=` |
+| Home | `mark_seen(who, keys)` | `mark_seen` | `POST /api/mark_seen` |
+| Plan | `start_study(question, owner, decision, hypothesis, fields)` | `start_study` | `POST /api/start_study` |
 | Plan | `update_study(study_id, by, ...)` | `update_study` | `POST /api/update_study` |
 | Plan | `get_study(id)`, `list_studies(status, owner)` | `get_study`, `list_studies` | `GET /api/studies/{id}`, `/api/studies` |
-| Analyze | `propose(statement, tier, owner, evidence_links, study_id)` | `propose` | `POST /api/propose` |
-| Insights | `promote(finding_id, by, statement, note)` | `promote` | `POST /api/promote` |
-| Explore | `query(topic, tier, status)` | `query` | `GET /api/findings?q=&tier=&status=` |
-| Explore | `get(id)`, `history(id)` | `get`, `history` | `GET /api/findings/{id}`, `/api/findings/{id}/history` |
-| Explore | `link(from_id, to_id, type, by, note)` | `link` | `POST /api/link` |
-| Explore | `check_conflict(statement or finding_id)` | `check_conflict` | `POST /api/check_conflict` |
-| Explore | `confirm_conflict(finding_id, conflicting_id, confirmed_by, note)` | `check_conflict` with `confirm_with` | `POST /api/confirm_conflict` |
-| Validate | `validate(finding_id, validated_by, note, outcome, basis)` | `validate` | `POST /api/validate` |
-| Validate | `revise(finding_id, by, statement, note)` | `revise` | `POST /api/revise` |
-| Validate | `request_validation(finding_id, requested_by, people, roles, note)` | `request_validation` | `POST /api/request_validation` |
-| Validate | `withdraw_request(request_id, by)` | `withdraw_request` | `POST /api/withdraw_request` |
-| Validate | `my_queue(who)` | `my_queue` | `GET /api/queue?who=` |
-| Validate | `checkout(finding_id, who)`, `release(finding_id, who)` | `checkout`, `release` | `POST /api/checkout`, `/api/release` |
-| Decide | `log_decision(title, made_by, finding_ids, note, outcome)` | `log_decision` | `POST /api/log_decision` |
-| Decide | `update_decision(decision_id, by, outcome, note, add_finding_ids)` | `update_decision` | `POST /api/update_decision` |
+| Learn | `add(statement, level, owner, evidence, study_id, origin)` | `add` | `POST /api/add` |
+| Learn | `confirm(learning_id, by, statement, note)` | `confirm` | `POST /api/confirm` |
+| Learn | `promote(learning_id, by, statement, note, origin)` | `promote` | `POST /api/promote` |
+| Learn | `revise(learning_id, by, statement, note, origin)` | `revise` | `POST /api/revise` |
+| Find | `query(topic, level, trust)` | `query` | `GET /api/learnings?q=&level=&trust=` |
+| Find | `get(id)`, `history(id)` | `get`, `history` | `GET /api/learnings/{id}`, `/api/learnings/{id}/history` |
+| Connect | `link(from_id, to_id, type, by, note)` | `link` | `POST /api/link` |
+| Connect | `check_conflict(statement or learning_id)` | `check_conflict` | `POST /api/check_conflict` |
+| Review | `review(learning_id, by, verdict, how, note)` | `review` | `POST /api/review` |
+| Review | `ask_for_review(learning_id, by, people, roles, note)` | `ask_for_review` | `POST /api/ask_for_review` |
+| Review | `withdraw_request(request_id, by)` | `withdraw_request` | `POST /api/withdraw_request` |
+| Review | `my_queue(who)` | `my_queue` | `GET /api/queue?who=` |
+| Review | `working_on(learning_id, who, on)`, `follow(learning_id, who, on)` | `working_on`, `follow` | `POST /api/working_on`, `/api/follow` |
+| Decide | `log_decision(title, made_by, learning_ids, note)` | `log_decision` | `POST /api/log_decision` |
+| Decide | `update_decision(decision_id, by, outcome, note, add_learning_ids)` | `update_decision` | `POST /api/update_decision` |
 | Decide | `get_decision(id)`, `list_decisions(made_by)` | `get_decision`, `list_decisions` | `GET /api/decisions/{id}`, `/api/decisions` |
-| Loop back | `request_research(question, requested_by, decision, from_decision_id, from_query, fields)` | `request_research` | `POST /api/request_research` |
+| Loop back | `ask_for_research(question, by, decision, from_decision_id, from_query)` | `ask_for_research` | `POST /api/ask_for_research` |
 | All | `activity(limit)` | `activity` | `GET /api/activity` |
 
 ## Rules
 
 Open by default. Roles inform, they never block, unless a team turns on a rule that says so.
 
-- New findings always start as `proposed`. A finding is `validated` while at least one current review approves it.
-- Asking for changes or disagreeing is shown to everyone but never contests a finding on its own. A conflict is confirmed separately, and then both findings become `contested`.
-- The owner cannot review their own finding. A person can review again; their latest review counts.
-- A review request closes when that person, or anyone in the requested role, reviews. Anyone can review without being asked.
-- Promotion and revision create new, linked findings. The original stays as it was.
+- A learning a person writes starts as Shared and Not reviewed. One made with AI starts as a Draft that only its owner can confirm. A draft cannot be reviewed, asked about, or promoted.
+- Trust is one state, first match wins: Contested (a confirmed conflict, or a current review disagrees), Needs changes, Checked by an SME, Checked by peers, Not reviewed.
+- The owner cannot review their own learning. A person can review again; their latest review counts.
+- A review request closes when that person, anyone in the requested role, or any SME (for an SME request) reviews. Anyone can review without being asked.
+- Promotion adds a new, linked learning; the original stays as it was. Revision adds a new version and the old one becomes Replaced.
 - Promotion readiness comes from the team's `[promote]` rule. It is a signal unless the team sets `enforce = "required"`.
-- `propose` and `promote` run a conflict check and return possible conflicts. They never block.
-- Missing evidence, unvalidated or contested findings used in a decision, and empty study fields come back as warnings.
-- Checkout is advisory.
+- `add`, `promote`, and `revise` run a conflict check and return possible conflicts. They never block.
+- Missing evidence, learnings used in a decision before they are checked, and study details a stage asks for come back as warnings.
+- "I'm working on this" is a soft hold. It never stops anyone.
 
 ## How the conflict check works
 
 It is a simple text heuristic, so there are no model or API dependencies:
 
-1. Compare topic words (stop words and direction words removed, light stemming) against every validated or contested finding. A candidate needs an overlap score of at least 0.5 and at least two shared words.
-2. For each candidate, look for signals that the two disagree: one is negated and the other is not, they point in opposite directions (increase vs decrease), or they cite different numbers.
+1. Compare topic words (stop words and direction words removed, light stemming) against every shared learning that is checked or contested. A candidate needs an overlap score of at least 0.5 and at least two shared words.
+2. For each candidate, look for signs that the two disagree: one is negated and the other is not, they point in opposite directions (increase vs decrease), or they cite different numbers.
 
-The check only suggests. Nothing changes until a person confirms, at which point both findings become `contested` and show side by side. The heuristic is isolated in `core.py` so it can be swapped for embeddings or an LLM judge later.
+The check only suggests. Nothing changes until a person confirms, at which point both learnings become Contested and show side by side. The heuristic is isolated in `core.py` so it can be swapped for embeddings or an LLM judge later.
 
 ## Not yet
 
-Sign in and access controls, remote MCP over HTTP, conflict resolution, evidence quality fields, notifications, and the impact dashboard. See the [roadmap](https://github.com/mitchh14/amped-insights/issues/47).
+Sign in and access controls, remote MCP over HTTP, conflict resolution, saving the prompt and query behind a learning, evidence quality fields, notifications outside the app, and the impact dashboard. See the [roadmap](https://github.com/mitchh14/amped-insights/issues/47).
