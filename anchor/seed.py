@@ -1,18 +1,16 @@
-"""Sample data that walks the full research loop once, with a small team.
+"""Sample data: one workspace mid-way through, so every state in the workbench shows.
 
-A study into mobile checkout produces observations and a finding drafted with
-AI, which its owner confirms. A reviewer asks for changes, the finding is
-revised, checked by an SME, and promoted to an insight. A stakeholder uses the
-insight in a decision, and the decision raises a new question for research.
-Along the way an AI agent's draft conflicts with a checked finding and is
-flagged.
+A small team asks why mobile shoppers leave checkout. They collect context
+(a funnel query, interview notes, a data export), and AI drafts blocks from it,
+each saying how confident it is, why, and what it assumes. People check the
+blocks. Some are checked by owners, peers, or an SME; two AI drafts still wait
+for their owners; one observation needs changes; and one finding built on a
+single quote draws a disagreement. A checked insight sits in the package.
 
 Used by scripts/seed.py and by the browser demo.
 """
 
 from __future__ import annotations
-
-from datetime import datetime, timedelta, timezone
 
 from .core import Store
 
@@ -23,73 +21,104 @@ TEAM = {
     "Dana": "pwdr",         # data science lead
     "Priya": "pwdr",        # analytics
     "Jordan": "pwdr",       # product manager
-    "Morgan": "stakeholder",  # VP of product
 }
 # SMEs the team trusts most in this area: one researcher, one data science lead.
 SMES = ("Sam", "Dana")
+
+SOURCES = {
+    "funnel": ("query", "Checkout funnel, last 30 days", "Priya",
+               "Mobile web, Aug 29 to Sep 27.\nCart 12,000\nStarted address form 10,900\n"
+               "Finished address form 6,650\nReached payment 5,600\nPaid 5,040 (42%)"),
+    "int1": ("note", "Interviews, shoppers 1 to 4", "Sam",
+             "S1: \"Typing my whole address with my thumbs, no thanks.\"\n"
+             "S2: \"The keyboard kept covering the zip field.\"\n"
+             "S3: \"I gave up and finished on my laptop.\"\n"
+             "S4: \"It is tedious. I only do it if I really want the thing.\""),
+    "int2": ("note", "Interviews, shoppers 5 to 8", "Sam",
+             "S5: \"Address was fine, I have it saved.\"\n"
+             "S6: \"The form is long on a phone.\"\n"
+             "S7: \"I would have used Apple Pay if it was there.\"\n"
+             "S8: \"Typing it out is a pain. Keyboard jumped around.\""),
+    "split": ("data", "Returning vs new shoppers", "Priya",
+              "Returning shoppers: 31% of mobile checkouts, 61% pay.\n"
+              "New shoppers: 69% of mobile checkouts, 34% pay.\n"
+              "Returning shoppers with a saved address skip the address step."),
+}
 
 
 def seed(s: Store) -> None:
     for name, role in TEAM.items():
         s.set_person(name, "Lee", role=role, sme=name in SMES)
 
-    # Plan a study tied to a decision, then run it.
-    study = s.start_study("Why do mobile shoppers leave checkout before paying?", "Sam",
-                          decision="Whether to fund address autofill in Q3")["study"]["id"]
-    s.update_study(study, "Sam", status="running", method="Funnel analysis and remote interviews",
-                   sample="30 days of mobile web sessions; 8 recent mobile shoppers")
+    ws = s.start_study("Why do mobile shoppers leave checkout before paying?", "Sam",
+                       decision="Whether to fund address autofill in Q3")["study"]["id"]
+    s.update_study(ws, "Sam", status="running",
+                   method="Funnel analysis of 30 days of mobile web sessions, plus 8 remote interviews "
+                          "with recent mobile shoppers.")
+    src = {key: s.add_source(ws, by, title, body, kind)["source"]["id"]
+           for key, (kind, title, by, body) in SOURCES.items()}
 
-    # Observations: what we saw.
-    conv = s.add("Mobile checkout conversion is 42 percent", "observation", "Priya", study_id=study)["learning"]["id"]
-    s.review(conv, "Sam", how="source_data", note="Matches the Q3 dashboard")
-    s.review(conv, "Dana", how="reran", note="Rebuilt it from raw events")
-    drop = s.add("Most mobile checkout drop off happens on the address form step", "observation", "Priya",
-                 study_id=study)["learning"]["id"]
-    s.review(drop, "Sam", how="source_data")
-    quotes = s.add("6 of 8 interviewed shoppers said typing an address on a phone is tedious", "observation", "Sam",
-                   study_id=study)["learning"]["id"]
-    s.review(quotes, "Lee", how="evidence", note="Listened to the recordings")
+    def block(statement, level, owner, *, sources=(), on=(), ai=False, confidence=None, why=None, assumes=()):
+        return s.add(statement, level, owner, list(on), ws, "ai_agent" if ai else "person",
+                     [src[k] for k in sources], confidence, why, list(assumes))["learning"]["id"]
 
-    # A finding drafted with AI. Jordan checks it and fixes the wording before sharing.
-    finding = s.add("Shoppers abandon checkout because forms are long", "finding", "Jordan",
-                    [conv, drop, quotes], study, origin="person_with_ai")["learning"]["id"]
-    s.confirm(finding, "Jordan", "Shoppers abandon mobile checkout because the address form is too long",
-              note="Checked it against the quotes and narrowed it to the address form")
-    s.review(finding, "Sam", how="evidence", note="Evidence lines up")
+    # Observations: what we saw, each taken from a source.
+    o1 = block("Mobile checkout conversion is 42 percent", "observation", "Priya", sources=["funnel"])
+    s.check(o1, "Sam", how="source_data", note="Matches the dashboard")
 
-    # A reviewer asks for changes, and the owner revises.
-    s.review(finding, "Dana", "changes", note="The app already has autofill. Scope this to mobile web.")
-    finding2 = s.revise(finding, "Jordan", "Shoppers abandon mobile web checkout because the address form is too long",
-                        note="Scoped to mobile web, per Dana")["learning"]["id"]
-    s.review(finding2, "Dana", how="evidence", note="Scope is right now")
-    s.review(finding2, "Sam", how="evidence")
+    o2 = block("39 percent of shoppers who start the address form leave before finishing it", "observation",
+               "Jordan", sources=["funnel"], ai=True, confidence="high",
+               why="Worked out from the funnel: 10,900 started the form, 6,650 finished it")
+    s.check(o2, "Jordan", note="Did the math again from the funnel")
 
-    # Promote the finding to an insight.
-    insight = s.promote(finding2, "Lee", "Address autofill is the highest leverage fix for mobile web checkout",
-                        note="Data, interviews, and an SME review all point the same way")["learning"]["id"]
-    s.review(insight, "Dana", how="evidence")
-    s.ask_for_review(insight, "Lee", roles=["sme"], note="One more SME review before we lean on it")
+    o3 = block("6 of 8 shoppers said typing an address on a phone is tedious", "observation", "Sam",
+               sources=["int1", "int2"])
+    s.check(o3, "Lee", how="evidence", note="Listened to the recordings")
 
-    # An AI agent's draft, confirmed by Priya, conflicts with the checked finding.
-    agent = s.add("Address form length does not affect mobile checkout abandonment", "finding", "Priya", [conv],
-                  origin="ai_agent")["learning"]["id"]
-    s.confirm(agent, "Priya", note="Matches an A/B test from last spring")
-    s.link(agent, finding2, "conflicts_with", "Lee", note="The spring A/B test points the other way")
+    o4 = block("2 shoppers said the keyboard covered or moved the form fields", "observation", "Jordan",
+               sources=["int1", "int2"], ai=True, confidence="medium", why="S2 and S8 describe it",
+               assumes=["The keyboard problem happens on most phones, not just theirs"])
 
-    # A stakeholder uses the insight in a decision, a while ago now.
-    decision = s.log_decision("Fund address autofill for mobile web in Q3", "Morgan", [insight],
-                              note="Biggest lever on mobile conversion we have evidence for")["decision"]["id"]
-    with s._conn() as conn:  # sample data only: date the decision so its outcome is due
-        then = (datetime.now(timezone.utc) - timedelta(days=35)).isoformat(timespec="seconds")
-        conn.execute("UPDATE decisions SET at = ? WHERE id = ?", (then, decision))
+    o7 = block("2 shoppers said they would pay with Apple Pay if offered", "observation", "Jordan",
+               sources=["int2"], ai=True, confidence="low", why="Read from the interview notes",
+               assumes=["Other shoppers feel the same as the one who said it"])
+    s.check(o7, "Jordan")
+    s.check(o7, "Lee", "needs_changes", note="Only S7 said this. It is 1 shopper, not 2.")
 
-    # Loop back: the decision raises a new question.
-    s.ask_for_research("Would autofill also help returning shoppers who have a saved address?", "Morgan",
-                       from_decision_id=decision)
+    o5 = block("Returning shoppers pay 61 percent of the time, new shoppers 34 percent", "observation", "Priya",
+               sources=["split"], ai=True, confidence="high", why="Straight from the export")
+    s.check(o5, "Priya", note="Checked against the export")
+    s.check(o5, "Dana", how="reran", note="Rebuilt it from raw events")
 
-    # Work still in progress elsewhere.
-    guest = s.add("Desktop shoppers prefer guest checkout over creating an account", "finding", "Jordan")["learning"]["id"]
-    s.ask_for_review(guest, "Jordan", people=["Dana"])
-    s.working_on(guest, "Sam")
-    s.add("Returning shoppers skip the address step when their address is saved", "finding", "Jordan",
-          [drop], origin="person_with_ai")
+    o6 = block("Returning shoppers with a saved address skip the address step", "observation", "Priya",
+               sources=["split"], ai=True, confidence="medium", why="Stated in the export notes",
+               assumes=["A saved address always skips the step, on every device"])
+
+    # Findings: what the observations mean, built on them.
+    f1 = block("Shoppers abandon checkout because forms are long", "finding", "Jordan", on=[o2, o3, o4], ai=True,
+               confidence="medium", why="The funnel and the interviews point the same way",
+               assumes=["The 8 people we interviewed are like most mobile shoppers"])
+    s.check(f1, "Jordan", statement="Shoppers leave mobile checkout mainly because the address form is hard "
+                                    "to fill in on a phone",
+            note="Narrowed it to the address form, which is what the evidence shows")
+    s.check(f1, "Sam", how="evidence", note="Funnel and interviews agree")
+
+    f3 = block("Adding Apple Pay would fix most mobile checkout drop-off", "finding", "Jordan", on=[o7], ai=True,
+               confidence="low", why="One shopper asked for it",
+               assumes=["What one shopper wants, most shoppers want"])
+    s.check(f3, "Jordan")
+    s.check(f3, "Dana", "disagree", note="One quote cannot carry this. The funnel says the loss is at the address step.")
+
+    f2 = block("Not having to type an address roughly doubles the chance a shopper pays", "finding", "Priya",
+               on=[o5, o6])
+    s.check(f2, "Lee", how="evidence")
+
+    # Insights: what it means for us and what to do.
+    i1 = block("Address autofill is likely our biggest mobile checkout win", "insight", "Jordan", on=[f1, f2])
+    s.check(i1, "Sam", how="judgment", note="Strong. Check the two open observations before the pitch.")
+
+    block("Test autofill with returning shoppers first, where the gain is easiest to measure", "insight", "Priya",
+          on=[f2], ai=True, confidence="medium", why="Returning shoppers are the group we can measure fastest",
+          assumes=["Returning shoppers react to autofill the same way new ones would"])
+
+    s.set_package(ws, "Jordan", [i1])

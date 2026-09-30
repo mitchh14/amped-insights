@@ -34,7 +34,7 @@ LINK_TYPES = ("supports", "builds_on", "same_as", "conflicts_with")
 # requested: someone asked for research and nobody has picked it up yet.
 # dropped: ended without running, for example answered by what we know.
 STUDY_STAGES = ("requested", "planned", "running", "finished", "dropped")
-STUDY_TEXT = ("question", "decision", "hypothesis", "method", "sample", "learned")
+STUDY_TEXT = ("question", "decision", "hypothesis", "method", "sample", "learned", "notes")
 # What each study stage asks for. Team template fields add to these.
 STUDY_ASKS = {
     "start": (("decision", "Decision it serves"),),
@@ -44,6 +44,11 @@ STUDY_ASKS = {
 STAGE_ASKS = {"requested": (), "planned": ("start",), "running": ("start", "running"),
               "finished": ("start", "running", "finished"), "dropped": ()}
 REQUEST_STATUSES = ("open", "done", "withdrawn")
+# How sure an AI says it is about a block it made. Never counts as a check.
+CONFIDENCE = ("low", "medium", "high")
+# What a piece of context in a workspace is. ai_text is pasted AI output, kept
+# whole so the blocks taken from it can point back to it.
+SOURCE_KINDS = ("note", "quote", "data", "query", "link", "file", "ai_text")
 
 # One trust state per learning. When more than one could apply, the first in
 # TRUST_ORDER wins.
@@ -55,6 +60,24 @@ TRUST_LABEL = {
     "not_reviewed": "Not reviewed",
 }
 TRUST_ORDER = tuple(TRUST_LABEL)
+# The one check state a block shows in the workbench, first match wins. It
+# folds stage and trust together: a draft needs its owner's check, and a shared
+# block nobody else has reviewed is checked by its owner.
+CHECK_LABEL = {
+    "disagreement": "Disagreement",
+    "needs_changes": "Needs changes",
+    "needs_check": "Needs a check",
+    "checked_by_sme": "Checked by an SME",
+    "checked_by_peers": "Checked by peers",
+    "checked_by_owner": "Checked by owner",
+}
+CHECK_FROM_TRUST = {"contested": "disagreement", "needs_changes": "needs_changes",
+                    "checked_by_sme": "checked_by_sme", "checked_by_peers": "checked_by_peers",
+                    "not_reviewed": "checked_by_owner"}
+# States a block can be built on, but that keep what is built on it flagged.
+UNCHECKED = ("disagreement", "needs_changes", "needs_check")
+# The three answers to a check, and the review verdict each becomes.
+CHECK_VERDICTS = {"looks_right": "approve", "needs_changes": "changes", "disagree": "disagree"}
 CHECKED = ("checked_by_sme", "checked_by_peers")
 VERDICT_SAID = {"approve": "approved", "changes": "asked for changes on", "disagree": "disagreed with"}
 CREDIT_FOR = {"approve": "approved", "changes": "asked for changes", "disagree": "disagreed"}
@@ -76,6 +99,10 @@ CREATE TABLE IF NOT EXISTS learnings (
     origin         TEXT NOT NULL DEFAULT 'person' CHECK (origin IN {ORIGINS}),
     owner          TEXT NOT NULL,
     evidence       TEXT NOT NULL DEFAULT '[]',  -- JSON list of learning ids that support it
+    source_ids     TEXT NOT NULL DEFAULT '[]',  -- JSON list of sources it was taken from
+    confidence     TEXT CHECK (confidence IN {CONFIDENCE}),  -- what the AI said, if an AI made it
+    why            TEXT,                         -- the AI's one line reason
+    assumes        TEXT NOT NULL DEFAULT '[]',  -- JSON list of what it takes as given
     study_id       INTEGER REFERENCES studies(id),
     promoted_from  INTEGER REFERENCES learnings(id),
     revises        INTEGER REFERENCES learnings(id),
@@ -168,6 +195,8 @@ CREATE TABLE IF NOT EXISTS studies (
     method            TEXT,
     sample            TEXT,
     learned           TEXT,  -- the wrap up, once finished
+    notes             TEXT,  -- what a checker should know: dates, gaps, caveats
+    package           TEXT NOT NULL DEFAULT '[]',  -- insight ids chosen to share, in order
     status            TEXT NOT NULL CHECK (status IN {STUDY_STAGES}),
     owner             TEXT,  -- empty while a request waits to be picked up
     fields            TEXT NOT NULL DEFAULT '{{}}',  -- team template fields, JSON
@@ -175,6 +204,19 @@ CREATE TABLE IF NOT EXISTS studies (
     from_decision_id  INTEGER,
     from_query        TEXT,
     created_at        TEXT NOT NULL
+);
+
+-- Context collected in a workspace (a study): notes, quotes, data, queries,
+-- links, and pasted AI text. Observations point back to the sources they came from.
+CREATE TABLE IF NOT EXISTS sources (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    study_id  INTEGER NOT NULL REFERENCES studies(id),
+    kind      TEXT NOT NULL CHECK (kind IN {SOURCE_KINDS}),
+    title     TEXT NOT NULL,
+    body      TEXT NOT NULL,
+    url       TEXT,
+    added_by  TEXT NOT NULL,
+    at        TEXT NOT NULL
 );
 
 -- Everyone who has taken an action. Names are matched without regard to
@@ -341,6 +383,68 @@ def contradiction_signals(a: str, b: str) -> list[str]:
     return signals
 
 
+# ---------------------------------------------------------------------------
+# Taking long AI text apart. Plain rules, no AI, so it runs anywhere and is
+# easy to read. It only drafts: a person checks every block it makes.
+# ---------------------------------------------------------------------------
+
+_BULLET_RE = re.compile(r"^\s*(?:[-*\u2022]|\d+[.)])\s+")
+_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])")
+_INSIGHT_RE = re.compile(r"\b(should|recommend\w*|we need to|must|prioriti[sz]\w*|opportunit\w+|invest\w*|"
+                         r"focus on|next step|biggest win|worth doing)\b", re.I)
+_FINDING_RE = re.compile(r"\b(because|suggest\w*|indicat\w*|likely|drive[sn]?|driven|due to|means|therefore|"
+                         r"leads? to|mainly|main reason|pattern|explains?|caus\w+|so that)\b", re.I)
+_OBSERVED_RE = re.compile(r"\d|\b(percent|said|told us|reported|measured|saw|observed)\b", re.I)
+# Words that take something as given. Each maps to the line shown under Assumes.
+_ASSUMES = (
+    (re.compile(r"\b(most|majority|many|few|often|usually|typically)\b", re.I), 'Says "{w}" without a number',
+     lambda t: not re.search(r"\d", t)),
+    (re.compile(r"\b(always|never|all|every|everyone|nobody|none)\b", re.I), 'Uses "{w}", which allows no exceptions',
+     None),
+    (re.compile(r"\b(likely|probably|may|might|could|seems?)\b", re.I), 'Hedges with "{w}" without saying why', None),
+    (re.compile(r"\b(clearly|obviously|of course|undoubtedly|certainly)\b", re.I),
+     'Says "{w}" as if it needs no support', None),
+    (re.compile(r"\b(because|due to|drives?|causes?|leads? to)\b", re.I), 'Claims a cause ("{w}") the text does not show',
+     lambda t: not re.search(r"\d", t)),
+)
+
+
+def _split_claims(text: str) -> list[str]:
+    """One piece per sentence or bullet. Headings and fragments are dropped."""
+    pieces = []
+    lines = [ln.strip() for ln in text.splitlines()]
+    first = next((i for i, ln in enumerate(lines) if ln), None)
+    for i, raw in enumerate(lines):
+        line = _BULLET_RE.sub("", raw).strip()
+        if not line or line.endswith(":") or line.startswith("#"):
+            continue
+        # A short first line with no full stop, set apart from the rest, is a title.
+        if i == first and line[-1] not in ".!?" and len(line.split()) <= 10 and (i + 1 == len(lines) or not lines[i + 1]):
+            continue
+        for part in _SENTENCE_RE.split(line):
+            part = part.strip().strip("\"'").strip()
+            if len(part.split()) >= 4:
+                pieces.append(part if part[-1] in ".!?" else part + ".")
+    return pieces
+
+
+def _guess_level(text: str) -> str:
+    if _INSIGHT_RE.search(text):
+        return "insight"
+    if _FINDING_RE.search(text):
+        return "finding"
+    return "observation"
+
+
+def _assumptions(text: str) -> list[str]:
+    out = []
+    for pattern, line, when in _ASSUMES:
+        m = pattern.search(text)
+        if m and (when is None or when(text)):
+            out.append(line.format(w=m.group(0).lower()))
+    return out
+
+
 SIMILARITY_THRESHOLD = 0.5
 MIN_SHARED_WORDS = 2
 
@@ -361,7 +465,10 @@ class Store:
         self.path = path
         self.config = config if config is not None else config_mod.load()
         with self._conn() as conn:
-            if conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'findings'").fetchone():
+            old = conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'findings'").fetchone() or (
+                conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'learnings'").fetchone()
+                and not any(c[1] == "source_ids" for c in conn.execute("PRAGMA table_info(learnings)")))
+            if old:
                 raise CoreError(f"{path} was made by an older ANCHOR. Move it aside and start a new database.")
             conn.executescript(SCHEMA)
             self._sync_people(conn)
@@ -544,6 +651,78 @@ class Store:
             return {"key": "replaced", "label": "Replaced"}
         return {"key": trust["state"], "label": trust["label"]}
 
+    def _check(self, conn, row: sqlite3.Row, trust: dict[str, Any] | None = None) -> dict[str, str]:
+        """The one check state a block shows: stage and trust folded together."""
+        if row["stage"] == "replaced":
+            return {"state": "replaced", "label": "Replaced"}
+        if row["stage"] == "draft":
+            state = "needs_check"
+        else:
+            state = CHECK_FROM_TRUST[(trust or self._trust(conn, row["id"]))["state"]]
+        return {"state": state, "label": CHECK_LABEL[state]}
+
+    @staticmethod
+    def _latest(conn, learning_id: int) -> int:
+        """Follow revisions to the newest version, so what a block is built on
+        always points at the version people see."""
+        seen = {learning_id}
+        while True:
+            r = conn.execute("SELECT id FROM learnings WHERE revises = ? ORDER BY id DESC LIMIT 1",
+                             (learning_id,)).fetchone()
+            if r is None or r[0] in seen:
+                return learning_id
+            learning_id = r[0]
+            seen.add(learning_id)
+
+    def _parts(self, conn, row: sqlite3.Row) -> dict[str, Any]:
+        """What a block rests on, and how much of that is still unchecked.
+
+        unchecked_parts counts the blocks directly under it that need a check,
+        need changes, or have a disagreement. deep_unchecked counts the same
+        further down. rests_on_nothing is true when an observation cites no
+        source, or a finding or insight is built on no blocks.
+        """
+        built_on = []
+        for e in json.loads(row["evidence"]):
+            latest = self._latest(conn, e)
+            if latest not in built_on:
+                built_on.append(latest)
+        state = {}
+
+        def state_of(lid):
+            if lid not in state:
+                state[lid] = self._check(conn, self._row(conn, lid))["state"]
+            return state[lid]
+
+        direct = [e for e in built_on if state_of(e) in UNCHECKED]
+        deep, stack, seen = set(), list(built_on), set(built_on)
+        while stack:
+            r = self._row(conn, stack.pop())
+            for e in json.loads(r["evidence"]):
+                e = self._latest(conn, e)
+                if e in seen:
+                    continue
+                seen.add(e)
+                stack.append(e)
+                if state_of(e) in UNCHECKED:
+                    deep.add(e)
+        source_ids = json.loads(row["source_ids"])
+        nothing = not source_ids if row["level"] == "observation" else not built_on
+        return {"built_on": built_on, "source_ids": source_ids, "unchecked_parts": len(direct),
+                "unchecked_ids": direct, "deep_unchecked": len(deep), "rests_on_nothing": nothing}
+
+    def _block(self, conn, row: sqlite3.Row) -> dict[str, Any]:
+        """A block as the workbench draws it: what it says, its one check state,
+        what it rests on, and what the AI said about it."""
+        return {"id": row["id"], "statement": row["statement"], "level": row["level"], "stage": row["stage"],
+                "origin": row["origin"], "owner": row["owner"], "study_id": row["study_id"],
+                "check": self._check(conn, row),
+                **self._ai_said(row), **self._parts(conn, row)}
+
+    @staticmethod
+    def _ai_said(row: sqlite3.Row) -> dict[str, Any]:
+        return {"confidence": row["confidence"], "why": row["why"], "assumes": json.loads(row["assumes"])}
+
     def _retrust(self, conn, learning_id: int, before: str, actor: str, cause: str, moment: bool = True) -> str:
         """Log a change in trust, and warn decisions when something they used is now contested."""
         after = self._trust(conn, learning_id)["state"]
@@ -668,6 +847,12 @@ class Store:
             if confirmed else None,
             "chip": self._chip(row, trust),
             "trust": trust,
+            "check": self._check(conn, row, trust),
+            **self._ai_said(row),
+            **{k: v for k, v in self._parts(conn, row).items() if k != "built_on"},
+            "sources": [dict(r) for r in conn.execute(
+                "SELECT s.id, s.kind, s.title, s.body, s.url FROM sources s, json_each(?) j WHERE s.id = j.value",
+                (row["source_ids"],))],
             "study": {k: srow[k] for k in ("id", "question", "decision", "status")} if srow else None,
             "evidence_ids": evidence_ids,
             "evidence": evidence,
@@ -833,6 +1018,10 @@ class Store:
             if "status" in d.get("changed", []):
                 return f"{a} moved {study} to {d.get('status', '').capitalize()}"
             return f"{a} updated {study}"
+        if kind == "source_added":
+            return f"{a} added the source \"{d.get('title')}\" to {study}"
+        if kind == "package_set":
+            return f"{a} set the package for {study}"
         if kind == "working_on":
             return f"{a} is working on {ref}" if d.get("on") else f"{a} stopped working on {ref}"
         if kind == "followed":
@@ -907,19 +1096,40 @@ class Store:
 
     # -- learnings ---------------------------------------------------------
 
+    def _said(self, conn, study_id, source_ids=None, confidence=None, why=None, assumes=None) -> dict[str, Any]:
+        """Check and tidy what a block cites and what an AI said about it."""
+        ids = sorted({int(x) for x in (source_ids or [])})
+        for sid in ids:
+            src = conn.execute("SELECT study_id FROM sources WHERE id = ?", (sid,)).fetchone()
+            if src is None:
+                raise CoreError(f"source {sid} does not exist")
+            if study_id is not None and src["study_id"] != int(study_id):
+                raise CoreError(f"source {sid} belongs to another workspace")
+        confidence = _clean(confidence)
+        if confidence is not None:
+            confidence = confidence.lower()
+            if confidence not in CONFIDENCE:
+                raise CoreError(f"confidence must be one of {CONFIDENCE}")
+        if isinstance(assumes, str):
+            assumes = [assumes]
+        assumes = [a for a in (_clean(x) for x in (assumes or [])) if a]
+        return {"source_ids": ids, "confidence": confidence, "why": _clean(why), "assumes": assumes}
+
     def _insert(self, conn, statement, level, owner, evidence, study_id, origin, promoted_from=None,
-                revises=None, **extra) -> int:
+                revises=None, said: dict[str, Any] | None = None, **extra) -> int:
         if origin not in ORIGINS:
             raise CoreError(f"origin must be one of {ORIGINS}")
         for e in evidence:
             self._row(conn, e)
         if study_id is not None:
             study_id = self._study_row(conn, int(study_id))["id"]
+        said = said or self._said(conn, study_id)
         stage = "shared" if origin == "person" else "draft"
         cur = conn.execute(
-            "INSERT INTO learnings (statement, level, stage, origin, owner, evidence, study_id, promoted_from, "
-            "revises, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (statement, level, stage, origin, owner, json.dumps(evidence), study_id, promoted_from, revises, _now()),
+            "INSERT INTO learnings (statement, level, stage, origin, owner, evidence, source_ids, confidence, why, "
+            "assumes, study_id, promoted_from, revises, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (statement, level, stage, origin, owner, json.dumps(evidence), json.dumps(said["source_ids"]),
+             said["confidence"], said["why"], json.dumps(said["assumes"]), study_id, promoted_from, revises, _now()),
         )
         lid = cur.lastrowid
         detail = {"level": level, "origin": origin, "evidence": evidence, **extra}
@@ -949,12 +1159,20 @@ class Store:
         evidence: list[int] | None = None,
         study_id: int | None = None,
         origin: str = "person",
+        source_ids: list[int] | None = None,
+        confidence: str | None = None,
+        why: str | None = None,
+        assumes: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Write down a learning, optionally inside a study.
+        """Write down a block (a learning), optionally inside a workspace (a study).
 
         origin says who made it: person, person_with_ai, or ai_agent. Anything
-        made with AI starts as a draft until its owner confirms it. A conflict
-        check runs at once, so contradictions surface on entry. It never blocks.
+        made with AI starts as a draft until its owner checks it. source_ids
+        are the workspace sources it was taken from; evidence is the blocks it
+        is built on. An AI that made it says how confident it is (low, medium,
+        high), why, and what it assumes. That never counts as a check. A
+        conflict check runs at once, so contradictions surface on entry. It
+        never blocks.
         """
         statement = self._require(statement, "statement")
         if level not in LEVELS:
@@ -963,9 +1181,14 @@ class Store:
         warnings = []
         with self._conn() as conn:
             owner = self._person(conn, owner, "owner")
-            lid = self._insert(conn, statement, level, owner, evidence, study_id, origin)
+            said = self._said(conn, study_id, source_ids, confidence, why, assumes)
+            lid = self._insert(conn, statement, level, owner, evidence, study_id, origin, said=said)
+        if level == "observation" and not said["source_ids"] and study_id is not None:
+            warnings.append("this observation cites no source, so it rests on nothing yet")
         if level != "observation" and not evidence:
-            warnings.append(f"this {self._level_label(level).lower()} has no evidence yet")
+            warnings.append(f"this {self._level_label(level).lower()} is built on nothing yet")
+        if origin != "person" and not (said["confidence"] and said["why"]):
+            warnings.append("say how confident the AI is and why, so a checker can judge it")
         return self._created(lid, warnings)
 
     def confirm(self, learning_id: int, by: str, statement: str | None = None, note: str | None = None) -> dict[str, Any]:
@@ -1057,6 +1280,7 @@ class Store:
                      if r["verdict"] == "changes" and r["by"] != by]
             draft = origin != "person"
             lid = self._insert(conn, statement, row["level"], by, json.loads(row["evidence"]), row["study_id"], origin,
+                               said=self._said(conn, row["study_id"], json.loads(row["source_ids"])),
                                promoted_from=row["promoted_from"], revises=learning_id,
                                **({"ask_again": asked} if draft and asked else {}))
             conn.execute("UPDATE learnings SET stage = 'replaced' WHERE id = ?", (learning_id,))
@@ -1352,6 +1576,11 @@ class Store:
                 study["learning_count"] = conn.execute(
                     "SELECT COUNT(*) FROM learnings WHERE study_id = ? AND stage != 'replaced'", (r["id"],)).fetchone()[0]
                 study["needs"] = self._study_needs(study)
+                counts = {k: 0 for k in CHECK_LABEL}
+                for r2 in conn.execute("SELECT * FROM learnings WHERE study_id = ? AND stage != 'replaced'", (r["id"],)):
+                    counts[self._check(conn, r2)["state"]] += 1
+                study["counts"] = counts
+                study["package"] = json.loads(r["package"])
                 out.append(study)
         return out
 
@@ -1440,6 +1669,199 @@ class Store:
                           status=updates.get("status"))
         study = self.get_study(study_id)
         return {"study": study, "warnings": self._study_warnings(study)}
+
+    # -- the workbench ----------------------------------------------------
+
+    def _base(self, conn, study: sqlite3.Row) -> list[dict[str, Any]]:
+        """The four parts every block rests on, and whether each is in place."""
+        n = conn.execute("SELECT COUNT(*) FROM sources WHERE study_id = ?", (study["id"],)).fetchone()[0]
+        return [
+            {"key": "question", "label": "Question and decision", "ok": bool(study["question"] and study["decision"])},
+            {"key": "context", "label": "Context", "ok": n >= 2, "count": n},
+            {"key": "method", "label": "Method and approach", "ok": bool(study["method"])},
+            {"key": "notes", "label": "Notes", "ok": bool(study["notes"])},
+        ]
+
+    def get_workspace(self, study_id: int) -> dict[str, Any]:
+        """Everything the workbench draws for one workspace: the question and
+        decision, the base (context, method, notes), the sources, every current
+        block with its check state and what it rests on, and the package."""
+        with self._conn() as conn:
+            row = self._study_row(conn, study_id)
+            blocks = [self._block(conn, r) for r in conn.execute(
+                "SELECT * FROM learnings WHERE study_id = ? AND stage != 'replaced' ORDER BY id", (study_id,))]
+            sources = [dict(r) for r in conn.execute("SELECT * FROM sources WHERE study_id = ? ORDER BY id", (study_id,))]
+            base = self._base(conn, row)
+        counts = {k: 0 for k in CHECK_LABEL}
+        for b in blocks:
+            counts[b["check"]["state"]] += 1
+        live = {b["id"] for b in blocks}
+        return {"id": row["id"], "question": row["question"], "decision": row["decision"], "method": row["method"],
+                "notes": row["notes"], "owner": row["owner"], "status": row["status"], "base": base,
+                "sources": sources, "blocks": blocks, "counts": counts,
+                "package": [i for i in json.loads(row["package"]) if i in live]}
+
+    def needs_check(self, who: str, study_id: int | None = None) -> dict[str, Any]:
+        """Blocks waiting on a person's check, most pressing first: their AI
+        drafts, their blocks with changes asked, blocks someone asked them to
+        check, then blocks only their owner has checked so far."""
+        with self._conn() as conn:
+            who = self._person(conn, who, "who")
+            me = self._who(conn, who)
+            where, args = "stage = 'shared' AND owner != ?", [who]
+            if study_id is not None:
+                where += " AND study_id = ?"
+                args.append(int(study_id))
+            items, seen = [], set()
+
+            def put(row, why):
+                if row["id"] not in seen:
+                    seen.add(row["id"])
+                    items.append({**self._block(conn, row), "reason": why})
+
+            mine = "owner = ?" + (" AND study_id = ?" if study_id is not None else "")
+            mine_args = [who] + ([int(study_id)] if study_id is not None else [])
+            for r in conn.execute(f"SELECT * FROM learnings WHERE {mine} AND stage = 'draft' ORDER BY id", mine_args):
+                put(r, "Your AI draft to check")
+            for r in conn.execute(f"SELECT * FROM learnings WHERE {mine} AND stage = 'shared' ORDER BY id", mine_args):
+                if self._check(conn, r)["state"] == "needs_changes":
+                    put(r, "Changes asked on your block")
+            for r in conn.execute(
+                f"SELECT l.* FROM learnings l JOIN review_requests q ON q.learning_id = l.id WHERE q.status = 'open' "
+                f"AND (q.person = ? OR q.role = ? OR (q.role = 'sme' AND ?)) AND l.{where.replace(' AND ', ' AND l.')} "
+                "ORDER BY q.id", [who, me["role"], me["sme"], *args],
+            ):
+                put(r, "Someone asked you to check this")
+            for r in conn.execute(f"SELECT * FROM learnings WHERE {where} ORDER BY id", args):
+                if self._check(conn, r)["state"] == "checked_by_owner":
+                    put(r, "Nobody else has checked this yet")
+        return {"who": who, "items": items}
+
+    def add_source(self, study_id: int, by: str, title: str, body: str, kind: str = "note",
+                   url: str | None = None) -> dict[str, Any]:
+        """Add context to a workspace: a note, quote, data, query, link, file
+        text, or pasted AI text (ai_text). Observations cite it."""
+        title, body = self._require(title, "title"), self._require(body, "body")
+        if kind not in SOURCE_KINDS:
+            raise CoreError(f"kind must be one of {SOURCE_KINDS}")
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            self._study_row(conn, study_id)
+            cur = conn.execute(
+                "INSERT INTO sources (study_id, kind, title, body, url, added_by, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (study_id, kind, title, body, _clean(url), by, _now()))
+            self._log(conn, None, "source_added", by, study_id, source_id=cur.lastrowid, title=title, source_kind=kind)
+            source = dict(conn.execute("SELECT * FROM sources WHERE id = ?", (cur.lastrowid,)).fetchone())
+        return {"source": source, "warnings": []}
+
+    def check(self, learning_id: int, by: str, verdict: str = "looks_right", how: str | None = None,
+              note: str | None = None, statement: str | None = None) -> dict[str, Any]:
+        """Check a block: looks_right, needs_changes, or disagree.
+
+        The one action people take on a block. The owner of an AI draft checks
+        it first (and may fix the wording), which is the same as confirm. When
+        changes were asked, the owner answers by changing the wording, which
+        writes a new version. Anyone else gives a review, with how they checked.
+        """
+        if verdict not in CHECK_VERDICTS:
+            raise CoreError(f"verdict must be one of {tuple(CHECK_VERDICTS)}")
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            by = self._person(conn, by, "by")
+            state = self._check(conn, row)["state"]
+        new = (statement or "").strip()
+        changed = bool(new) and new != row["statement"]
+        if state == "replaced":
+            raise CoreError(f"#{learning_id} was replaced by a newer version; check that one")
+        if by != row["owner"]:
+            if row["stage"] == "draft":
+                raise CoreError(f"{row['owner']} checks this AI draft first")
+            return self.review(learning_id, by, CHECK_VERDICTS[verdict], how, note)
+        if verdict != "looks_right":
+            raise CoreError("this is your block: change the wording instead")
+        if row["stage"] == "draft":
+            return self.confirm(learning_id, by, new or None, note)
+        if changed:
+            return self.revise(learning_id, by, new, note)
+        if state == "needs_changes":
+            raise CoreError("changes were asked for: change the wording to answer them")
+        raise CoreError("you already stand behind this; someone else can check it next")
+
+    def add_blocks(self, study_id: int, by: str, blocks: list[dict[str, Any]], origin: str = "ai_agent") -> dict[str, Any]:
+        """Add many blocks to a workspace at once, the way an AI tool breaks a
+        piece of work into parts. Each item has a level and statement, and can
+        have: ref (a name later items can build on), sources (source ids),
+        built_on (block ids or earlier refs), confidence, why, and assumes.
+        Everything made with AI arrives as a draft for its owner to check."""
+        if not isinstance(blocks, list) or not blocks:
+            raise CoreError("give at least one block")
+        refs: dict[str, int] = {}
+        known: set[str] = set()
+        for i, b in enumerate(blocks):  # check every ref before writing anything
+            if not isinstance(b, dict):
+                raise CoreError(f"block {i + 1} must be an object")
+            for x in b.get("built_on") or []:
+                if isinstance(x, str) and not x.isdigit() and x not in known:
+                    raise CoreError(f"block {i + 1} builds on '{x}', which is not an earlier ref")
+            known.add(str(b.get("ref") or i + 1))
+        made, warnings = [], []
+        for i, b in enumerate(blocks):
+            built = [refs[x] if isinstance(x, str) and x in refs else int(x) for x in b.get("built_on") or []]
+            out = self.add(b.get("statement"), b.get("level"), by, built, study_id, origin,
+                           b.get("sources"), b.get("confidence"), b.get("why"), b.get("assumes"))
+            refs[str(b.get("ref") or i + 1)] = out["learning"]["id"]
+            made.append(out["learning"]["id"])
+            warnings += [f"#{out['learning']['id']}: {w}" for w in out["warnings"] if "is a draft until" not in w]
+        return {"ids": made, "refs": refs, "warnings": warnings}
+
+    def break_down(self, study_id: int, by: str, text: str, title: str | None = None) -> dict[str, Any]:
+        """Take a long piece of AI text apart into blocks, so each claim can be
+        checked on its own. A simple built-in splitter, with no AI and nothing
+        sent anywhere: the text is kept as a source, each sentence becomes a
+        draft block, and a level is guessed from its words. Observations cite
+        the text. Findings and insights are left built on nothing, which is the
+        point: it shows which claims the text never supported. Hedges and
+        sweeping words are listed as what the block assumes. Your AI tool can
+        do a better job with add_blocks."""
+        text = self._require(text, "text")
+        pieces = _split_claims(text)
+        if not pieces:
+            raise CoreError("found no claims to take apart; paste sentences, not just headings")
+        src = self.add_source(study_id, by, title or "Pasted AI text", text, "ai_text")["source"]
+        made = []
+        for piece in pieces:
+            level = _guess_level(piece)
+            out = self.add(piece, level, by, None, study_id, "ai_agent",
+                           [src["id"]] if level == "observation" else None, None,
+                           "Split from pasted AI text. The AI did not say how sure it was.", _assumptions(piece))
+            made.append(out["learning"]["id"])
+        with self._conn() as conn:
+            blocks = [self._block(conn, self._row(conn, i)) for i in made]
+        nothing = sum(b["rests_on_nothing"] for b in blocks)
+        warnings = [f"{nothing} of {len(blocks)} claims rest on nothing in the text"] if nothing else []
+        return {"source": src, "ids": made, "blocks": blocks, "warnings": warnings}
+
+    def set_package(self, study_id: int, by: str, learning_ids: list[int]) -> dict[str, Any]:
+        """Choose the insights a workspace shares together, in order. Only
+        insights from this workspace can go in."""
+        ids = []
+        for x in learning_ids or []:
+            if int(x) not in ids:
+                ids.append(int(x))
+        warnings = []
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            self._study_row(conn, study_id)
+            for lid in ids:
+                row = self._row(conn, lid)
+                if row["study_id"] != int(study_id) or row["level"] != "insight" or row["stage"] == "replaced":
+                    raise CoreError(f"#{lid} is not a current insight in this workspace")
+                state = self._check(conn, row)["state"]
+                if state in UNCHECKED:
+                    warnings.append(f"#{lid} is {CHECK_LABEL[state]}")
+            conn.execute("UPDATE studies SET package = ? WHERE id = ?", (json.dumps(ids), study_id))
+            self._log(conn, None, "package_set", by, study_id, package=ids)
+        return {"package": ids, "warnings": warnings}
 
     # -- decisions ---------------------------------------------------------
 

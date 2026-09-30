@@ -1,90 +1,74 @@
-# The experience: calm, and in order
+# The experience: the workbench
 
-How the app decides what to show, and when. The goal: open it, see the one thing worth doing, and find everything else one click away. The words are defined in [GLOSSARY.md](GLOSSARY.md).
-
-## The importance model
-
-Every piece of information and every action gets one importance, and the importance decides how it shows.
-
-| Importance | Name | How it shows |
-|---|---|---|
-| L1 | Do now | One per screen. The single most useful action, or an alert only when something is exceptional (contested, at risk). |
-| L2 | Glance | What you judge in two seconds: the statement, a level shape, one chip. Lists show five items, then "See all". |
-| L3 | On request | Folded sections with counts, a More menu, nudges that appear when they help. |
-| L4 | Record | History and activity. Kept forever, shown only when opened. Never on home. |
+How the app shows the work, and why. The goal: open a workspace, see how the insights are built and what still needs a check, and check it in a few clicks. The words are defined in [GLOSSARY.md](GLOSSARY.md).
 
 ## Design rules
 
-1. One primary action per screen, chosen by context.
-2. One chip per learning, not three labels.
-3. Show state only when it is unusual. Only Contested, Needs changes, and at risk use color.
-4. Ask for the least to start.
-5. Ask for detail when it is needed, with "draft it with your AI" as a second path.
-6. Level is a shape on lists (square: observation, dashed circle: finding, diamond: insight), spelled out on detail.
-7. Short lists, then "See all".
-8. Activity is a record, not a feed.
-9. Celebrate contribution, never rank.
-10. A change in what we know is news.
-11. Show who made it. AI drafts are confirmed by their owner before review.
+1. One idea per element. A block shows its statement. How full it looks says how far it has been checked.
+2. Only trouble gets words and color: Needs a check, Needs changes, Disagree, Rests on nothing, and ⚠ for something unchecked underneath.
+3. Show what is under everything. Lines connect each block to what it is built on, down to the sources.
+4. What the AI says (confidence, why, assumes) sits apart from the check, and never counts as one.
+5. Ask for the least first. Pick a verdict, then say how you checked or why.
+6. The rest is one click away: history, what a block holds up, and the full source text.
+7. One primary button per screen: **Check N blocks**.
 
 ## Home
 
-```
-+--------------------------------------------------------------+
-| Nice. Morgan used your work in "Fund address autofill".   x  |   moment, shown once
-+--------------------------------------------------------------+
-| Confirm your AI draft                                        |   L1: next step
-| "Returning shoppers skip the address step..."                |
-| [ Confirm ]  Not now   2 more waiting                        |
-+--------------------------------------------------------------+
-| Waiting on you (5 max)      | What changed for you (5 max)   |   L2
-| Your work (5 max)           | See all activity               |
-+--------------------------------------------------------------+
-```
+A card per workspace: its question, the decision it serves, a strip of small squares (one per block, filled by how far it is checked), and how many blocks wait on you. Below: **New workspace** asks for the question and the decision it will inform.
 
-The next step is picked by the core (`next_step`), in this order:
-
-1. A decision of yours relies on something now contested
-2. Someone asked you to review a learning
-3. Your AI drafts to confirm
-4. A reviewer asked for changes on your learning
-5. A research request is waiting (researchers and SMEs)
-6. Something you use or follow changed
-7. Your study needs its next detail
-8. A decision of yours: what happened?
-9. Nothing waiting: a suggestion for your role
-
-"Not now" sets a step aside until something new happens. Stakeholders see "Find what we know", "Your decisions", and "What changed for you".
-
-## A learning
+## A workspace: Build
 
 ```
-[shape] Finding  [Contested]  #5
-Shoppers abandon mobile web checkout because the address form is too long
-Added by Jordan with AI · confirmed, wording changed · from <study>
-+-- Contested. Lee flagged a conflict ----------------------------+   only when present
-| This one            |  #7 Address form length does not matter  |
-+-----------------------------------------------------------------+
-Checked by 2 SMEs. How they checked: read the evidence (2).
-[ Primary action ]  [ More v ]
-> Why trust this   5
-> Connected        6
-> Used in decisions 0
-> History          8
+Why do mobile shoppers leave checkout before paying?
+For the decision: Whether to fund address autofill in Q3
+[Check 3 blocks] [Break down AI text] [Connect] [Build | Review]
+Package  (Address autofill is likely our biggest...  x)  Open
++--------------------------------------------------------------+
+| INSIGHTS        [ solid, glowing ]     [ hollow, Needs a check ]|
+| FINDINGS   [ solid ⚠ ]   [ mid ⚠ ]   [ red, Disagree ]          |
+| OBSERVATIONS [light][mid][hollow][solid][hollow][amber]...      |
+| BASE          (source) (source) (source) (source)               |
+| [Question and decision][Context][Method and approach][Notes +]  |
++--------------------------------------------------------------+
+Fuller means more checked: not yet, owner, peers, SME
 ```
 
-The primary action, by context: your draft, Confirm. Replaced, See the newer version. Yours with changes asked, Revise. Someone else's you have not reviewed, Review. Yours with no review and no request, Ask for review. Checked and ready, Promote. Checked, Use in a decision. Otherwise, Follow changes. Everything else is in More.
+- Blocks build up from the base: sources, then observations, findings, and insights. Lines show what each block is built on. Dashed amber lines lead into parts that still need a check.
+- Hover a block to trace its whole line: everything under it, down to the sources, and everything built on it. The rest fades.
+- A thin base shows. A part of the base that is empty is striped, with "+ add".
+- An insight glows once someone other than its owner has checked it.
+- **Connect**: click blocks to pick them, then write the finding or insight they add up to, or copy a prompt for your AI tool.
 
-## Short flows
+## A workspace: Review
 
-- **Add a learning:** what did you learn (one sentence), then what kind is it (three plain choices with an example each), with "An AI helped write this" and "Add evidence or a study" folded. The conflict check shows only when it finds something.
-- **Review:** Approve, Ask for changes, or Disagree, then one follow-up that fits: how you checked (optional chips), what should change, or why.
-- **Confirm an AI draft:** the draft, editable, and "What did you check or change?".
-- **Studies:** start with the question and the decision. Marking it running asks for the method and who you studied. Wrapping it up asks what we learned. Team fields are asked at their stage.
-- **Decisions:** what you decided, and which learnings it relied on. "What happened?" is asked later, on the decision and as a next step. The people behind it show as names, with what each did folded.
+The same blocks as a list, for working through checks.
 
-## Notices and moments
+- **Needs a check**, **Needs attention** (changes asked, a disagreement, or resting on nothing), and **Checked** (folded).
+- Each row: a level shape (square: observation, dashed circle: finding, diamond: insight), the statement, who made it, what the AI says, what it is built on, and its state.
+- Filters by level, and **Mine**.
 
-The core's digest (`digest`, and `whats_new` over MCP) picks what changed for each person: changes to what they own, reviewed, used in a decision, or follow, reviews asked of them, and moments. Joins, "working on" notes, and other people's plain activity are left out. Each item is one plain sentence, the same in the app and in an AI tool.
+## The check panel
 
-Moments: your work was used in a decision, someone built on it, an SME approved it or your insight became checked, and milestones for you or the whole team. Shown once as a banner, then kept in the digest. Teams turn them off in `anchor.toml`.
+Opened by clicking any block or row, or stepped through with **Check N blocks**.
+
+1. The statement, its check state, and who made it.
+2. **From** (an observation's sources, with the matching lines marked) or **Built on** (the blocks under it, each with its state).
+3. **AI says**, for blocks made with AI: confidence, why, and what it assumes. "This is the AI's own view. It never counts as a check."
+4. **Your check**:
+   - The owner of an AI draft reads it, fixes the wording if needed, and says **Looks right**.
+   - When changes were asked for, the owner changes the wording, which saves a new version.
+   - Anyone else picks **Looks right**, **Needs changes**, or **Disagree**, then says how they checked or why.
+   - A draft is checked by its owner first. Others see who it is waiting on.
+5. Folded: **Holds up** (what is built on it) and **History** (each check, and the AI's original wording if the owner changed it).
+
+## Break down AI text
+
+Paste a long AI answer. The built-in splitter keeps the text as a source and makes one draft block per sentence, with a guessed level. Claims with nothing under them are flagged as resting on nothing, and words like "most", "clearly", or "because" are listed as what the block assumes. Nothing leaves the app. **Copy prompt for your AI** hands the same job to your own AI tool over MCP, which can cite the right sources, build findings on observations, and say how sure it is.
+
+## The base
+
+Click a part of the base to fill it in: the question and decision, the sources (add one, or copy a prompt for your AI to draft observations from them), the method, and notes for checkers.
+
+## The package
+
+Insights added to the package show at the top. Opened, each shows what it rests on (blocks, observations, sources) and how much of that still needs a check, plus any observations two insights share. Narratives come later.

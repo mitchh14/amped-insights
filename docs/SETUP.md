@@ -13,7 +13,7 @@ It is a framework, not a fixed process. The defaults are open: anyone can add, r
 Three pieces, one core:
 
 - **The core** holds everything in one SQLite file you own. There is one write path.
-- **The web app** shows each person one next step, what changed for them, and the studies, learnings, reviews, and decisions behind it.
+- **The web app** is the workbench: workspaces where blocks build up from a base of context, a review list of what needs a check, and a way to break down long AI text.
 - **The MCP server** lets each person use ANCHOR from their own AI tool.
 
 Both the app and the MCP server call the same core functions, so there is one version of the truth. See [FLOW.md](FLOW.md) for the full research loop and who does what.
@@ -203,19 +203,19 @@ Once connected, look in your AI tool's prompt picker for ANCHOR's prompts:
 |---|---|
 | Home | Get started with ANCHOR (what changed, and your next step) |
 | Plan | Plan a study |
-| Learn | Synthesize my notes, Shape an insight |
+| Learn | Synthesize my notes, Break down AI text, Shape an insight |
 | Find | Check before I claim |
 | Review | Review my queue, Ask for review |
 | Decide | Find insights for a decision, Log a decision |
 
-Each prompt tells the AI to query first, show trust and conflicts, never treat a learning that is not checked as settled, and never review on a person's behalf. Anything the AI helps write is added as a draft, and the AI asks the person what they checked or changed before confirming it.
+Each prompt tells the AI to query first, show trust and conflicts, never treat a learning that is not checked as settled, and never review on a person's behalf. Anything the AI helps write is added as a draft with its confidence, why, and what it assumes, and the AI asks the person what they checked or changed before checking it for them.
 
 ## 5. Your first week
 
 Aim for one full loop, small and real.
 
 1. **Start one real study.** Pick a question tied to a decision someone is about to make. In the app, go to Studies and start it with the question and the decision it serves. Mark it running when you start, and add the method and who you are studying then.
-2. **Invite PwDR.** Share the app link. Each person picks their name the first time and lands on their one next step. Suggest they connect their AI tool and try "Synthesize my notes" on something they already have, then confirm the drafts it makes.
+2. **Invite PwDR.** Share the app link. Each person picks their name the first time and lands on the workspaces. Suggest they connect their AI tool and try "Break down AI text" on an AI summary they already have, then check the blocks it makes.
 3. **Add learnings in the study.** Observations first, then findings that use them as evidence.
 4. **Run one review round.** Ask any SME, a role, or named people. Reviewers approve, ask for changes, or disagree, and say how they checked. Owners revise when asked.
 5. **Promote one insight** when the evidence supports it.
