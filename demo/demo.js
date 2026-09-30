@@ -111,7 +111,7 @@ open_store()
   // Reset works even when loading failed: then it clears the saved data
   // directly, and the reload starts fresh.
   async function reset() {
-    if (!confirm("Reset the demo? This clears your changes and reloads the sample learnings.")) return;
+    if (!confirm("Reset the demo? This clears your changes and reloads the sample workspace.")) return;
     try {
       await ready;
       pyodide.globals.get("open_store")(true);
@@ -135,9 +135,10 @@ open_store()
     banner.innerHTML = `
       <div><b>Demo.</b> This runs entirely in your browser. Nothing you type leaves your device.
         <span id="demo-status">Loading (the first visit takes a few seconds)...</span></div>
-      <div class="demo-tips">Try it: pick a person to see their one next step. Be Jordan to confirm an
-        AI draft, Sam (an SME) to review, Morgan (stakeholder) to say what happened after a decision,
-        or Lee to pick up a research request. Switch person any time at the top.</div>
+      <div class="demo-tips">Try it: open the workspace and hover a block to trace what it rests on.
+        Be Jordan to check your AI drafts, or Sam (an SME) to check other people's blocks. Press
+        "Break down AI text" and try the sample to see a long AI answer taken apart, with the claims
+        that rest on nothing flagged. Switch person any time at the top.</div>
       <div class="row"><button id="demo-reset" type="button">Reset demo</button>
         <a href="https://github.com/mitchh14/amped-insights">Source on GitHub</a></div>`;
     document.body.prepend(banner);

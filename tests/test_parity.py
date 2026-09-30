@@ -84,8 +84,25 @@ def test_every_work_mode_has_a_guided_prompt(server):
         "learn": "shape_insight", "find": "check_before_claim",
         "review": "review_my_queue", "decide": "find_insights_for_decision",
     }
-    assert set(by_mode.values()) | {"request_review", "log_decision"} <= set(prompts)
+    assert set(by_mode.values()) | {"request_review", "log_decision", "break_down_text"} <= set(prompts)
     assert all(p.title and p.description for p in prompts.values())
     text = asyncio.run(server.mcp.get_prompt("check_before_claim", {"claim": "Users hate forms"}))
     body = text.messages[0].content.text
     assert "Users hate forms" in body and 'origin="person_with_ai"' in body
+
+
+def test_ai_tools_add_blocks_with_confidence(server):
+    _call(server, "set_identity", name="Ana")
+    sid = _call(server, "start_study", question="Why do trials churn?")["study"]["id"]
+    src = _call(server, "add_source", study_id=sid, title="Survey", body="12 of 40 said setup was confusing")
+    out = _call(server, "add_blocks", study_id=sid, blocks=[
+        {"ref": "a", "level": "observation", "statement": "12 of 40 said setup was confusing",
+         "sources": [src["source"]["id"]], "confidence": "high", "why": "Direct count"},
+        {"level": "finding", "statement": "Setup confusion drives churn", "built_on": ["a"],
+         "confidence": "low", "why": "One survey", "assumes": ["Survey takers are like churned users"]}])
+    ws = _call(server, "get_workspace", study_id=sid)
+    assert [b["confidence"] for b in ws["blocks"]] == ["high", "low"]
+    assert all(b["check"]["state"] == "needs_check" for b in ws["blocks"])
+    assert _call(server, "check", learning_id=out["ids"][0])["learning"]["check"]["state"] == "checked_by_owner"
+    text = asyncio.run(server.mcp.get_prompt("break_down_text", {"text": "Users hate forms.", "study_id": str(sid)}))
+    assert "add_blocks" in text.messages[0].content.text

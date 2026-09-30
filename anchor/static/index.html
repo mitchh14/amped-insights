@@ -3,916 +3,903 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ANCHOR</title>
+<title>ANCHOR Workbench</title>
 <link rel="icon" href="data:,">
 <style>
-  /* Presentation system. Every piece of information has one importance:
-     L1 do now (one per screen), L2 glance, L3 on request (folded), L4 record.
-     Normal states are quiet. Only contested, at risk, and needs changes use color. */
+  /* The workbench. Blocks build up from a base of context and method.
+     How full a block is says how checked it is. Only trouble gets words and
+     color: needs a check, needs changes, disagreement, rests on nothing.
+     System fonts only: the app makes no outside calls. */
   :root {
-    --bg: #f7f7f5; --surface: #ffffff; --surface-2: #f1f1ee; --line: #e3e3de; --line-strong: #cfcfc8;
-    --text: #1d1d1b; --muted: #6b6b66; --accent: #2458c6; --accent-soft: #e8eefb;
-    --ok: #1f7a4d; --ok-soft: #e3f3ea; --bad: #b42318; --bad-soft: #fdeceb; --warn: #9a5b00; --warn-soft: #fdf3e1;
-    --obs: #6b6b66; --fnd: #c27a00; --ins: #2458c6;
-    --radius: 10px; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04);
+    --bg: #ECEFF3; --surface: #FFFFFF; --ink: #15202C; --muted: #5A6776; --line: #C4CDD8;
+    --accent: #2D5BD7; --accent-soft: #E3EAFB;
+    --fill-owner: #DDE6F7; --fill-peers: #A9C1F2; --fill-sme: #2D5BD7; --on-sme: #FFFFFF;
+    --amber: #A8660C; --amber-bg: #FFF1D9; --red: #C23B32; --red-bg: #FDE5E2; --glow: #F2B33D;
+    --slab: #CBD3DC; --slab-2: #BAC4CF; --stone: #DFE4EA;
+    --shadow: 0 1px 0 rgba(21,32,44,.08), 0 2px 6px rgba(21,32,44,.06);
+    --f-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #151514; --surface: #1d1d1b; --surface-2: #252523; --line: #2f2f2c; --line-strong: #41413d;
-      --text: #ecece8; --muted: #a0a09a; --accent: #8fb0f5; --accent-soft: #1f2a44;
-      --ok: #6fcf9d; --ok-soft: #173326; --bad: #f28b82; --bad-soft: #3a1c1a; --warn: #f0b95a; --warn-soft: #3a2c12;
-      --obs: #a0a09a; --fnd: #f0b95a; --ins: #8fb0f5; --shadow: none;
+      --bg: #0E141B; --surface: #17202A; --ink: #E4EAF1; --muted: #93A1B1; --line: #2D3947;
+      --accent: #6F97FF; --accent-soft: #1C2A44;
+      --fill-owner: #1F2E45; --fill-peers: #2B4A82; --fill-sme: #4C7DF0; --on-sme: #FFFFFF;
+      --amber: #E6A646; --amber-bg: #3A2A12; --red: #F0766C; --red-bg: #3D1C1A; --glow: #F2B33D;
+      --slab: #26313E; --slab-2: #1F2833; --stone: #2B3643;
+      --shadow: 0 1px 0 rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+      color-scheme: dark;
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); background: var(--bg); }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  h1, h2, h3 { line-height: 1.25; margin: 0; }
-  h1 { font-size: 22px; font-weight: 650; }
-  h2 { font-size: 16px; font-weight: 650; margin: 0 0 10px; }
-  h3 { font-size: 14px; font-weight: 600; color: var(--muted); margin: 14px 0 6px; }
-  p { margin: 0 0 8px; }
-  input, select, textarea, button { font: inherit; color: inherit; }
-  input, select, textarea { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 7px 10px; width: 100%; }
-  textarea { resize: vertical; min-height: 64px; }
-  input:focus, select:focus, textarea:focus, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button { cursor: pointer; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 8px; padding: 6px 12px; white-space: nowrap; }
-  button:hover { background: var(--surface-2); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  @media (prefers-color-scheme: dark) { button.primary { color: #10131a; } }
-  button.link { border: 0; background: none; color: var(--accent); padding: 0; }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
-  label.inline { display: inline-flex; gap: 6px; align-items: center; color: var(--text); font-size: 14px; margin: 4px 12px 4px 0; }
-  label.inline input { width: auto; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: var(--accent); }
 
-  /* Shell */
-  .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 10px 20px;
-    background: var(--surface); border-bottom: 1px solid var(--line); }
-  .brand { font-weight: 750; letter-spacing: .08em; font-size: 15px; color: var(--text); }
-  .brand small { font-weight: 400; letter-spacing: 0; color: var(--muted); margin-left: 8px; }
-  .me { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-  .shell { display: grid; grid-template-columns: 180px minmax(0, 1fr); max-width: 1120px; margin: 0 auto; }
-  nav.side { position: sticky; top: 53px; align-self: start; padding: 20px 12px; display: flex; flex-direction: column; gap: 2px; }
-  nav.side a { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; color: var(--text); }
-  nav.side a:hover { background: var(--surface-2); text-decoration: none; }
-  nav.side a.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-  .count { font-size: 12px; background: var(--accent); color: #fff; border-radius: 99px; padding: 0 7px; font-weight: 600; }
-  main { padding: 20px 24px 80px; min-width: 0; }
-  .page-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-  .page-head .sub { color: var(--muted); margin-top: 2px; }
-  .page-head .actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
-  .crumb { color: var(--muted); font-size: 14px; }
-  .grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 20px; align-items: start; }
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); }
-  .panel > h2:first-child { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .panel > h2 a, .panel > h2 button { font-size: 14px; font-weight: 400; }
-  .empty { color: var(--muted); font-size: 14px; padding: 6px 0; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; }
-  .kv dt { color: var(--muted); font-size: 13px; }
-  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .app { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 100%; }
+  .app.panel-open { grid-template-columns: minmax(0, 1fr) 390px; }
+  .col { min-width: 0; display: flex; flex-direction: column; }
 
-  /* L1: the one thing to do now */
-  .step { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--radius);
-    padding: 16px 18px; margin-bottom: 20px; box-shadow: var(--shadow); }
-  .step.at_risk { border-left-color: var(--bad); }
-  .step .title { font-size: 18px; font-weight: 650; margin-bottom: 4px; }
-  .step .text { color: var(--muted); overflow-wrap: anywhere; }
-  .step .tools { margin-top: 12px; align-items: center; }
-  .moment { display: flex; gap: 10px; align-items: center; background: var(--ok-soft); color: var(--ok); border-radius: var(--radius);
-    padding: 10px 14px; margin-bottom: 12px; font-size: 14px; }
-  .moment b { font-weight: 650; }
-  .moment button { margin-left: auto; border: 0; background: none; color: inherit; font-size: 18px; line-height: 1; padding: 0 4px; }
-  .nudge { background: var(--accent-soft); border-radius: var(--radius); padding: 12px 14px; margin: 10px 0; font-size: 14px; }
-  .nudge b { display: block; margin-bottom: 2px; }
+  /* Top bar */
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; padding: 10px 24px; border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 800; font-size: 16px; letter-spacing: .04em; color: var(--ink); text-decoration: none; }
+  .nav { display: flex; flex-wrap: wrap; gap: 2px 14px; align-items: center; font-size: 13px; flex: 1; }
+  .nav a { color: var(--ink); text-decoration: none; font-weight: 600; }
+  .nav .later { color: var(--muted); opacity: .7; }
+  .who { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+  .who select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); }
 
-  /* L2: glance rows. A level shape and one chip. */
-  .item { display: flex; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); align-items: flex-start; }
-  .item:first-child { border-top: 0; }
-  .item .body { min-width: 0; flex: 1; }
-  .item .stmt { overflow-wrap: anywhere; }
-  .item .side { flex: none; text-align: right; }
-  .meta { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; font-size: 13px; color: var(--muted); margin-top: 2px; }
-  .mark { flex: none; width: 10px; height: 10px; margin-top: 7px; border: 2px solid var(--obs); }
-  .mark.observation { border-radius: 2px; background: var(--obs); }
-  .mark.finding { border-radius: 50%; border-style: dashed; border-color: var(--fnd); }
-  .mark.insight { transform: rotate(45deg); border-color: var(--ins); background: var(--ins); }
-  .chip { display: inline-block; font-size: 12px; line-height: 18px; padding: 0 8px; border-radius: 99px; color: var(--muted); white-space: nowrap; border: 1px solid transparent; }
-  .chip.draft, .chip.replaced { border: 1px dashed var(--line-strong); }
-  .chip.contested { background: var(--bad-soft); color: var(--bad); }
-  .chip.needs_changes { background: var(--warn-soft); color: var(--warn); }
-  .level { font-size: 13px; font-weight: 600; }
-  .level.observation { color: var(--obs); } .level.finding { color: var(--fnd); } .level.insight { color: var(--ins); }
-  .person { color: var(--text); white-space: nowrap; }
-  .sme { font-size: 11px; padding: 0 5px; border-radius: 4px; margin-left: 4px; border: 1px solid var(--line-strong); color: var(--muted); vertical-align: 1px; }
-  .alert { border-radius: 8px; padding: 8px 12px; margin: 8px 0; font-size: 14px; }
-  .alert.bad { background: var(--bad-soft); color: var(--bad); }
-  .alert.warn { background: var(--warn-soft); color: var(--warn); }
-  .alert.ok { background: var(--ok-soft); color: var(--ok); }
-  .alert.quiet { background: var(--surface-2); color: var(--text); }
-  .detail .statement { font-size: 20px; line-height: 1.4; margin: 6px 0; overflow-wrap: anywhere; }
-  .tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 0; align-items: center; }
-  .versions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
-  .versions > div { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--surface); color: var(--text); }
+  /* Main */
+  .main { padding: 18px 24px 28px; display: flex; flex-direction: column; gap: 14px; }
+  .top { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; justify-content: space-between; }
+  h1 { font-weight: 800; font-size: 25px; line-height: 1.15; margin: 0 0 3px; text-wrap: balance; letter-spacing: -.01em; }
+  h2 { font-size: 17px; margin: 0; }
+  .for { color: var(--muted); font-size: 13px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .btn { border: 1px solid var(--line); background: var(--surface); padding: 7px 12px; border-radius: 7px; box-shadow: var(--shadow); white-space: nowrap; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.ghost { background: none; box-shadow: none; }
+  .btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: none; padding: 7px 14px; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .linkbtn { border: 0; background: none; color: var(--accent); padding: 0; font-weight: 500; }
+  .note { font-size: 12.5px; color: var(--muted); }
+  .loading { color: var(--muted); padding: 40px 0; }
 
-  /* L3: on request */
-  details.fold { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 12px; }
-  details.fold > summary { cursor: pointer; padding: 12px 16px; font-weight: 600; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
-  details.fold > summary::-webkit-details-marker { display: none; }
-  details.fold > summary::after { content: "Show"; font-weight: 400; font-size: 13px; color: var(--accent); }
-  details.fold[open] > summary::after { content: "Hide"; }
-  details.fold > summary .n { color: var(--muted); font-weight: 400; margin-left: 6px; }
-  details.fold > .in { padding: 0 16px 14px; }
-  details.more { position: relative; display: inline-block; }
-  details.more > summary { list-style: none; cursor: pointer; border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 12px; background: var(--surface); }
-  details.more > summary::-webkit-details-marker { display: none; }
-  details.more .menu { position: absolute; z-index: 4; top: calc(100% + 4px); left: 0; min-width: 220px; background: var(--surface); border: 1px solid var(--line);
-    border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,.12); padding: 6px; display: grid; }
-  details.more .menu button { border: 0; text-align: left; border-radius: 6px; }
-  .review { padding: 8px 0; border-top: 1px solid var(--line); }
-  .review:first-child { border-top: 0; }
-  .review.old { opacity: .6; }
+  /* Home */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+  .card { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 8px; text-align: left; border: 1px solid transparent; }
+  .card:hover { border-color: var(--line); }
+  .card .q { font-weight: 700; font-size: 16px; line-height: 1.25; }
+  .mini { display: flex; flex-wrap: wrap; gap: 3px; }
+  .mini i { width: 12px; height: 8px; border-radius: 2px; border: 1px solid var(--line); display: block; }
+  .form { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); padding: 16px; display: grid; gap: 8px; max-width: 640px; }
+  .form input, .form textarea { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); }
 
-  /* L4: record */
-  .feed { list-style: none; padding: 0; margin: 0; font-size: 14px; }
-  .feed li { padding: 6px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
-  .feed li:first-child { border-top: 0; }
+  /* Package tray */
+  .tray { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; color: var(--muted); }
+  .tray b { color: var(--ink); font-size: 14px; }
+  .tray .pill { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px 6px 3px 10px; color: var(--ink); max-width: 280px; }
+  .tray .pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .tray .pill button { border: 0; background: none; color: var(--muted); padding: 0 4px; }
 
-  .search { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-  .search input { flex: 1 1 220px; width: auto; }
-  .search select { width: auto; }
+  /* Build canvas */
+  .canvas-wrap { overflow-x: auto; overflow-y: hidden; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+  .canvas { position: relative; }
+  .canvas svg.wires { position: absolute; inset: 0; pointer-events: none; }
+  .wire { fill: none; stroke: var(--muted); stroke-width: 1.4; opacity: .5; transition: opacity .15s; }
+  .wire.weak { stroke-dasharray: 4 4; stroke: var(--amber); opacity: .85; }
+  .wire.src { stroke-dasharray: 2 3; opacity: .35; }
+  .wire.hot { stroke: var(--accent); opacity: 1; stroke-width: 2.2; }
+  .canvas.exploring .wire:not(.hot) { opacity: .08; }
+  .row-label { position: absolute; left: 14px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
 
-  /* Dialogs and pickers */
-  dialog { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(560px, calc(100vw - 24px)); background: var(--surface); color: var(--text); box-shadow: 0 10px 40px rgba(0,0,0,.2); }
-  dialog::backdrop { background: rgba(20,20,18,.45); }
-  dialog form { padding: 18px 20px; max-height: 85vh; overflow: auto; }
-  dialog .foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-  .choices { display: grid; gap: 8px; margin-top: 8px; }
-  .choice { display: block; text-align: left; white-space: normal; padding: 12px 14px; border-radius: 10px; }
-  label.choice { margin: 0; border: 1px solid var(--line-strong); background: var(--surface); color: var(--text); font-size: 15px; cursor: pointer; position: relative; }
-  .choice b { display: block; font-size: 15px; }
-  .choice span { color: var(--muted); font-size: 13px; }
-  .choice:has(input:checked), .choice.on { border-color: var(--accent); background: var(--accent-soft); }
-  .choice input { position: absolute; opacity: 0; pointer-events: none; }
-  .pills { display: flex; gap: 6px; flex-wrap: wrap; }
-  .pills label { margin: 0; }
-  .pills input { position: absolute; opacity: 0; pointer-events: none; }
-  .pills span { display: inline-block; border: 1px solid var(--line-strong); border-radius: 99px; padding: 4px 12px; font-size: 14px; color: var(--text); cursor: pointer; }
-  .pills input:checked + span { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-  .picker .results { border: 1px solid var(--line); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow: auto; }
-  .picker .results:empty { display: none; }
-  .picker .results button { display: block; width: 100%; text-align: left; border: 0; border-radius: 0; border-top: 1px solid var(--line); white-space: normal; }
-  .picker .results button:first-child { border-top: 0; }
-  .tag { display: inline-flex; gap: 6px; align-items: center; background: var(--surface-2); border-radius: 99px; padding: 2px 4px 2px 10px; margin: 6px 6px 0 0; font-size: 13px; }
-  .tag button { border: 0; background: none; padding: 0 6px; }
-  .who-list { display: grid; gap: 6px; margin-top: 8px; }
-  .who-list button { text-align: left; display: flex; justify-content: space-between; }
-  #toast:not(:empty) { position: fixed; left: 16px; right: 16px; bottom: 76px; max-width: 560px; margin: 0 auto; z-index: 20; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+  .brick { position: absolute; border-radius: 6px; padding: 12px 12px 10px; background: var(--fill-owner); border: 1.5px solid color-mix(in srgb, var(--accent) 35%, var(--line)); display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .15s; text-align: left; }
+  .brick:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(21,32,44,.14); }
+  .brick .studs { background: inherit; border-color: inherit; position: absolute; top: -6px; left: 12px; display: flex; gap: 8px; }
+  .brick .studs i { width: 16px; height: 6px; border-radius: 3px 3px 0 0; background: inherit; border: 1.5px solid; border-bottom: 0; border-color: inherit; display: block; }
+  .brick .marks { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+  .ai { font-family: var(--f-mono); font-size: 9.5px; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; opacity: .75; line-height: 1.4; white-space: nowrap; }
+  .ai.low { color: var(--amber); opacity: 1; }
+  .s-sme .ai.low { color: #FFD48A; }
+  .warn { color: var(--amber); font-size: 13px; line-height: 1; }
+  .brick .txt { font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  .brick.foot .txt, .brick.finding .txt, .brick.insight .txt { -webkit-line-clamp: 3; }
+  .brick.two .txt { -webkit-line-clamp: 2; }
+  .brick.insight .txt { font-weight: 600; font-size: 15px; line-height: 1.25; }
+  .tags { margin-top: auto; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: var(--surface); }
+  .tag.t-needs_check { border: 1px dashed var(--muted); }
+  .tag.t-needs_changes { color: var(--amber); }
+  .tag.t-disagreement { color: var(--red); }
+  .tag.t-nothing { color: var(--amber); border: 1px solid var(--amber); background: transparent; }
+  .brick.selected { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .canvas.exploring .brick:not(.near) { opacity: .25; }
+  .canvas.exploring .stone:not(.near) { opacity: .3; }
+  .canvas.connecting .brick { cursor: copy; }
+  .canvas.connecting .brick.insight { opacity: .4; cursor: not-allowed; }
 
-  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
-  @media (max-width: 720px) {
-    .top { padding: 10px 16px; }
-    .brand small, .acting { display: none; }
-    .shell { display: block; }
-    nav.side { position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 6; flex-direction: row; justify-content: space-around;
-      padding: 4px; gap: 0; background: var(--surface); border-top: 1px solid var(--line); }
-    nav.side a { flex: 1; flex-direction: column; gap: 0; padding: 6px 2px; font-size: 12px; justify-content: center; text-align: center; }
-    nav.side .count { font-size: 10px; padding: 0 5px; }
-    main { padding: 16px 16px 90px; }
-    .versions { grid-template-columns: 1fr; }
-    button, select, input, details.more > summary { min-height: 40px; }
+  /* Fill density says how checked it is */
+  .s-checked_by_owner { background: var(--fill-owner); }
+  .s-checked_by_peers { background: var(--fill-peers); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+  .s-checked_by_sme { background: var(--fill-sme); border-color: var(--fill-sme); color: var(--on-sme); }
+  .s-checked_by_sme .warn { color: #FFD48A; }
+  .s-needs_check { background: transparent; border: 1.5px dashed var(--muted); }
+  .s-needs_changes { background: var(--amber-bg); border-color: var(--amber); }
+  .s-disagreement { background: var(--red-bg); border-color: var(--red); }
+  .brick.glow { box-shadow: 0 0 0 2px var(--glow), 0 0 22px color-mix(in srgb, var(--glow) 55%, transparent); }
+  .brick.fresh { animation: drop .45s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes drop { from { transform: translateY(-18px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* Base */
+  .stone { position: absolute; background: var(--stone); border: 1px solid var(--slab-2); border-radius: 4px; padding: 7px 9px; font-size: 12px; line-height: 1.3; cursor: pointer; text-align: left; overflow: hidden; transition: opacity .15s; }
+  .stone .n { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .stone.ai-text { border-style: dashed; }
+  .slab-rest { position: absolute; right: 0; background: var(--slab-2); }
+  .slab { position: absolute; left: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 3px; background: var(--slab-2); }
+  .part { background: var(--slab); border: 0; padding: 10px 12px; text-align: left; min-width: 0; font-weight: 700; font-size: 13.5px; }
+  .part.gap { background: repeating-linear-gradient(135deg, var(--slab) 0 6px, transparent 6px 12px); outline: 1.5px dashed var(--muted); outline-offset: -4px; color: var(--muted); }
+  .part.gap::after { content: " + add"; font-weight: 500; font-size: 12px; color: var(--amber); }
+
+  .key { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); align-items: center; margin-top: 10px; }
+  .key .sw { display: inline-block; width: 18px; height: 11px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; border: 1.5px solid var(--line); }
+
+  /* Connect bar */
+  .connect { position: sticky; bottom: 12px; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--ink); color: var(--bg); padding: 10px 12px; border-radius: 12px; box-shadow: 0 8px 26px rgba(0,0,0,.25); }
+  .connect input { flex: 1 1 240px; min-width: 0; padding: 7px 10px; border-radius: 7px; border: 0; background: var(--bg); color: var(--ink); }
+  .connect .btn { box-shadow: none; }
+  .connect .btn.ghost { color: var(--bg); border-color: transparent; }
+
+  /* Review list */
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chipbtn { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+  .chipbtn[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .groups { display: flex; flex-direction: column; gap: 10px; }
+  .group { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .group > summary { list-style: none; display: flex; align-items: baseline; gap: 8px; padding: 12px 14px; font-weight: 700; font-size: 15px; cursor: pointer; }
+  .group > summary::-webkit-details-marker { display: none; }
+  .group > summary::before { content: "▸"; font-size: 11px; color: var(--muted); }
+  .group[open] > summary::before { content: "▾"; }
+  .group .count { font-family: var(--f-mono); font-weight: 400; font-size: 12px; color: var(--muted); }
+  .group .empty { padding: 0 14px 14px; color: var(--muted); font-size: 13px; }
+  .rrow { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); padding: 11px 14px; }
+  .rrow:hover { background: var(--bg); }
+  .rrow .st { font-size: 13.5px; }
+  .rrow .mt { grid-column: 2; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; }
+  .rrow .tag { grid-row: 1; grid-column: 3; }
+  .rrow .ok { grid-row: 1; grid-column: 3; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+  .amber { color: var(--amber); }
+  .shape { width: 12px; height: 12px; margin-top: 4px; display: block; border: 1.5px solid var(--ink); }
+  .shape.observation { border-radius: 1px; }
+  .shape.finding { border-radius: 50%; border-style: dashed; }
+  .shape.insight { transform: rotate(45deg) scale(.85); }
+
+  /* Panel */
+  .panel { border-left: 1px solid var(--line); background: var(--surface); padding: 18px 18px 28px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; display: flex; flex-direction: column; gap: 16px; }
+  .panel > * { flex-shrink: 0; }
+  .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .panel h2 { font-size: 19px; line-height: 1.25; margin: 2px 0 0; font-weight: 700; text-wrap: balance; }
+  .panel h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+  .x { border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); padding: 2px 6px; }
+  .meta { color: var(--muted); font-size: 12.5px; }
+  .status { font-weight: 600; color: var(--ink); }
+  .status.t-needs_changes { color: var(--amber); } .status.t-disagreement { color: var(--red); }
+  .under { display: flex; flex-direction: column; gap: 6px; }
+  .under-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--bg); text-align: left; display: flex; flex-direction: column; gap: 3px; }
+  .under-item .q { font-size: 12.5px; white-space: pre-line; }
+  .under-item .q mark { background: color-mix(in srgb, var(--glow) 40%, transparent); color: inherit; padding: 0 2px; }
+  .under-item .r { font-size: 11.5px; color: var(--muted); }
+  .under-item .r.bad { color: var(--amber); }
+  .aisays { border: 1.5px dashed var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  .aisays .conf { font-weight: 700; }
+  .aisays .conf.low { color: var(--amber); }
+  .aisays ul { margin: 0; padding-left: 18px; font-size: 12.5px; }
+  .verdicts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 6px; }
+  .verdicts .btn { padding: 9px 6px; font-weight: 600; white-space: normal; }
+  .verdicts .btn[aria-pressed="true"] { color: var(--bg); }
+  .v-needs_changes { color: var(--amber); } .v-disagree { color: var(--red); }
+  .hows { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hows button { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+  .hows button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .panel textarea, .panel input[type="text"], .panel select { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); resize: vertical; }
+  .panel details summary { cursor: pointer; font-size: 12.5px; color: var(--muted); }
+  .checks { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; margin-top: 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .stack { display: flex; flex-direction: column; gap: 8px; }
+  .prompt { font-family: var(--f-mono); font-size: 11.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pkg-item { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .pkg-item .t { font-weight: 600; font-size: 16px; line-height: 1.25; }
+  .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 50; max-width: calc(100% - 32px); }
+  .toast.err { background: var(--red); color: #fff; }
+
+  @media (max-width: 900px) {
+    .app, .app.panel-open { grid-template-columns: minmax(0, 1fr); }
+    .bar, .main { padding-left: 16px; padding-right: 16px; }
+    .nav .later { display: none; }
+    h1 { font-size: 22px; }
+    .part { font-size: 12px; padding: 8px; }
+    .panel { position: fixed; left: 0; right: 0; bottom: 0; top: auto; max-height: 78vh; border-left: 0; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.25); z-index: 40; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
   }
+  @media (prefers-reduced-motion: reduce) { .brick, .brick.fresh { transition: none; animation: none; } }
 </style>
 </head>
 <body>
-<header class="top">
-  <a class="brand" href="#/home">ANCHOR<small>what the team has learned, and how far to trust it</small></a>
-  <div class="me" id="me"></div>
-</header>
-<div class="shell">
-  <nav class="side" id="nav"></nav>
-  <main id="main"><div class="empty">Loading...</div></main>
+<div class="app" id="app">
+  <div class="col">
+    <header class="bar">
+      <a class="brand" href="#">ANCHOR</a>
+      <nav class="nav" aria-label="Main">
+        <a href="#">Workspaces</a>
+        <span class="later" title="Coming later">Decisions · Narratives · Requests <small>(later)</small></span>
+      </nav>
+      <label class="who">You are <select id="me" aria-label="You are"></select></label>
+    </header>
+    <main class="main" id="main"><div class="loading">Loading...</div></main>
+  </div>
+  <aside class="panel" id="panel" hidden></aside>
 </div>
-<dialog id="dlg"><form method="dialog" id="dlg-form"></form></dialog>
-<div id="toast" class="alert"></div>
 
 <script>
-// ---------------------------------------------------------------------------
-// ANCHOR web app. Plain HTML and JS with no build step, so the same page runs
-// against the local server and inside the Pyodide demo. Every action calls the
-// same core functions as the MCP server. Words come from docs/GLOSSARY.md.
-// ---------------------------------------------------------------------------
+// ---------- Words (docs/GLOSSARY.md) ----------
+const LEVEL = { observation: "Observation", finding: "Finding", insight: "Insight" };
+const NEXT = { observation: "finding", finding: "insight" };
+const ROW = [["insight", "Insights"], ["finding", "Findings"], ["observation", "Observations"]];
+const UNCHECKED = new Set(["needs_check", "needs_changes", "disagreement"]);
+const VERDICT = { looks_right: "Looks right", needs_changes: "Needs changes", disagree: "Disagree" };
+const REVIEW_SAID = { approve: "Looks right", changes: "Needs changes", disagree: "Disagree" };
+const TAG = { needs_check: "Needs a check", needs_changes: "Needs changes", disagreement: "Disagree" };
+const SAMPLE_AI_TEXT = `Checkout summary (drafted by an AI assistant)
 
-const $ = (sel, el = document) => el.querySelector(sel);
-const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const enc = encodeURIComponent;
+Mobile checkout conversion is 42 percent, well below desktop.
+Most shoppers leave because the address form is too long.
+Returning shoppers clearly convert better because they trust the brand.
+Adding Apple Pay would likely fix the rest of the drop-off.
+We should prioritize autofill and Apple Pay in Q3.`;
 
-const S = { me: null, config: null, people: {}, queue: null };
-
-const NAV = { home: "Home", studies: "Studies", learnings: "Learnings", review: "Review", decisions: "Decisions" };
-const VERDICT = { approve: "Approved", changes: "Asked for changes", disagree: "Disagreed" };
-const STAGE = { requested: "Requested", planned: "Planned", running: "Running", finished: "Finished", dropped: "Dropped" };
-const LINK = { supports: "supports", builds_on: "builds on", same_as: "is the same as", conflicts_with: "conflicts with" };
-const ORIGIN = { person: "", person_with_ai: "with AI", ai_agent: "by an AI agent" };
-const NEXT_LEVEL = { observation: "finding", finding: "insight" };
-const CHECKED = ["checked_by_sme", "checked_by_peers"];
-const KINDS = {
-  observation: ["Something we saw", "What we saw or measured, with no reading into it. For example: 7 of 12 people left the address form."],
-  finding: ["What it might mean", "A pattern or reading across what we saw. Not yet an insight. For example: people drop off when they type a full address."],
-  insight: ["What to do about it", "What it means for us, and what to do. For example: autofill is likely our biggest checkout win."],
+// ---------- State ----------
+const S = {
+  me: null, people: [], config: null,
+  ws: null, view: "build", selected: new Set(), connecting: false,
+  panel: null, detail: null, verdict: null, how: null, queueMode: false,
+  fresh: new Set(), filter: "all", mine: false,
 };
 
-// -- data --------------------------------------------------------------------
+// ---------- Helpers ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+const isPhone = () => window.matchMedia("(max-width: 900px)").matches;
+const byId = id => S.ws?.blocks.find(b => b.id === id);
+const srcById = id => S.ws?.sources.find(s => s.id === id);
+const isSme = name => S.people.find(p => p.name === name)?.sme;
+const madeWithAI = b => b.origin !== "person";
+const originText = b => b.origin === "ai_agent" ? "AI draft for " + b.owner : b.origin === "person_with_ai" ? b.owner + " with AI" : b.owner;
+const tag = st => TAG[st] ? `<span class="tag t-${st}">${TAG[st]}</span>` : "";
 
-async function call(path, body) {
-  const res = await fetch(path, body ? { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) } : {});
+async function api(path, body) {
+  const res = await fetch("/api/" + path, body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "request failed");
+  if (!res.ok) throw new Error(data.error || "Something went wrong");
   return data;
 }
-const get = (path) => call("/api/" + path);
-const post = (action, body) => call("/api/" + action, body);
-
-function toast(text, kind = "warn") {
-  const t = $("#toast");
-  t.className = "alert " + kind;
-  t.textContent = text || "";
-  clearTimeout(toast.timer);
-  if (text) toast.timer = setTimeout(() => (t.textContent = ""), 7000);
+function toast(msg, err) {
+  document.querySelectorAll(".toast").forEach(x => x.remove());
+  const t = document.createElement("div");
+  t.className = "toast" + (err ? " err" : ""); t.textContent = msg; t.setAttribute("role", "status");
+  document.body.appendChild(t); setTimeout(() => t.remove(), err ? 4200 : 2400);
 }
-$("#toast").onclick = () => toast("");
-
-async function loadPeople() {
-  S.people = Object.fromEntries((await get("people")).map((p) => [p.name.toLowerCase(), p]));
+async function run(fn) { try { return await fn(); } catch (e) { toast(e.message, true); } }
+function copy(text, done) {
+  const ok = () => toast(done || "Copied.");
+  (navigator.clipboard?.writeText(text) || Promise.reject()).then(ok, () => toast("Copy did not work here. Select the text and copy it.", true));
 }
 
-// -- small pieces ------------------------------------------------------------
-
-const levelLabel = (l) => S.config.levels[l] || l;
-const roleLabel = (r) => S.config.roles[r]?.label || r;
-const isMe = (name) => !!S.me && (name || "").toLowerCase() === S.me.name.toLowerCase();
-function when(t) {
-  if (!t) return "";
-  const s = (Date.now() - new Date(t)) / 1000;
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-  for (const [unit, n] of [["year", 31536000], ["month", 2592000], ["day", 86400], ["hour", 3600], ["minute", 60]]) {
-    if (Math.abs(s) >= n) return rtf.format(-Math.round(s / n), unit);
-  }
-  return "just now";
+// ---------- Routing ----------
+function route() {
+  const m = location.hash.match(/^#w\/(\d+)/);
+  closePanel(true);
+  S.selected.clear(); S.connecting = false;
+  return m ? openWorkspace(+m[1]) : renderHome();
 }
-function person(name) {
-  if (!name) return "";
-  const p = S.people[name.toLowerCase()];
-  return `<a class="person" href="#/people/${enc(name)}">${esc(name)}</a>${p?.sme ? `<span class="sme" title="Subject matter expert">SME</span>` : ""}`;
-}
-const shape = (l) => `<span class="mark ${l}" title="${esc(levelLabel(l))}"></span>`;
-const chip = (c) => `<span class="chip ${c.key}">${esc(c.label)}</span>`;
-const ref = (id) => `<a href="#/learnings/${id}">#${id}</a>`;
-const list = (items, render, empty, max) => items.length
-  ? items.slice(0, max || items.length).map(render).join("") : `<div class="empty">${empty}</div>`;
-const panel = (title, body, right = "") => `<section class="panel"><h2><span>${title}</span>${right}</h2>${body}</section>`;
-const fold = (title, n, body, open = false) => `<details class="fold" ${open ? "open" : ""}><summary><span>${title}${n != null ? `<span class="n">${n}</span>` : ""}</span></summary><div class="in">${body}</div></details>`;
-const more = (buttons) => buttons.length ? `<details class="more"><summary>More</summary><div class="menu">${buttons.join("")}</div></details>` : "";
-const btn = (act, label, data = {}, cls = "") => `<button type="button" class="${cls}" data-act="${act}" ${Object.entries(data).map(([k, v]) => `data-${k}="${esc(v)}"`).join(" ")}>${esc(label)}</button>`;
-
-// One glance row: a level shape, the statement, and one chip.
-function row(l, extra = "") {
-  return `<div class="item">${shape(l.level)}<div class="body">
-    <a class="stmt" href="#/learnings/${l.id}">${esc(l.statement)}</a>
-    <div class="meta">#${l.id} · ${esc(l.owner)}${ORIGIN[l.origin] ? ` ${ORIGIN[l.origin]}` : ""}${extra}</div></div>
-    <div class="side">${chip(l.chip)}</div></div>`;
-}
-const feedItem = (e) => `<li>${esc(e.text)} <span class="muted">${when(e.at)}</span></li>`;
-
-// -- identity ----------------------------------------------------------------
-
-function renderMe() {
-  $("#me").innerHTML = S.me
-    ? `<span class="muted acting">Acting as</span> ${person(S.me.name)} <button class="link" data-act="who">change</button>`
-    : `<button data-act="who">Who are you?</button>`;
-}
-
-function chooseWho(firstTime) {
-  const groups = Object.entries(S.config.roles).map(([key, r]) => {
-    const people = Object.values(S.people).filter((p) => p.role === key);
-    if (!people.length) return "";
-    return `<h3>${esc(r.label)}</h3><div class="who-list">${people.map((p) =>
-      `<button type="button" data-pick="${esc(p.name)}">${esc(p.name)}<span class="muted">${p.sme ? "SME" : ""}</span></button>`).join("")}</div>`;
-  }).join("");
-  openDialog(`<h2>${firstTime ? "Welcome. Who are you?" : "Switch person"}</h2>
-    <p class="muted">What you do is recorded as you. Anyone can add, review, and decide. Reviews from SMEs show as "Checked by an SME".</p>
-    ${groups}
-    <label>New here? Enter your name</label><input name="name" placeholder="Your name" autocomplete="name">`,
-    async (form) => setMe(form.name.value), { submit: "Continue" });
-  $$("[data-pick]", $("#dlg")).forEach((b) => b.onclick = () => { $("#dlg").close(); setMe(b.dataset.pick); });
-}
-
-async function setMe(name) {
-  if (!(name || "").trim()) throw new Error("Enter your name");
-  S.me = await post("whoami", { name });
-  try { localStorage.setItem("anchor-me", S.me.name); } catch (e) {}
-  await Promise.all([loadPeople(), refreshQueue()]);
-  renderMe();
-  route();
-}
-
-// -- dialogs -----------------------------------------------------------------
-
-function openDialog(html, onSubmit, opts = {}) {
-  const dlg = $("#dlg"), form = $("#dlg-form");
-  form.innerHTML = `${html}<div class="alert bad" id="dlg-err" hidden></div>
-    <div class="foot"><button type="button" data-close>Cancel</button>
-    ${onSubmit ? `<button class="primary" value="ok">${opts.submit || "Save"}</button>` : ""}</div>`;
-  $("[data-close]", form).onclick = () => dlg.close();
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const keepOpen = (await onSubmit(form)) === true;
-      if (!keepOpen) dlg.close();
-    } catch (err) {
-      const box = $("#dlg-err"); box.hidden = false; box.textContent = err.message;
-    }
-  };
-  $$(".picker", form).forEach(wirePicker);
-  if (!dlg.open) dlg.showModal();
-  const first = $("input:not([type=radio]):not([type=checkbox]), textarea", form);
-  if (first && !opts.noFocus) first.focus();
-}
-
-// A search box that picks one or more learnings. Picked ids are read with picked(form, name).
-function pickerHtml(name, { multi = true, exclude = [], preset = [] } = {}) {
-  return `<div class="picker" data-name="${name}" data-multi="${multi}" data-exclude="${exclude.join(",")}">
-    <input placeholder="Search learnings by topic" data-q>
-    <div class="results"></div><div class="picked">${preset.map(tag).join("")}</div></div>`;
-}
-const tag = (l) => `<span class="tag" data-id="${l.id}">#${l.id} ${esc(l.statement.slice(0, 50))}${l.statement.length > 50 ? "..." : ""}<button type="button" aria-label="Remove">&times;</button></span>`;
-function wirePicker(el) {
-  const out = $(".results", el), picked = $(".picked", el), exclude = el.dataset.exclude.split(",").map(Number);
-  let timer;
-  $("[data-q]", el).oninput = (e) => {
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      const q = e.target.value.trim();
-      if (!q) { out.innerHTML = ""; return; }
-      const found = (await get(`learnings?q=${enc(q)}&limit=8`)).filter((l) => !exclude.includes(l.id));
-      out.innerHTML = found.map((l) => `<button type="button" data-id="${l.id}">${chip(l.chip)} #${l.id} ${esc(l.statement)}</button>`).join("")
-        || `<div class="empty" style="padding:8px">No match</div>`;
-      $$("button", out).forEach((b) => b.onclick = () => {
-        const l = found.find((x) => x.id === Number(b.dataset.id));
-        if (el.dataset.multi !== "true") picked.innerHTML = "";
-        if (!$(`[data-id="${l.id}"]`, picked)) picked.insertAdjacentHTML("beforeend", tag(l));
-        out.innerHTML = ""; e.target.value = "";
-      });
-    }, 200);
-  };
-  picked.onclick = (e) => { if (e.target.closest("button")) e.target.closest(".tag").remove(); };
-}
-const picked = (form, name) => $$(`.picker[data-name="${name}"] .tag`, form).map((c) => Number(c.dataset.id));
-
-// Run an action, show its warnings, and refresh.
-async function act(action, body, done) {
-  const r = await post(action, body);
-  const warnings = r.warnings || [];
-  toast(warnings.length ? warnings.join(" ") : done || "Saved.", warnings.length ? "warn" : "ok");
-  await Promise.all([loadPeople(), refreshQueue()]);
-  await route();
-  return r;
-}
-const needMe = () => { if (!S.me) { chooseWho(true); throw new Error("Choose who you are first"); } return S.me.name; };
-
-// -- views -------------------------------------------------------------------
-
-const views = {};
-
-views.home = async () => {
-  const me = needMe();
-  const stakeholder = S.me.role === "stakeholder";
-  const [next, queue, digest, extra] = await Promise.all([
-    get(`next?who=${enc(me)}`), get(`queue?who=${enc(me)}`), get(`digest?who=${enc(me)}&limit=5`),
-    stakeholder ? get(`decisions?made_by=${enc(me)}`) : get(`learnings?limit=200`),
-  ]);
-  // A moment is shown once, then lives in the digest.
-  if (next.moment) post("mark_seen", { who: me, keys: [next.moment.key] }).catch(() => {});
-  const s = next.step;
-  const moment = next.moment ? `<div class="moment"><span><b>Nice.</b> ${esc(next.moment.text)}</span><button type="button" onclick="this.parentNode.remove()" aria-label="Close">&times;</button></div>` : "";
-  const stepCard = `<section class="step ${s.kind}"><div class="title">${esc(s.title)}</div><div class="text">${esc(s.text)}</div>
-    <div class="tools row">${btn("step", s.button, { do: s.act, learning: s.learning_id ?? "", study: s.study_id ?? "", decision: s.decision_id ?? "" }, "primary")}
-      ${s.kind !== "suggest" ? btn("not-now", "Not now", { key: s.key }, "link") : ""}
-      ${next.later ? `<span class="muted">${next.later} more waiting</span>` : ""}</div></section>`;
-
-  // What else is waiting. The next step itself is already on top.
-  const notStep = (l) => l.id !== s.learning_id;
-  const waiting = [
-    ...queue.waiting_on_me.filter((w) => notStep(w.learning)).map((w) => row(w.learning, ` · ${esc(w.request.asked_by)} asked you`)),
-    ...queue.drafts.filter(notStep).map((l) => row(l, " · confirm it")),
-    ...queue.feedback_on_mine.filter((f) => notStep(f.learning)).map((f) => row(f.learning, " · has feedback")),
-  ];
-  const changed = panel("What changed for you", digest.items.length
-    ? `<ul class="feed">${digest.items.map(feedItem).join("")}</ul>` : `<div class="empty">Nothing new since you last looked.</div>`,
-    `<a href="#/activity">See all activity</a>`);
-  const decisionRow = (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a>
-    <div class="meta">${when(d.at)}${d.outcome ? " · outcome added" : d.outcome_due ? " · what happened?" : ""}</div></div>
-    ${d.at_risk.length ? `<div class="side"><span class="chip contested">At risk</span></div>` : ""}</div>`;
-  // At most three short panels for the role, below the one next step.
-  const [first, second] = stakeholder
-    ? [panel("Find what we know", `<form class="search" data-form="home-search"><input name="q" placeholder="What do we know about...?"><button>Search</button></form><div id="home-results"></div>`),
-       panel("Your decisions", list(extra, decisionRow, "None yet. When you use a learning, log the decision so you hear if it changes.", 5), `<a href="#/decisions">All</a>`)]
-    : [panel("Waiting on you", waiting.length ? waiting.slice(0, 5).join("") : `<div class="empty">Nothing is waiting on you.</div>`, `<a href="#/review">Review</a>`),
-       panel("Your work", list(extra.filter((l) => isMe(l.owner)), (l) => row(l), "Nothing yet. Add something you learned. One sentence is enough.", 5),
-         `<button class="link" data-act="add">Add a learning</button>`)];
-  return `<div class="page-head"><div><h1>Hi ${esc(me)}</h1><div class="sub">${esc(roleLabel(S.me.role))}${S.me.sme ? " · SME" : ""}</div></div></div>
-    ${moment}${stepCard}<div class="grid"><div>${first}${second}</div><div>${changed}</div></div>`;
-};
-
-views.activity = async () => {
-  const all = await get("activity?limit=200");
-  return `<div class="page-head"><div><div class="crumb"><a href="#/home">Home</a></div><h1>All activity</h1>
-    <div class="sub">The full record, newest first. Nothing is erased.</div></div></div>
-    <section class="panel"><ul class="feed">${all.map(feedItem).join("")}</ul></section>`;
-};
-
-function studyRow(s) {
-  return `<div class="item"><div class="body"><a href="#/studies/${s.id}">${esc(s.question)}</a>
-    <div class="meta">${s.owner ? esc(s.owner) : `asked by ${esc(s.requested_by)}`} · ${s.learning_count ?? 0} learning(s)${s.decision ? ` · serves: ${esc(s.decision)}` : ""}</div></div>
-    ${s.needs?.length && s.status !== "requested" ? `<div class="side"><span class="chip">Needs detail</span></div>` : ""}</div>`;
-}
-
-views.studies = async () => {
-  const all = await get("studies");
-  const groups = ["requested", "running", "planned", "finished"].map((st) => {
-    const these = all.filter((s) => s.status === st);
-    return these.length ? panel(STAGE[st], these.map(studyRow).join("")) : "";
-  }).join("");
-  const dropped = all.filter((s) => s.status === "dropped");
-  return `<div class="page-head"><div><h1>Studies</h1><div class="sub">The question, the decision it serves, and how we looked. Learnings in a study carry this with them.</div></div>
-    <div class="actions"><button data-act="ask">Ask for research</button><button class="primary" data-act="new-study">Start a study</button></div></div>
-    ${groups || `<div class="nudge"><b>No studies yet.</b>Start one with just its question and the decision it serves.</div>`}
-    ${dropped.length ? fold("Dropped", dropped.length, dropped.map(studyRow).join("")) : ""}`;
-};
-
-views.study = async (id) => {
-  const s = await get(`studies/${id}`);
-  const mine = isMe(s.owner);
-  const byLevel = Object.keys(S.config.levels).map((l) => s.by_level[l].length
-    ? `<h3>${esc(levelLabel(l))} (${s.by_level[l].length})</h3>${s.by_level[l].map((x) => row(x)).join("")}` : "").join("");
-  const card = s.status === "requested"
-    ? `<section class="step"><div class="title">Nobody has picked this up yet</div>
-        <div class="text">Asked by ${esc(s.requested_by)}${s.from_decision ? ` after the decision "${esc(s.from_decision.title)}"` : ""}${s.from_query ? ` after searching "${esc(s.from_query)}"` : ""}.</div>
-        <div class="tools">${btn("pick-up", "I will take this", { id: s.id }, "primary")}${btn("study-stage", "Drop it", { id: s.id, stage: "dropped" }, "link")}</div></section>`
-    : s.status === "planned"
-      ? `<section class="step"><div class="title">${s.needs.length ? "Add the decision it serves" : "Ready when you are"}</div>
-          <div class="text">${s.needs.length ? "Say which decision this study serves, so its learnings are easier to trust." : "When you start, mark it running. You will be asked for the method and who you studied then."}</div>
-          <div class="tools">${btn(s.needs.length ? "study-details" : "study-run", s.needs.length ? "Add it" : "Mark running", { id: s.id }, "primary")}</div></section>`
-    : s.status === "running"
-      ? `<section class="step"><div class="title">${s.needs.length ? "Add how you are running it" : "Add what you learn as you go"}</div>
-          <div class="text">${s.needs.length ? "Needs: " + esc(s.needs.map((n) => n.label.toLowerCase()).join(", ")) : "When the study is done, wrap it up."}</div>
-          <div class="tools">${s.needs.length ? btn("study-details", "Add it", { id: s.id }, "primary") : btn("add", "Add a learning", { study: s.id }, "primary")}
-            ${s.needs.length ? btn("add", "Add a learning", { study: s.id }) : btn("study-finish", "Wrap it up", { id: s.id })}</div></section>`
-    : s.status === "finished" && s.needs.length
-      ? `<section class="step"><div class="title">Wrap it up</div><div class="text">What did we learn? Is any learning ready to promote?</div>
-          <div class="tools">${btn("study-finish", "Wrap it up", { id: s.id }, "primary")}</div></section>` : "";
-  const f = (k) => s[k] ? esc(s[k]) : `<span class="muted">not yet</span>`;
-  const fields = S.config.study.fields.map((x) => `<dt>${esc(x.label)}</dt><dd>${esc(s.fields[x.key]) || `<span class="muted">not yet</span>`}</dd>`).join("");
-  return `<div class="page-head"><div><div class="crumb"><a href="#/studies">Studies</a> · ${STAGE[s.status]}</div><h1>${esc(s.question)}</h1>
-      <div class="meta">${s.owner ? `Run by ${person(s.owner)}` : ""}${s.decision ? ` · serves: ${esc(s.decision)}` : ""}</div></div>
-    <div class="actions">${more([btn("edit-study", "Edit details", { id: s.id }), s.status === "planned" && !s.needs.length ? "" : s.status === "planned" ? btn("study-run", "Mark running", { id: s.id }) : "",
-      s.status === "running" ? btn("study-finish", "Wrap it up", { id: s.id }) : "", !["dropped", "finished"].includes(s.status) ? btn("study-stage", "Drop it", { id: s.id, stage: "dropped" }) : ""].filter(Boolean))}</div></div>
-    ${card}
-    ${s.learned ? `<div class="alert quiet"><b>What we learned:</b> ${esc(s.learned)}</div>` : ""}
-    ${panel("Learnings", byLevel || `<div class="empty">None yet.</div>`, ["planned", "finished"].includes(s.status) ? `<button class="link" data-act="add" data-study="${s.id}">Add a learning</button>` : "")}
-    ${fold("Details", null, `<dl class="kv"><dt>Question</dt><dd>${f("question")}</dd><dt>Decision it serves</dt><dd>${f("decision")}</dd>
-      <dt>Hypothesis</dt><dd>${f("hypothesis")}</dd><dt>Method</dt><dd>${f("method")}</dd><dt>Who or what we studied</dt><dd>${f("sample")}</dd>${fields}</dl>`)}
-    ${fold("History", s.history.length, `<ul class="feed">${s.history.slice().reverse().map(feedItem).join("")}</ul>`)}`;
-};
-
-views.learnings = async () => {
-  const p = new URLSearchParams(location.hash.split("?")[1] || "");
-  const q = p.get("q") || "", lv = p.get("level") || "", tr = p.get("trust") || "";
-  const found = await get(`learnings?q=${enc(q)}&level=${lv}&trust=${tr}&limit=100`);
-  const opt = (v, cur, label) => `<option value="${v}" ${v === cur ? "selected" : ""}>${esc(label)}</option>`;
-  const noneChecked = q && !found.some((l) => CHECKED.includes(l.trust.state));
-  const trusts = { not_reviewed: "Not reviewed", needs_changes: "Needs changes", checked_by_peers: "Checked by peers",
-    checked_by_sme: "Checked by an SME", contested: "Contested", draft: "Draft", replaced: "Replaced" };
-  return `<div class="page-head"><div><h1>Learnings</h1><div class="sub">What the team has learned, and how far to trust each one.</div></div>
-    <div class="actions"><button class="primary" data-act="add">Add a learning</button></div></div>
-    <form class="search" data-form="learnings-search">
-      <input name="q" value="${esc(q)}" placeholder="Topic or question">
-      <select name="level">${opt("", lv, "Any level")}${Object.keys(S.config.levels).map((k) => opt(k, lv, levelLabel(k))).join("")}</select>
-      <select name="trust">${opt("", tr, "Any trust")}${Object.entries(trusts).map(([k, l]) => opt(k, tr, l)).join("")}</select>
-      <button>Search</button></form>
-    ${noneChecked ? `<div class="nudge"><b>Nothing checked matches "${esc(q)}" yet.</b><button class="link" data-act="ask" data-query="${esc(q)}">Ask for research</button></div>` : ""}
-    <section class="panel">${list(found, (l) => row(l, l.connections ? ` · ${l.connections} connected` : ""), "No learnings match.")}</section>
-    ${fold("Check before you add", null, `<p class="muted">Paste a statement. ANCHOR looks for checked learnings on the same topic that might disagree.</p>
-      <form data-form="claim"><textarea name="statement" placeholder="For example: shoppers do not mind long address forms"></textarea><div class="tools"><button class="primary">Check</button></div></form><div id="claim-result"></div>`)}`;
-};
-
-// The one action most worth doing on a learning, for this person.
-function primaryFor(l) {
-  const me = S.me?.name || "", mine = isMe(l.owner);
-  const reviewed = l.reviews.some((r) => r.current && isMe(r.by));
-  const checked = CHECKED.includes(l.trust.state);
-  if (l.stage === "draft") return mine ? ["confirm", "Confirm"] : null;
-  if (l.stage === "replaced") return ["open-learning", "See the newer version", { learning: l.replaced_by[0].id }];
-  if (mine && l.trust.state === "needs_changes") return ["revise", "Revise"];
-  if (!mine && !reviewed && me) return ["review", "Review"];
-  if (mine && l.trust.state === "not_reviewed" && !l.open_requests.length) return ["ask-review", "Ask for review"];
-  if (l.promotion && checked && l.promotion.ready && !l.promoted_to.length) return ["promote", `Promote to ${levelLabel(NEXT_LEVEL[l.level]).toLowerCase()}`];
-  if (checked) return ["decide", "Use in a decision"];
-  return ["follow", "Follow changes"];
-}
-
-views.learning = async (id) => {
-  const [l, hist] = await Promise.all([get(`learnings/${id}`), get(`learnings/${id}/history`)]);
-  const mine = isMe(l.owner);
-  const primary = primaryFor(l);
-  const d = { id: l.id };
-  const options = [
-    !mine && l.stage === "shared" ? btn("review", l.reviews.some((r) => r.current && isMe(r.by)) ? "Change your review" : "Review", d) : "",
-    l.stage === "shared" ? btn("ask-review", "Ask for review", d) : "",
-    l.promotion && l.stage === "shared" ? btn("promote", `Promote to ${levelLabel(NEXT_LEVEL[l.level]).toLowerCase()}`, d) : "",
-    l.stage !== "replaced" ? btn("revise", "Revise", d) : "",
-    btn("link", "Link to another learning", d),
-    btn("conflicts", "Check for conflicts", d),
-    l.stage !== "draft" ? btn("decide", "Use in a decision", d) : "",
-    btn("follow", "Follow changes", d),
-    l.working_by && isMe(l.working_by) ? btn("working", "Stop working on this", { ...d, on: "" }) : btn("working", "I'm working on this", { ...d, on: "1" }),
-  ].filter((b) => b && (!primary || !b.includes(`data-act="${primary[0]}"`)));
-  const origin = l.origin === "person" ? "" : l.origin === "person_with_ai" ? " with AI" : " (drafted by an AI agent)";
-  const confirmed = l.confirmed ? ` · confirmed${l.confirmed.edited ? ", wording changed" : ""}${l.confirmed.note ? `: "${esc(l.confirmed.note)}"` : ""}` : "";
-  const conflicts = l.conflicts.map((c) => `<div class="alert bad"><b>Contested.</b> ${esc(c.by)} flagged a conflict ${when(c.at)}${c.note ? `: "${esc(c.note)}"` : ""}
-    <div class="versions"><div><b>This one</b><br>${esc(l.statement)}</div><div><b>${ref(c.with.id)}</b> ${chip(c.with.chip)}<br>${esc(c.with.statement)}</div></div></div>`).join("");
-  // The readiness line shows only when the team set a rule.
-  const promo = l.promotion?.rule && l.stage === "shared"
-    ? `<span class="muted">${l.promotion.ready ? "Ready to promote" : "Not ready to promote yet"}: ${esc(l.promotion.summary)}</span>` : "";
-  const reviews = l.reviews.map((v) => `<div class="review ${v.current ? "" : "old"}">
-      <div class="row"><b>${VERDICT[v.verdict]}</b> ${person(v.by)} <span class="muted">${esc(v.role_label || "")} · ${when(v.at)}</span></div>
-      ${v.how ? `<div class="muted">${esc(S.config.checks[v.how] || v.how)}</div>` : ""}
-      ${v.note ? `<div>"${esc(v.note)}"</div>` : ""}${v.current ? "" : `<div class="muted">An earlier review, replaced by a later one</div>`}</div>`).join("");
-  const requests = l.open_requests.map((r) => `<div class="meta">Waiting on ${r.person ? person(r.person) : r.role === "sme" ? "any SME" : `any ${esc(roleLabel(r.role).toLowerCase())}`}, asked by ${esc(r.asked_by)} ${when(r.at)}
-      ${mine || isMe(r.asked_by) ? `<button class="link" data-act="withdraw" data-id="${r.id}">withdraw</button>` : ""}</div>`).join("");
-  const rel = (title, items, render = (x) => row(x)) => items.length ? `<h3>${title}</h3>${items.map(render).join("")}` : "";
-  const linked = (x) => row(x.learning, x.note ? ` · "${esc(x.note)}"` : "");
-  const promotedIds = l.promoted_to.map((x) => x.id);
-  const connected = rel("Built on", l.evidence.filter((x) => x.id !== l.promoted_from?.id))
-    + rel("Supports", l.supports.filter((x) => !promotedIds.includes(x.id)))
-    + rel("Builds on", l.links.builds_on, linked) + rel("Built on by", l.links.built_on_by, linked) + rel("Same as", l.links.same_as, linked)
-    + rel("Promoted from", l.promoted_from ? [l.promoted_from] : []) + rel("Promoted to", l.promoted_to)
-    + rel("Revises", l.revises ? [l.revises] : []);
-  return `<div class="page-head"><div class="crumb"><a href="#/learnings">Learnings</a></div></div>
-    <section class="panel detail">
-      <div class="row">${shape(l.level)}<span class="level ${l.level}">${esc(levelLabel(l.level))}</span>${chip(l.chip)}<span class="muted">#${l.id}</span></div>
-      <div class="statement">${esc(l.statement)}</div>
-      <div class="meta">Added by ${person(l.owner)}${origin} ${when(l.created_at)}${confirmed}${l.study ? ` · from <a href="#/studies/${l.study.id}">${esc(l.study.question)}</a>` : ""}${l.working_by ? ` · ${esc(l.working_by)} is working on it` : ""}</div>
-      ${l.stage === "draft" ? `<div class="alert quiet">An AI draft. ${mine ? "Check it, fix the wording if needed, and confirm it before anyone is asked to review it." : `${esc(l.owner)} confirms it before anyone reviews it.`}</div>` : ""}
-      ${l.replaced_by.length ? `<div class="alert warn">Replaced by a newer version: ${l.replaced_by.map((x) => ref(x.id)).join(", ")}</div>` : ""}
-      ${conflicts}
-      <p class="muted" style="margin-top:10px">${esc(l.trust.summary)}</p>
-      <div class="tools">${primary ? btn(primary[0], primary[1], primary[2] || d, "primary") : ""}${more(options)}${promo}</div>
-      ${requests}<div id="conflict-check"></div>
-    </section>
-    ${fold("Why trust this", l.reviews.length + l.evidence.length, `<p>${esc(l.trust.summary)}</p>${reviews || `<div class="empty">No reviews yet. Anyone can review. SME approvals show as Checked by an SME.</div>`}
-      ${rel("Evidence", l.evidence)}`)}
-    ${fold("Connected", l.connections, connected || `<div class="empty">Not linked to anything yet.</div>`)}
-    ${fold("Used in decisions", l.used_in.length, list(l.used_in, (x) => `<div class="item"><div class="body"><a href="#/decisions/${x.id}">${esc(x.title)}</a><div class="meta">${esc(x.made_by)} ${when(x.at)}</div></div></div>`, "Not used in a decision yet."))}
-    ${fold("History", hist.length, `<ul class="feed">${hist.slice().reverse().map(feedItem).join("")}</ul>`)}`;
-};
-
-views.review = async () => {
-  const me = needMe();
-  const [q, open] = await Promise.all([get(`queue?who=${enc(me)}`), get("learnings?trust=not_reviewed&limit=100")]);
-  const others = open.filter((l) => !isMe(l.owner) && !l.reviews.some((r) => r.current && isMe(r.by)));
-  const feedback = (f) => row(f.learning, " · " + f.reviews.map((r) => `${esc(r.by)}: ${VERDICT[r.verdict].toLowerCase()}`).join(", "));
-  return `<div class="page-head"><div><h1>Review</h1><div class="sub">Anyone can review. Every review shows who gave it and how they checked.</div></div></div>
-    <div class="grid"><div>
-      ${panel("Asked of you", list(q.waiting_on_me, (w) => row(w.learning, ` · ${esc(w.request.asked_by)} asked${w.request.note ? `: "${esc(w.request.note)}"` : ""}`), "Nothing is waiting on you."))}
-      ${panel("Open for anyone", list(others, (l) => row(l), "Everything shared has a review.", 5))}
-    </div><div>
-      ${q.drafts.length ? panel("Your AI drafts to confirm", q.drafts.map((l) => row(l)).join("")) : ""}
-      ${q.feedback_on_mine.length ? panel("Feedback on yours", q.feedback_on_mine.map(feedback).join("")) : ""}
-      ${fold("You asked for reviews", q.my_requests.length, list(q.my_requests, (m) => row(m.learning, ` · waiting on ${esc(m.request.person || (m.request.role === "sme" ? "any SME" : "any " + roleLabel(m.request.role).toLowerCase()))}`), "No open requests."))}
-    </div></div>`;
-};
-
-views.decisions = async () => {
-  const all = await get("decisions");
-  const r = (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a>
-    <div class="meta">${esc(d.made_by)} · ${when(d.at)} · ${d.learnings.length} learning(s)</div></div>
-    ${d.at_risk.length ? `<div class="side"><span class="chip contested">At risk</span></div>` : ""}</div>`;
-  return `<div class="page-head"><div><h1>Decisions</h1><div class="sub">When learnings shape a decision, log it. It credits the people behind them, and you hear if something changes.</div></div>
-    <div class="actions"><button class="primary" data-act="decide">Log a decision</button></div></div>
-    <section class="panel">${list(all, r, "No decisions logged yet.")}</section>`;
-};
-
-views.decision = async (id) => {
-  const d = await get(`decisions/${id}`);
-  const mine = isMe(d.made_by);
-  const used = d.learnings.map((l) => row(l, l.state !== l.trust_at_use ? ` · was ${esc(l.trust_at_use_label)} when used` : "")).join("");
-  const names = d.credits.map((c) => person(c.name)).join(", ");
-  const credits = d.credits.map((c) => `<div class="meta"><b style="color:var(--text)">${esc(c.name)}</b> ${c.contributions.map((x) =>
-    `${esc(x.did)} ${x.learning_id ? ref(x.learning_id) : `<a href="#/studies/${x.study_id}">the study</a>`}`).join(", ")}</div>`).join("");
-  const outcomeCard = d.outcome_due
-    ? `<section class="step"><div class="title">What happened?</div><div class="text">It has been a while since this decision. How did it go? If it raised a new question, you can ask for research next.</div>
-        <div class="tools">${btn("outcome", "Add what happened", { decision: d.id }, "primary")}</div></section>` : "";
-  return `<div class="page-head"><div><div class="crumb"><a href="#/decisions">Decisions</a></div><h1>${esc(d.title)}</h1>
-      <div class="meta">Made by ${person(d.made_by)} ${when(d.at)}</div></div>
-    <div class="actions">${more([btn("add-to-decision", "Add a learning it used", { id: d.id }), !d.outcome_due ? btn("outcome", d.outcome ? "Edit what happened" : "Add what happened", { decision: d.id }) : "",
-      btn("ask", "Ask for research", { decision: d.id })].filter(Boolean))}</div></div>
-    ${d.at_risk.length ? `<div class="alert bad">Something this decision relied on is now contested: ${d.at_risk.map(ref).join(", ")}. Take a look.</div>` : ""}
-    ${mine ? outcomeCard : ""}
-    ${d.outcome ? `<div class="alert quiet"><b>What happened:</b> ${esc(d.outcome)}</div>` : ""}
-    ${d.note ? `<p>${esc(d.note)}</p>` : ""}
-    ${panel("What it relied on", used || `<div class="empty">No learnings linked.</div>`)}
-    ${panel("The people behind it", names ? `<p>${names}</p>${fold("What each person did", null, credits)}` : `<div class="empty">No learnings linked, so no one to credit yet.</div>`)}
-    ${d.requests.length ? fold("Research it raised", d.requests.length, d.requests.map((s) => studyRow({ ...s, learning_count: undefined })).join("")) : ""}`;
-};
-
-views.person = async (name) => {
-  const p = await get(`people/${enc(name)}`);
-  const roleSelect = `<select data-act="role" data-name="${esc(p.name)}">${Object.entries(S.config.roles).map(([k, r]) => `<option value="${k}" ${k === p.role ? "selected" : ""}>${esc(r.label)}</option>`).join("")}</select>`;
-  return `<div class="page-head"><div><h1>${esc(p.name)}</h1><div class="sub">${esc(p.role_label)}${p.sme ? " · SME" : ""}${isMe(p.name) ? " · you" : ""}</div></div>
-    <div class="actions"><label class="inline">Role ${roleSelect}</label><label class="inline"><input type="checkbox" data-act="sme" data-name="${esc(p.name)}" ${p.sme ? "checked" : ""}>SME</label></div></div>
-    ${panel("Their work informed", list(p.contributed_to, (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a>
-      <div class="meta">${d.contributions.map((x) => `${esc(x.did)} ${x.learning_id ? `#${x.learning_id}` : "the study"}`).join(", ")}</div></div></div>`, "Not yet. Work that informs a decision shows up here."))}
-    ${fold("Decisions made", p.decisions_made.length, list(p.decisions_made, (d) => `<div class="item"><div class="body"><a href="#/decisions/${d.id}">${esc(d.title)}</a><div class="meta">${when(d.at)}</div></div></div>`, "None."))}`;
-};
-
-// -- actions -----------------------------------------------------------------
-
-const fieldInputs = (stage, s = {}) => S.config.study.fields.filter((f) => f.ask_at === stage).map((f) =>
-  `<label>${esc(f.label)}${f.required ? " (the team asks for this)" : ""}</label><input name="field:${esc(f.key)}" value="${esc(s.fields?.[f.key])}" placeholder="${esc(f.help || "")}">`).join("");
-const formValues = (form) => {
-  const v = { fields: {} };
-  for (const [k, val] of new FormData(form)) k.startsWith("field:") ? (v.fields[k.slice(6)] = val) : (v[k] = val);
-  return v;
-};
-
-// Capture a learning in short steps: what, then what kind, then evidence if you have it.
-function addDialog(studyId, statement = "") {
-  openDialog(`<h2>What did you learn?</h2><p class="muted">One sentence is enough.</p>
-    <textarea name="statement" required>${esc(statement)}</textarea>
-    <p class="muted" style="margin-top:8px">Have a pile of notes? Ask your AI tool to "Synthesize my notes" instead.</p>`,
-    async (form) => { if (!form.statement.value.trim()) throw new Error("Write one sentence first"); kindStep(studyId, form.statement.value); return true; },
-    { submit: "Next" });
-}
-async function kindStep(studyId, statement) {
-  const studies = (await get("studies")).filter((s) => !["requested", "dropped"].includes(s.status));
-  openDialog(`<h2>What kind is it?</h2><p class="muted">"${esc(statement)}"</p>
-    <div class="choices">${Object.entries(KINDS).map(([k, [title, text]], i) => `<label class="choice button"><input type="radio" name="level" value="${k}" ${i ? "" : "checked"}>
-      <b>${esc(title)} <span class="muted">(${esc(levelLabel(k))})</span></b><span>${esc(text)}</span></label>`).join("")}</div>
-    <label class="inline" style="margin-top:12px"><input type="checkbox" name="ai"> An AI helped write this. It stays a draft until you confirm it.</label>
-    <details ${studyId ? "open" : ""}><summary class="muted" style="cursor:pointer;margin-top:10px">Add evidence or a study</summary>
-      <label>Learnings that support it</label>${pickerHtml("evidence")}
-      <label>Study</label><select name="study"><option value="">None</option>${studies.map((s) => `<option value="${s.id}" ${s.id === studyId ? "selected" : ""}>${esc(s.question)}</option>`).join("")}</select>
-    </details><input type="hidden" name="statement" value="${esc(statement)}">`,
-    async (form) => {
-      const r = await act("add", { statement, level: form.level.value, owner: needMe(), origin: form.ai.checked ? "person_with_ai" : "person",
-        evidence: picked(form, "evidence"), study_id: form.study.value ? Number(form.study.value) : null }, "Added.");
-      if (r.possible_conflicts.length) {
-        $("#dlg-form").innerHTML = `<h2>Added #${r.learning.id}</h2><div class="alert warn">It may conflict with something already checked. Take a look.</div>
-          ${candidates({ candidates: r.possible_conflicts }, r.learning.id)}<div class="foot"><button type="button" onclick="document.getElementById('dlg').close()">Done</button></div>`;
-        return true;
-      }
-      location.hash = `#/learnings/${r.learning.id}`;
-    }, { submit: "Save", noFocus: true });
-}
-
-// Review in two steps: where you stand, then one follow-up that fits it.
-async function reviewDialog(id) {
-  const l = await get(`learnings/${id}`);
-  openDialog(`<h2>Review</h2><p>"${esc(l.statement)}"</p><p class="muted">${esc(l.trust.summary)}</p>
-    <div class="choices">
-      <button type="button" class="choice" data-verdict="approve"><b>Approve</b><span>It holds up.</span></button>
-      <button type="button" class="choice" data-verdict="changes"><b>Ask for changes</b><span>Close, but something should change.</span></button>
-      <button type="button" class="choice" data-verdict="disagree"><b>Disagree</b><span>It does not hold up. This marks it Contested.</span></button>
-    </div>
-    <p class="muted" style="margin-top:10px"><button type="button" class="link" data-help>How reviews count</button></p>
-    <p class="muted" hidden id="review-help">Your latest review is the one that counts. Approvals from SMEs show as Checked by an SME; everyone else's as Checked by peers. Asking for changes shows Needs changes until the owner revises. Disagreeing shows Contested.</p>`, null);
-  $("[data-help]", $("#dlg")).onclick = () => { $("#review-help").hidden = false; };
-  $$("[data-verdict]", $("#dlg")).forEach((b) => b.onclick = () => reviewStep(l, b.dataset.verdict));
-}
-function reviewStep(l, verdict) {
-  const follow = {
-    approve: `<label>How did you check? (optional)</label><div class="pills">${Object.entries(S.config.checks).map(([k, v]) =>
-      `<label><input type="radio" name="how" value="${k}"><span>${esc(v)}</span></label>`).join("")}</div>`,
-    changes: `<label>What should change?</label><textarea name="note" required></textarea>`,
-    disagree: `<label>Why?</label><textarea name="note" required></textarea>`,
-  }[verdict];
-  openDialog(`<h2>${VERDICT[verdict]}</h2><p>"${esc(l.statement)}"</p>${follow}`,
-    (form) => act("review", { learning_id: l.id, by: needMe(), verdict, how: form.how?.value || null, note: form.note?.value || null }, "Review recorded."),
-    { submit: verdict === "approve" ? "Approve" : "Send", noFocus: verdict === "approve" });
-}
-
-async function confirmDialog(id) {
-  const l = await get(`learnings/${id}`);
-  openDialog(`<h2>Confirm this AI draft</h2><p class="muted">Check it against what you know. Fix the wording if it says more, or less, than you mean.</p>
-    <label>The learning</label><textarea name="statement">${esc(l.statement)}</textarea>
-    <label>What did you check or change? (optional)</label><input name="note" placeholder="For example: checked it against the interview notes">`,
-    (form) => act("confirm", { learning_id: l.id, by: needMe(), statement: form.statement.value, note: form.note.value }, "Confirmed. It is ready for review."),
-    { submit: "Confirm" });
-}
-
-function studyStageDialog(s, stage) {
-  const body = {
-    start: `<label>Decision it serves</label><input name="decision" value="${esc(s.decision)}" placeholder="For example: whether to fund autofill in Q3">${fieldInputs("start", s)}`,
-    running: `<label>Method</label><input name="method" value="${esc(s.method)}" placeholder="For example: funnel analysis and interviews">
-      <label>Who or what you studied</label><input name="sample" value="${esc(s.sample)}" placeholder="For example: 8 recent mobile shoppers">${fieldInputs("running", s)}
-      <p class="muted" style="margin-top:8px">Not sure yet? Ask your AI tool to "Plan a study". It checks what is already known first.</p>`,
-    finished: `<label>What did we learn?</label><textarea name="learned">${esc(s.learned)}</textarea>${fieldInputs("finished", s)}
-      <p class="muted" style="margin-top:8px">If a learning is ready, promote it from its page.</p>`,
-  }[stage];
-  const status = { running: "running", finished: "finished" }[stage];
-  openDialog(`<h2>${{ start: "The decision it serves", running: "How are you running it?", finished: "Wrap it up" }[stage]}</h2><p class="muted">${esc(s.question)}</p>${body}`,
-    (form) => act("update_study", { study_id: s.id, by: needMe(), ...formValues(form), ...(status && s.status !== status ? { status } : {}) }),
-    { submit: status && s.status !== status ? `Mark ${status}` : "Save" });
-}
-
-const actions = {
-  who: () => chooseWho(false),
-  step: (b) => {
-    const go = b.dataset.do, id = b.dataset.learning, study = b.dataset.study, decision = b.dataset.decision;
-    if (go === "open-learning") location.hash = `#/learnings/${id}`;
-    else if (go === "open-study") location.hash = `#/studies/${study}`;
-    else if (go === "search") location.hash = "#/learnings";
-    else return actions[{ "study-details": "study-details", "new-study": "new-study", add: "add" }[go] || go]({ dataset: { id: id || study, decision, study: "" } });
-  },
-  "not-now": (b) => act("mark_seen", { who: needMe(), keys: [b.dataset.key] }, "Set aside. It will come back if something new happens."),
-  "open-learning": (b) => { location.hash = `#/learnings/${b.dataset.learning || b.dataset.id}`; },
-  add: (b) => addDialog(b.dataset.study ? Number(b.dataset.study) : null),
-  review: (b) => reviewDialog(b.dataset.id),
-  confirm: (b) => confirmDialog(b.dataset.id),
-  "new-study": () => openDialog(`<h2>Start a study</h2><p class="muted">Just the question and the decision it serves. The rest is asked for when you need it.</p>
-      <label>What do you want to find out?</label><input name="question" required placeholder="For example: why do mobile shoppers leave checkout?">
-      <label>Which decision does it serve?</label><input name="decision" placeholder="For example: whether to fund autofill in Q3">`,
-    async (form) => { const r = await act("start_study", { question: form.question.value, decision: form.decision.value, owner: needMe() }, "Study started.");
-      location.hash = `#/studies/${r.study.id}`; }, { submit: "Start" }),
-  "edit-study": async (b) => { const s = await get(`studies/${b.dataset.id}`);
-    openDialog(`<h2>Edit details</h2><label>Question</label><input name="question" required value="${esc(s.question)}">
-      <label>Decision it serves</label><input name="decision" value="${esc(s.decision)}"><label>Hypothesis (optional): what you expect to find</label><input name="hypothesis" value="${esc(s.hypothesis)}">
-      <label>Method</label><input name="method" value="${esc(s.method)}"><label>Who or what you studied</label><input name="sample" value="${esc(s.sample)}">
-      ${fieldInputs("start", s)}${fieldInputs("running", s)}${fieldInputs("finished", s)}`,
-      (form) => act("update_study", { study_id: s.id, by: needMe(), ...formValues(form) })); },
-  "study-details": async (b) => { const s = await get(`studies/${b.dataset.id}`);
-    studyStageDialog(s, s.needs[0]?.stage || { planned: "start", running: "running", finished: "finished" }[s.status] || "start"); },
-  "study-run": async (b) => studyStageDialog(await get(`studies/${b.dataset.id}`), "running"),
-  "study-finish": async (b) => studyStageDialog(await get(`studies/${b.dataset.id}`), "finished"),
-  "study-stage": (b) => act("update_study", { study_id: Number(b.dataset.id), by: needMe(), status: b.dataset.stage }),
-  "pick-up": (b) => act("update_study", { study_id: Number(b.dataset.id), by: needMe(), status: "planned", owner: needMe() }, "It is yours."),
-  ask: (b) => openDialog(`<h2>Ask for research</h2><p class="muted">It lands as a request someone can pick up.</p>
-      <label>Your question</label><textarea name="question" required>${esc(b.dataset.query ? `What do we know about ${b.dataset.query}?` : "")}</textarea>
-      ${b.dataset.decision ? "" : `<label>Which decision would it inform?</label><input name="decision" placeholder="Helps the team prioritize">`}`,
-    async (form) => { const r = await act("ask_for_research", { question: form.question.value, decision: form.decision?.value || null, by: needMe(),
-        from_query: b.dataset.query || null, from_decision_id: b.dataset.decision ? Number(b.dataset.decision) : null }, "Asked. It is in Studies.");
-      location.hash = `#/studies/${r.study.id}`; }, { submit: "Ask" }),
-  "ask-review": async (b) => { const l = await get(`learnings/${b.dataset.id}`);
-    const people = Object.values(S.people).filter((p) => !isMe(p.name) && p.name.toLowerCase() !== l.owner.toLowerCase());
-    openDialog(`<h2>Ask for review</h2><p class="muted">"${esc(l.statement)}"</p>
-      <label>Anyone who is</label><label class="inline"><input type="checkbox" name="role" value="sme">An SME</label>${Object.entries(S.config.roles).map(([k, r]) => `<label class="inline"><input type="checkbox" name="role" value="${k}">${esc(r.label)}</label>`).join("")}
-      <label>Or specific people</label>${people.map((p) => `<label class="inline"><input type="checkbox" name="person" value="${esc(p.name)}">${esc(p.name)}${p.sme ? ` <span class="sme">SME</span>` : ""}</label>`).join("")}
-      <label>Note (optional)</label><input name="note" placeholder="For example: before Friday's planning">`,
-      (form) => { const d = new FormData(form);
-        return act("ask_for_review", { learning_id: l.id, by: needMe(), people: d.getAll("person"), roles: d.getAll("role"), note: d.get("note") }, "Asked. It is in their queue."); },
-      { submit: "Ask", noFocus: true }); },
-  withdraw: (b) => act("withdraw_request", { request_id: Number(b.dataset.id), by: needMe() }, "Request withdrawn."),
-  promote: async (b) => { const l = await get(`learnings/${b.dataset.id}`);
-    const to = levelLabel(NEXT_LEVEL[l.level]);
-    openDialog(`<h2>Promote to ${esc(to.toLowerCase())}</h2>
-      <p class="muted">Adds a new ${esc(to.toLowerCase())} linked to this one. This one stays as it is.</p>
-      ${l.promotion.rule && !l.promotion.ready ? `<div class="alert ${l.promotion.enforced ? "bad" : "warn"}">Not ready by the team's rule: ${esc(l.promotion.summary)}.${l.promotion.enforced ? " The team requires this first." : " You can still promote."}</div>` : ""}
-      <p class="muted">${esc(l.trust.summary)}</p>
-      <label>${NEXT_LEVEL[l.level] === "insight" ? "What does it mean for us, and what should we do?" : "What do you think it means?"}</label><textarea name="statement">${esc(l.statement)}</textarea>
-      <label>Why promote it? (optional)</label><input name="note">`,
-      async (form) => { const r = await act("promote", { learning_id: l.id, by: needMe(), statement: form.statement.value, note: form.note.value }, "Promoted.");
-        location.hash = `#/learnings/${r.learning.id}`; }, { submit: "Promote" }); },
-  revise: async (b) => { const l = await get(`learnings/${b.dataset.id}`);
-    const asks = l.reviews.filter((v) => v.current && v.verdict !== "approve");
-    openDialog(`<h2>Revise</h2><p class="muted">Writes a new version. This one becomes Replaced and keeps its reviews. Anyone who asked for changes is asked to look again.</p>
-      ${asks.map((v) => `<div class="alert warn">${esc(v.by)}: ${esc(VERDICT[v.verdict].toLowerCase())}${v.note ? `, "${esc(v.note)}"` : ""}</div>`).join("")}
-      <label>New wording</label><textarea name="statement">${esc(l.statement)}</textarea><label>What changed? (optional)</label><input name="note">`,
-      async (form) => { const r = await act("revise", { learning_id: l.id, by: needMe(), statement: form.statement.value, note: form.note.value }, "Revised.");
-        location.hash = `#/learnings/${r.learning.id}`; }, { submit: "Save new version" }); },
-  link: (b) => openDialog(`<h2>Link to another learning</h2>
-      <label>This one...</label><select name="type">${Object.entries(LINK).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
-      <label>...this one</label>${pickerHtml("to", { multi: false, exclude: [Number(b.dataset.id)] })}
-      <label>Note (optional)</label><input name="note">
-      <p class="muted">"Conflicts with" marks both Contested, so both sides stay visible.</p>`,
-    (form) => { const to = picked(form, "to")[0]; if (!to) throw new Error("Pick a learning to link to");
-      return act("link", { from_id: Number(b.dataset.id), to_id: to, type: form.type.value, by: needMe(), note: form.note.value }, "Linked."); },
-    { submit: "Link", noFocus: true }),
-  conflicts: async (b) => { const r = await post("check_conflict", { learning_id: Number(b.dataset.id) }); $("#conflict-check").innerHTML = candidates(r, Number(b.dataset.id)); },
-  "confirm-conflict": async (b) => { const note = prompt("Why do these conflict? (optional)"); if (note === null) return;
-    await act("link", { from_id: Number(b.dataset.id), to_id: Number(b.dataset.other), type: "conflicts_with", by: needMe(), note }, "Both are now Contested."); },
-  working: (b) => act("working_on", { learning_id: Number(b.dataset.id), who: needMe(), on: !!b.dataset.on }, b.dataset.on ? "Others will see you are on it." : "Done."),
-  follow: (b) => act("follow", { learning_id: Number(b.dataset.id), who: needMe() }, "You will hear about changes to it."),
-  decide: async (b) => { const preset = b.dataset.id ? [await get(`learnings/${b.dataset.id}`)] : [];
-    openDialog(`<h2>Log a decision</h2><p class="muted">It credits the people behind the learnings, and you will hear if one changes. You will be asked what happened later.</p>
-      <label>What did you decide?</label><input name="title" required placeholder="For example: fund address autofill in Q3">
-      <label>Which learnings did it rely on?</label>${pickerHtml("used", { preset })}`,
-      async (form) => { const r = await act("log_decision", { title: form.title.value, made_by: needMe(), learning_ids: picked(form, "used") }, "Decision logged.");
-        location.hash = `#/decisions/${r.decision.id}`; }, { submit: "Log decision" }); },
-  "add-to-decision": (b) => openDialog(`<h2>Add a learning it used</h2>${pickerHtml("used")}`,
-    (form) => act("update_decision", { decision_id: Number(b.dataset.id), by: needMe(), add_learning_ids: picked(form, "used") })),
-  outcome: async (b) => { const d = await get(`decisions/${b.dataset.decision || b.dataset.id}`);
-    openDialog(`<h2>What happened?</h2><p class="muted">${esc(d.title)}</p><textarea name="outcome">${esc(d.outcome)}</textarea>`,
-      (form) => act("update_decision", { decision_id: d.id, by: needMe(), outcome: form.outcome.value }, "Saved. If it raised a new question, ask for research from the decision.")); },
-};
-
-function candidates(result, fromId) {
-  if (!result.candidates.length) return `<div class="alert ok">Nothing checked on a similar topic.</div>`;
-  return `<h3>Checked learnings on a similar topic</h3><p class="muted">You decide if these truly conflict.</p>` + result.candidates.map((c) => `
-    <div class="item">${shape(c.learning.level)}<div class="body"><a href="#/learnings/${c.learning.id}">${esc(c.learning.statement)}</a>
-      <div class="meta">${chip(c.learning.chip)} shared words: ${esc(c.shared_words.join(", "))}</div>
-      <div class="meta" style="color:var(${c.likely_conflict ? "--bad" : "--muted"})">${c.signals.length ? "Signals: " + esc(c.signals.join("; ")) : "No signs of a conflict. It may be related, or the same."}</div>
-      ${fromId ? `<div class="tools">${btn("confirm-conflict", "They conflict", { id: fromId, other: c.learning.id })}</div>` : ""}</div></div>`).join("");
-}
-
-// -- routing and events --------------------------------------------------------
-
-const ROUTES = [
-  [/^#\/home$/, "home", "home"], [/^#\/activity$/, "activity", "home"],
-  [/^#\/studies$/, "studies", "studies"], [/^#\/studies\/(\d+)$/, "study", "studies"],
-  [/^#\/learnings(\?.*)?$/, "learnings", "learnings"], [/^#\/learnings\/(\d+)$/, "learning", "learnings"],
-  [/^#\/review$/, "review", "review"],
-  [/^#\/decisions$/, "decisions", "decisions"], [/^#\/decisions\/(\d+)$/, "decision", "decisions"],
-  [/^#\/people\/(.+)$/, "person", null],
-];
-
-function renderNav(active) {
-  const q = S.queue, waiting = q ? q.waiting_on_me.length + q.drafts.length + q.feedback_on_mine.length : 0;
-  $("#nav").innerHTML = S.config.modes.map((m) => `<a href="#/${m}" class="${m === active ? "on" : ""}">${NAV[m]}${m === "review" && waiting ? `<span class="count">${waiting}</span>` : ""}</a>`).join("");
-}
-
-async function refreshQueue() {
-  if (!S.me) return;
-  try { S.queue = await get(`queue?who=${enc(S.me.name)}`); } catch (e) {}
-}
-
-async function route() {
-  const match = ROUTES.map(([re, view, nav]) => [location.hash.match(re), view, nav]).find(([m]) => m);
-  if (!match) { location.hash = "#/home"; return; }
-  const [m, view, nav] = match;
-  renderNav(nav);
-  try {
-    const arg = m[1] && !m[1].startsWith("?") ? decodeURIComponent(m[1]) : undefined;
-    $("#main").innerHTML = await views[view](arg);
-  } catch (e) {
-    $("#main").innerHTML = S.me ? `<div class="alert bad">${esc(e.message)}</div>` : `<div class="nudge"><b>Welcome to ANCHOR.</b>Choose who you are to get started.</div>`;
-  }
-}
-
-document.addEventListener("click", async (ev) => {
-  const b = ev.target.closest("[data-act]");
-  if (!b || b.tagName === "SELECT" || b.tagName === "INPUT") return;
-  ev.preventDefault();
-  b.closest("details.more")?.removeAttribute("open");
-  try { await actions[b.dataset.act](b); } catch (e) { toast(e.message, "bad"); }
-});
-document.addEventListener("change", async (ev) => {
-  const el = ev.target.closest("select[data-act=role], input[data-act=sme]");
-  if (!el) return;
-  const body = el.tagName === "SELECT" ? { role: el.value } : { sme: el.checked };
-  try { await act("set_person", { name: el.dataset.name, by: needMe(), ...body }, "Updated. Everyone can see this change in the activity record.");
-    if (isMe(el.dataset.name)) { S.me = await post("whoami", { name: S.me.name }); renderMe(); } } catch (e) { toast(e.message, "bad"); }
-});
-document.addEventListener("submit", async (ev) => {
-  const form = ev.target.closest("form[data-form]");
-  if (!form) return;
-  ev.preventDefault();
-  const kind = form.dataset.form;
-  if (kind === "learnings-search") location.hash = "#/learnings?" + new URLSearchParams(new FormData(form));
-  if (kind === "claim") $("#claim-result").innerHTML = candidates(await post("check_conflict", { statement: form.statement.value }), null);
-  if (kind === "home-search") {
-    const q = form.q.value.trim();
-    const found = await get(`learnings?q=${enc(q)}&limit=20`);
-    const checked = found.filter((l) => CHECKED.includes(l.trust.state));
-    $("#home-results").innerHTML = list(checked, (l) => row(l), `Nothing checked matches yet. <button class="link" data-act="ask" data-query="${esc(q)}">Ask for research</button>`, 5)
-      + (found.length > checked.length ? `<p class="muted"><a href="#/learnings?q=${enc(q)}">${found.length - checked.length} more not checked yet</a></p>` : "");
-  }
-});
 window.addEventListener("hashchange", route);
 
-// Pick up changes made elsewhere (another person, or an AI tool over MCP)
-// unless someone is typing, has a dialog or a section open.
-setInterval(async () => {
-  const busy = $("#dlg").open || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)
-    || $("details[open]") || $("#conflict-check:not(:empty)") || $("#home-results:not(:empty)");
-  if (busy || !S.me) return;
-  await loadPeople(); await refreshQueue(); route();
-}, 15000);
+// ---------- Home ----------
+async function renderHome() {
+  S.ws = null;
+  const [studies, queue] = await Promise.all([api("studies"), api("needs-check?who=" + encodeURIComponent(S.me))]);
+  const mineBy = {};
+  queue.items.forEach(i => mineBy[i.study_id] = (mineBy[i.study_id] || 0) + 1);
+  const list = studies.filter(s => s.status !== "requested");
+  const fill = st => ({ needs_check: "background:transparent;border-style:dashed;border-color:var(--muted)",
+    checked_by_owner: "background:var(--fill-owner)", checked_by_peers: "background:var(--fill-peers)",
+    checked_by_sme: "background:var(--fill-sme);border-color:var(--fill-sme)", needs_changes: "background:var(--amber-bg);border-color:var(--amber)",
+    disagreement: "background:var(--red-bg);border-color:var(--red)" })[st];
+  $("main").innerHTML = `
+    <div class="top"><div><h1>Workspaces</h1><div class="for">Collect context, break the work into blocks, and check each one before you build on it.</div></div>
+      ${queue.items.length ? `<div class="note"><b style="color:var(--ink)">${plural(queue.items.length, "block")}</b> waiting on your check</div>` : ""}</div>
+    <div class="cards">${list.map(s => {
+      const counts = Object.entries(s.counts || {});
+      const total = counts.reduce((a, [, n]) => a + n, 0);
+      return `<a class="card" href="#w/${s.id}" style="text-decoration:none;color:inherit">
+        <span class="q">${esc(s.question)}</span>
+        ${s.decision ? `<span class="note">For the decision: ${esc(s.decision)}</span>` : ""}
+        <span class="mini" aria-hidden="true">${counts.flatMap(([st, n]) => Array(n).fill(`<i style="${fill(st)}"></i>`)).join("")}</span>
+        <span class="note">${plural(total, "block")}${mineBy[s.id] ? ` · <b class="amber">${mineBy[s.id]} waiting on you</b>` : ""}${s.package?.length ? ` · ${plural(s.package.length, "insight")} in the package` : ""}</span>
+      </a>`;
+    }).join("") || `<div class="note">No workspaces yet. Start one below.</div>`}</div>
+    <form class="form" id="new-ws">
+      <h2>New workspace</h2>
+      <label class="note" for="nw-q">What do you want to find out?</label>
+      <input id="nw-q" required placeholder="Why do trial users leave in week one?">
+      <label class="note" for="nw-d">Which decision will it inform?</label>
+      <input id="nw-d" placeholder="Whether to rebuild onboarding this quarter">
+      <div class="row"><button class="btn primary">Start workspace</button></div>
+    </form>`;
+}
 
-(async function start() {
-  S.config = await get("config");
-  await loadPeople();
-  let saved = null;
-  try { saved = localStorage.getItem("anchor-me"); } catch (e) {}
-  if (saved) { try { S.me = await post("whoami", { name: saved }); } catch (e) {} }
-  renderMe();
-  await refreshQueue();
-  if (!location.hash) location.hash = "#/home";
-  await route();
-  if (!S.me) chooseWho(true);
+// ---------- Workspace ----------
+async function openWorkspace(id, keepPanel) {
+  if (!S.ws || S.ws.id !== id) $("main").innerHTML = `<div class="loading">Loading...</div>`;
+  const [ws, q] = await Promise.all([api("workspaces/" + id), api(`needs-check?who=${encodeURIComponent(S.me)}&study_id=${id}`)]);
+  S.ws = ws; S.queue = q.items;
+  renderWorkspace();
+  if (keepPanel && S.panel) await renderPanel();
+}
+const reload = () => openWorkspace(S.ws.id, true);
+
+function renderWorkspace() {
+  const ws = S.ws;
+  $("main").innerHTML = `
+    <div class="top">
+      <div style="min-width:0"><h1>${esc(ws.question)}</h1><div class="for">For the decision: ${esc(ws.decision || "not set yet")}</div></div>
+      <div class="controls">
+        <button class="btn primary" id="queue-btn" ${S.queue.length ? "" : "disabled"}>${S.queue.length ? "Check " + plural(S.queue.length, "block") : "Nothing to check"}</button>
+        <button class="btn" id="breakdown-btn">Break down AI text</button>
+        <button class="btn" id="connect-btn" aria-pressed="${S.connecting}" ${S.view === "build" ? "" : "hidden"}>Connect</button>
+        <div class="seg" role="group" aria-label="View">
+          <button id="v-build" aria-pressed="${S.view === "build"}">Build</button>
+          <button id="v-review" aria-pressed="${S.view === "review"}">Review</button>
+        </div>
+      </div>
+    </div>
+    <div class="tray" id="tray"></div>
+    <div id="view"></div>
+    <div class="connect" id="connect" hidden></div>`;
+  renderTray();
+  S.view === "build" ? renderBuild() : renderReview();
+  renderConnect();
+}
+
+function renderTray() {
+  const items = S.ws.package.map(byId).filter(Boolean);
+  $("tray").innerHTML = `<b>Package</b>` + (items.length
+    ? items.map(b => `<span class="pill"><span title="${esc(b.statement)}">${esc(b.statement)}</span><button data-unpkg="${b.id}" aria-label="Remove from package">×</button></span>`).join("") + `<button class="linkbtn" data-panel="package">Open</button>`
+    : `<span>Add checked insights to share them together.</span>`);
+}
+
+// ---------- Build view ----------
+const W = { observation: 156, finding: 240, insight: 280, stone: 140 };
+const H = { observation: 118, finding: 108, insight: 112, stone: 50 };
+const GAP = 16;
+
+// Lay out one row left to right near where each item wants to be, without
+// overlaps. Items with nothing under them (want is null) go at the end.
+function spread(items, minX) {
+  items.sort((a, b) => (a.want ?? Infinity) - (b.want ?? Infinity));
+  let edge = minX;
+  items.forEach(it => { it.x = it.want == null ? edge : Math.max(it.want - it.w / 2, edge); edge = it.x + it.w + GAP; });
+  return items;
+}
+
+function layout() {
+  const blocks = S.ws.blocks;
+  const findings = blocks.filter(b => b.level === "finding");
+  const insights = blocks.filter(b => b.level === "insight");
+  // Put observations under what they hold up, so the wires stay short.
+  const order = [];
+  [...insights.flatMap(i => i.built_on.map(byId).filter(Boolean)), ...findings].forEach(f => {
+    if (f.level !== "finding") return;
+    f.built_on.forEach(id => { const b = byId(id); if (b && b.level === "observation" && !order.includes(b)) order.push(b); });
+  });
+  blocks.filter(b => b.level === "observation" && !order.includes(b)).forEach(b => order.push(b));
+
+  const pad = 24, pos = {};
+  order.forEach((b, i) => { pos[b.id] = { x: pad + i * (W.observation + GAP), w: W.observation, h: H.observation }; });
+  const cx = id => pos[id] ? pos[id].x + pos[id].w / 2 : null;
+  const avg = arr => { const v = arr.filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  for (const [level, list] of [["finding", findings], ["insight", insights]])
+    spread(list.map(b => ({ id: b.id, want: avg(b.built_on.map(cx)), w: W[level] })), pad).forEach(it => pos[it.id] = { x: it.x, w: it.w, h: H[level] });
+  const srcCenters = s => order.filter(b => b.source_ids.includes(s.id)).map(b => cx(b.id));
+  spread(S.ws.sources.map(s => ({ id: "s" + s.id, want: avg(srcCenters(s)), w: W.stone })), pad).forEach(it => pos[it.id] = { x: it.x, w: it.w, h: H.stone });
+  const right = Math.max(600, ...Object.values(pos).map(p => p.x + p.w)) + 30;
+  return { pos, width: right };
+}
+
+function renderBuild() {
+  const view = $("view");
+  view.innerHTML = `<div class="canvas-wrap" id="canvas-wrap"><div class="canvas" id="canvas"></div></div>
+    <div class="key"><span>Fuller means more checked:</span>
+      <span><i class="sw" style="border-style:dashed;background:transparent;border-color:var(--muted)"></i>not yet</span>
+      <span><i class="sw" style="background:var(--fill-owner)"></i>owner</span>
+      <span><i class="sw" style="background:var(--fill-peers)"></i>peers</span>
+      <span><i class="sw" style="background:var(--fill-sme);border-color:var(--fill-sme)"></i>SME</span>
+      <span>· ⚠ built on something unchecked · Hover a block to trace it.</span></div>`;
+  const canvas = $("canvas"), wrap = $("canvas-wrap");
+  const { pos, width } = layout();
+  const availPx = wrap.clientWidth || 900;
+  const scale = Math.max(isPhone() ? .8 : .72, Math.min(1, availPx / width));
+  const avail = availPx / scale;
+  const W_ = Math.max(avail, width);
+  const shift = width < avail ? (avail - width) / 2 : 0;
+  const Y = { insight: 34, finding: 214, observation: 388, stone: 574, slab: 640 };
+  const totalH = Y.slab + 46;
+  canvas.style.zoom = scale;
+  canvas.style.width = W_ + "px";
+  canvas.style.height = totalH + "px";
+  canvas.classList.toggle("connecting", S.connecting);
+  const X = id => pos[id].x + shift;
+
+  let html = ROW.map(([k, l]) => `<div class="row-label" style="top:${Y[k] - 22}px">${l}</div>`).join("")
+    + `<div class="row-label" style="top:${Y.stone - 22}px">Base</div>`;
+  let wires = "";
+  const top = (id, y) => ({ x: X(id) + pos[id].w / 2, y });
+  const bottom = (id, y) => ({ x: X(id) + pos[id].w / 2, y: y + pos[id].h });
+  const curve = (a, b) => { const m = (a.y + b.y) / 2; return `M${a.x},${a.y} C${a.x},${m} ${b.x},${m} ${b.x},${b.y}`; };
+  S.ws.blocks.forEach(b => {
+    b.built_on.forEach(cid => {
+      const c = byId(cid); if (!c || !pos[cid]) return;
+      wires += `<path class="wire${UNCHECKED.has(c.check.state) ? " weak" : ""}" data-a="${b.id}" data-b="${cid}" d="${curve(top(cid, Y[c.level]), bottom(b.id, Y[b.level]))}"/>`;
+    });
+    if (b.level === "observation") b.source_ids.forEach(sid => {
+      if (pos["s" + sid]) wires += `<path class="wire src" data-a="${b.id}" data-b="s${sid}" d="${curve(top("s" + sid, Y.stone), bottom(b.id, Y.observation))}"/>`;
+    });
+  });
+  html += `<svg class="wires" width="${W_}" height="${totalH}" viewBox="0 0 ${W_} ${totalH}" aria-hidden="true">${wires}</svg>`;
+
+  S.ws.blocks.forEach(b => {
+    const p = pos[b.id]; if (!p) return;
+    const st = b.check.state;
+    const tags = tag(st) + (b.rests_on_nothing ? `<span class="tag t-nothing">Rests on nothing</span>` : "");
+    const cls = ["brick", b.level, "s-" + st];
+    if (TAG[st] && b.rests_on_nothing) cls.push("two");
+    else if (tags || madeWithAI(b) || b.unchecked_parts) cls.push("foot");
+    if (S.selected.has(b.id)) cls.push("selected");
+    if (b.level === "insight" && ["checked_by_peers", "checked_by_sme"].includes(st)) cls.push("glow");
+    if (S.fresh.has(b.id)) cls.push("fresh");
+    const marks = (madeWithAI(b) ? `<span class="ai${b.confidence === "low" ? " low" : ""}" title="Made with AI${b.confidence ? ", " + b.confidence + " confidence" : ""}">AI${b.confidence === "low" ? " · low" : ""}</span>` : "")
+      + (b.unchecked_parts ? `<span class="warn" title="Built on ${plural(b.unchecked_parts, "block")} that still ${b.unchecked_parts === 1 ? "needs" : "need"} a check">⚠</span>` : "");
+    html += `<div class="${cls.join(" ")}" role="button" tabindex="0" data-id="${b.id}" style="left:${X(b.id)}px;top:${Y[b.level]}px;width:${p.w}px;height:${p.h}px" aria-label="${LEVEL[b.level]}: ${esc(b.statement)}. ${b.check.label}">
+      <div class="studs">${"<i></i>".repeat({ observation: 2, finding: 4, insight: 5 }[b.level])}</div>
+      <div class="txt">${esc(b.statement)}</div>
+      ${tags || marks ? `<div class="tags">${tags}<span class="marks">${marks}</span></div>` : ""}
+    </div>`;
+  });
+  S.ws.sources.forEach(s => {
+    html += `<button class="stone${s.kind === "ai_text" ? " ai-text" : ""}" data-src="${s.id}" style="left:${X("s" + s.id)}px;top:${Y.stone}px;width:${W.stone}px;height:${H.stone}px" title="${esc(s.kind)}: ${esc(s.title)}"><span class="n">${esc(s.title)}</span></button>`;
+  });
+  const slabW = Math.min(W_, avail);
+  if (W_ > slabW) html += `<div class="slab-rest" style="top:${Y.slab}px;height:46px;left:${slabW}px"></div>`;
+  html += `<div class="slab" style="top:${Y.slab}px;height:46px;width:${slabW}px">${S.ws.base.map(p =>
+    `<button class="part${p.ok ? "" : " gap"}" data-part="${p.key}">${esc(p.label)}</button>`).join("")}</div>`;
+  canvas.innerHTML = html;
+  // Bring new blocks into view, for example after breaking down AI text.
+  const fresh = [...S.fresh].filter(id => pos[id]).map(id => X(id));
+  if (fresh.length) wrap.scrollLeft = Math.max(0, (Math.min(...fresh) - 40) * scale);
+  S.fresh.clear();
+  highlight();
+}
+
+// Trace a block's whole line: what it rests on, and what rests on it.
+function below(id, out = new Set()) { (byId(id)?.built_on || []).forEach(x => { if (!out.has(x)) { out.add(x); below(x, out); } }); return out; }
+function above(id, out = new Set()) { S.ws.blocks.filter(b => b.built_on.includes(id)).forEach(p => { if (!out.has(p.id)) { out.add(p.id); above(p.id, out); } }); return out; }
+function trace(id) {
+  const canvas = $("canvas"); if (!canvas) return;
+  const clear = () => { canvas.classList.remove("exploring"); canvas.querySelectorAll(".near").forEach(e => e.classList.remove("near")); canvas.querySelectorAll(".wire.hot").forEach(e => e.classList.remove("hot")); };
+  if (!id || !byId(id)) return clear();
+  const set = new Set([id, ...below(id), ...above(id)]);
+  const srcs = new Set([...set].flatMap(x => (byId(x)?.source_ids || []).map(s => "s" + s)));
+  canvas.classList.add("exploring");
+  canvas.querySelectorAll(".brick").forEach(el => el.classList.toggle("near", set.has(+el.dataset.id)));
+  canvas.querySelectorAll(".stone").forEach(el => el.classList.toggle("near", srcs.has("s" + el.dataset.src)));
+  canvas.querySelectorAll(".wire").forEach(w => w.classList.toggle("hot", set.has(+w.dataset.a) && (set.has(+w.dataset.b) || srcs.has(w.dataset.b))));
+}
+function highlight() { if (S.view === "build") trace(S.panel?.type === "block" ? S.panel.id : null); }
+
+// ---------- Review view ----------
+function renderReview() {
+  const list = S.ws.blocks.filter(b => (S.filter === "all" || b.level === S.filter) && (!S.mine || b.owner === S.me));
+  const needs = list.filter(b => b.check.state === "needs_check");
+  const attn = list.filter(b => ["needs_changes", "disagreement"].includes(b.check.state) || (b.rests_on_nothing && b.check.state !== "needs_check"));
+  const ok = list.filter(b => !needs.includes(b) && !attn.includes(b));
+  const row = b => {
+    const st = b.check.state;
+    const on = b.level === "observation" ? plural(b.source_ids.length, "source") : plural(b.built_on.length, "block");
+    return `<button class="rrow" data-open="${b.id}">
+      <i class="shape ${b.level}" title="${LEVEL[b.level]}"></i>
+      <span class="st">${esc(b.statement)}</span>
+      ${TAG[st] ? tag(st) : `<span class="ok">✓ ${esc(b.check.label.replace("Checked by ", ""))}</span>`}
+      <span class="mt"><span>${LEVEL[b.level]}</span><span>${originText(b)}</span>
+        ${b.confidence ? `<span class="${b.confidence === "low" ? "amber" : ""}">AI says ${b.confidence}</span>` : ""}
+        ${b.rests_on_nothing ? `<span class="amber">Rests on nothing</span>` : `<span>Built on ${on}${b.unchecked_parts ? ` <span class="amber">⚠ ${b.unchecked_parts} unchecked</span>` : ""}${b.deep_unchecked ? ` · ${b.deep_unchecked} further down` : ""}</span>`}
+        ${b.assumes.length ? `<span>Assumes ${plural(b.assumes.length, "thing")}</span>` : ""}</span>
+    </button>`;
+  };
+  const group = (title, items, open, empty) => `<details class="group"${open ? " open" : ""}><summary>${title} <span class="count">${items.length}</span></summary>${items.length ? items.map(row).join("") : `<div class="empty">${empty}</div>`}</details>`;
+  $("view").innerHTML = `<div class="filters">
+      ${[["all", "All"], ["observation", "Observations"], ["finding", "Findings"], ["insight", "Insights"]].map(([k, l]) => `<button class="chipbtn" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join("")}
+      <button class="chipbtn" data-mine aria-pressed="${S.mine}">Mine</button>
+    </div>
+    <div class="groups">
+      ${group("Needs a check", needs, true, "Nothing waiting.")}
+      ${group("Needs attention", attn, true, "No changes asked for, no disagreements, and nothing resting on nothing.")}
+      ${group("Checked", ok, false, "Nothing checked yet.")}
+    </div>`;
+}
+
+// ---------- Connect ----------
+function renderConnect() {
+  const bar = $("connect"); if (!bar) return;
+  $("connect-btn")?.setAttribute("aria-pressed", S.connecting);
+  if (!S.connecting) { bar.hidden = true; return; }
+  bar.hidden = false;
+  const sel = [...S.selected].map(byId).filter(Boolean);
+  if (!sel.length) { bar.innerHTML = `<span>Pick the observations or findings you want to connect.</span><button class="btn ghost" id="connect-cancel">Cancel</button>`; return; }
+  const target = NEXT[sel.some(b => b.level === "finding") ? "finding" : "observation"];
+  bar.innerHTML = `<span><b>${sel.length} picked</b></span>
+    <input id="connect-text" type="text" placeholder="What do these add up to? One sentence." aria-label="New ${LEVEL[target]}">
+    <button class="btn ghost" id="connect-prompt">Copy prompt for your AI</button>
+    <button class="btn primary" id="connect-add" data-target="${target}">Add ${LEVEL[target].toLowerCase()}</button>
+    <button class="btn ghost" id="connect-cancel">Cancel</button>`;
+}
+
+// ---------- Panel ----------
+async function openPanel(p) {
+  S.panel = p; S.verdict = null; S.how = null;
+  $("app").classList.add("panel-open");
+  await renderPanel();
+  if (S.view === "build") renderBuild();
+}
+function closePanel(quiet) {
+  S.panel = null; S.queueMode = false; S.detail = null;
+  $("panel").hidden = true;
+  $("app").classList.remove("panel-open");
+  if (!quiet && S.ws && S.view === "build") renderBuild();
+}
+async function renderPanel() {
+  const el = $("panel"), p = S.panel;
+  if (p.type === "block") S.detail = await api("learnings/" + p.id);
+  el.hidden = false;
+  el.innerHTML = p.type === "block" ? panelBlock(S.detail)
+    : p.type === "part" ? panelPart(p.id)
+    : p.type === "source" ? panelSource(srcById(p.id))
+    : p.type === "breakdown" ? panelBreakdown()
+    : panelPackage();
+  el.scrollTop = 0;
+}
+const head = (eyebrow, title) => `<div class="panel-head"><div><div class="eyebrow">${eyebrow}</div><h2>${esc(title)}</h2></div><button class="x" data-close aria-label="Close">×</button></div>`;
+
+function quoteFor(body, text) {
+  const words = new Set(text.toLowerCase().match(/[a-z]{5,}/g) || []);
+  return body.split("\n").map(line => {
+    const hit = (line.toLowerCase().match(/[a-z]{5,}/g) || []).some(w => [...words].some(x => x.slice(0, 5) === w.slice(0, 5)));
+    return hit ? `<mark>${esc(line)}</mark>` : esc(line);
+  }).join("\n");
+}
+
+function panelBlock(d) {
+  const b = byId(d.id) || d;
+  const st = d.check.state, mine = d.owner === S.me;
+  let h = head(LEVEL[d.level] + (S.queueMode ? ` · ${S.queue.length} to check` : ""), d.statement);
+  h += `<div class="meta"><span class="status t-${st}">${esc(d.check.label)}</span> · ${originText(d)}</div>`;
+
+  // What it rests on
+  h += `<div><h3>${d.level === "observation" ? "From" : "Built on"}</h3><div class="under">`;
+  if (d.level === "observation") d.sources.forEach(s => {
+    h += `<button class="under-item" data-open-src="${s.id}"><span class="r">${esc(s.title)}</span><span class="q">${quoteFor(s.body, d.statement)}</span></button>`;
+  });
+  else (b.built_on || []).map(byId).filter(Boolean).forEach(c => {
+    const bad = UNCHECKED.has(c.check.state);
+    h += `<button class="under-item" data-open="${c.id}"><span class="q">${esc(c.statement)}</span><span class="r${bad ? " bad" : ""}">${bad ? "⚠ " : ""}${esc(c.check.label)}</span></button>`;
+  });
+  if (d.rests_on_nothing) h += `<div class="note amber">Nothing is under this yet. ${d.level === "observation" ? "Which source did it come from?" : "Which blocks show it? Use Connect to build it from them."}</div>`;
+  h += `</div>${d.unchecked_parts ? `<div class="note" style="margin-top:6px">You can still build on this. It stays flagged until ${d.unchecked_parts === 1 ? "that block is" : "those blocks are"} checked.</div>` : ""}</div>`;
+
+  // What the AI said, kept apart from any check
+  if (madeWithAI(d)) {
+    h += `<div class="aisays"><h3 style="margin:0">AI says</h3>`
+      + (d.confidence ? `<div><span class="conf ${d.confidence}">${d.confidence[0].toUpperCase() + d.confidence.slice(1)} confidence</span>${d.why ? ` · ${esc(d.why)}` : ""}</div>` : `<div class="amber">${esc(d.why || "The AI did not say how sure it was, or why.")}</div>`)
+      + (d.assumes.length ? `<div class="note">Assumes</div><ul>${d.assumes.map(a => `<li>${esc(a)}</li>`).join("")}</ul>` : "")
+      + `<div class="note">This is the AI's own view. It never counts as a check.</div></div>`;
+  }
+
+  // The checkpoint
+  h += `<div><h3>Your check</h3>`;
+  if (mine) {
+    const intro = d.stage === "draft" ? "An AI drafted this for you. Read it against what it rests on, fix the wording if needed, then stand behind it."
+      : st === "needs_changes" ? "Changes were asked for. Change the wording to answer them. This saves a new version and keeps the old one."
+      : "You stand behind this. Someone else can check it next. To change it, edit the wording to save a new version.";
+    h += `<div class="note" style="margin-bottom:8px">${intro}</div>
+      <textarea id="edit-text" rows="3" aria-label="Wording">${esc(d.statement)}</textarea>
+      <input type="text" id="check-note" placeholder="What did you check or change? (optional)" style="margin-top:8px" aria-label="Note">
+      <div class="row" style="margin-top:8px"><button class="btn primary" data-save="owner">${d.stage === "draft" ? "Looks right" : "Save new version"}</button>${S.queueMode ? `<button class="btn ghost" data-skip>Skip</button>` : ""}</div>`;
+  } else if (d.stage === "draft") {
+    h += `<div class="note">${esc(d.owner)} checks this AI draft first. Then it is open for anyone to check.</div>${S.queueMode ? `<div class="row" style="margin-top:8px"><button class="btn ghost" data-skip>Skip</button></div>` : ""}`;
+  } else {
+    h += `<div class="verdicts">${Object.entries(VERDICT).map(([k, v]) => `<button class="btn v-${k}" data-verdict="${k}" aria-pressed="${S.verdict === k}">${v}</button>`).join("")}</div>`;
+    if (S.verdict) {
+      const checks = S.config?.checks || {};
+      h += `<div class="stack" style="margin-top:12px">
+        ${S.verdict === "looks_right" ? `<div class="note">How did you check? (optional)</div><div class="hows">${Object.entries(checks).map(([k, v]) => `<button data-how="${k}" aria-pressed="${S.how === k}">${esc(v)}</button>`).join("")}</div>` : ""}
+        <input type="text" id="check-note" placeholder="${S.verdict === "looks_right" ? "Add a note (optional)" : S.verdict === "needs_changes" ? "What should change?" : "Why do you disagree?"}" aria-label="Note">
+        <div class="row"><button class="btn primary" data-save="${S.verdict}">Save check</button>${S.queueMode ? `<button class="btn ghost" data-skip>Skip</button>` : ""}</div>
+      </div>`;
+    } else if (S.queueMode) h += `<div class="row" style="margin-top:8px"><button class="btn ghost" data-skip>Skip</button></div>`;
+  }
+  h += `</div>`;
+
+  if (d.level === "insight") {
+    const inPkg = S.ws.package.includes(d.id);
+    h += `<div class="row">${inPkg ? `<button class="btn" data-unpkg="${d.id}">Remove from package</button>` : `<button class="btn" data-pkg="${d.id}">Add to package</button>`}</div>`;
+  }
+
+  const ups = S.ws.blocks.filter(x => x.built_on.includes(d.id));
+  if (ups.length) h += `<details><summary>Holds up ${ups.length}</summary><div class="under" style="margin-top:8px">${ups.map(u => `<button class="under-item" data-open="${u.id}"><span class="q">${esc(u.statement)}</span><span class="r">${LEVEL[u.level]}</span></button>`).join("")}</div></details>`;
+  const history = [];
+  if (d.confirmed) history.push(`<div><b>Checked by owner</b> · ${esc(d.confirmed.by)}${d.confirmed.edited ? ` · changed the AI's wording<br><span class="meta">AI wrote: "${esc(d.confirmed.before)}"</span>` : ""}${d.confirmed.note ? `<br><span class="meta">${esc(d.confirmed.note)}</span>` : ""}</div>`);
+  d.reviews.forEach(r => history.push(`<div><b class="${r.verdict === "changes" ? "amber" : ""}" style="${r.verdict === "disagree" ? "color:var(--red)" : ""}">${r.current ? "" : "<s>"}${REVIEW_SAID[r.verdict]}${r.current ? "" : "</s>"}</b> · ${esc(r.by)}${r.sme ? " (SME)" : ""}${r.how ? " · " + esc((S.config?.checks || {})[r.how] || r.how).toLowerCase() : ""}${r.note ? `<br><span class="meta">${esc(r.note)}</span>` : ""}</div>`));
+  if (d.revises) history.push(`<div><b>New version</b> of <button class="linkbtn" data-open-any="${d.revises.id}">an earlier wording</button><br><span class="meta">"${esc(d.revises.statement)}"</span></div>`);
+  if (history.length) h += `<details${S.queueMode ? "" : ""}><summary>History ${history.length}</summary><div class="checks">${history.join("")}</div></details>`;
+  return h;
+}
+
+function panelPart(key) {
+  const ws = S.ws;
+  const part = ws.base.find(p => p.key === key);
+  let h = head("Base", part.label);
+  if (key === "question") {
+    h += `<label class="stack"><h3>Question</h3><textarea id="f-question" rows="2">${esc(ws.question)}</textarea></label>
+      <label class="stack"><h3>Decision it serves</h3><textarea id="f-decision" rows="2">${esc(ws.decision || "")}</textarea></label>`;
+  } else if (key === "method") {
+    h += `<div class="note">How the work was done, so a checker can judge what it can and cannot show.</div><textarea id="f-method" rows="4" aria-label="Method">${esc(ws.method || "")}</textarea>`;
+  } else if (key === "notes") {
+    h += `<div class="note">What a checker should know: when it ran, what was left out, known gaps.</div><textarea id="f-notes" rows="5" aria-label="Notes">${esc(ws.notes || "")}</textarea>`;
+  } else {
+    h += `<div class="note">Everything observations come from. ${ws.sources.length < 2 ? "Add at least two sources for a solid base." : ""}</div>`;
+    h += `<div class="under">${ws.sources.map(s => `<button class="under-item" data-open-src="${s.id}"><span class="q">${esc(s.title)}</span><span class="r">${esc(s.kind === "ai_text" ? "AI text" : s.kind)} · ${esc(s.added_by)}</span></button>`).join("")}</div>`;
+    h += `<details open><summary>Add a source</summary><div class="stack" style="margin-top:8px">
+      <select id="n-kind" aria-label="Kind"><option value="note">Note</option><option value="quote">Quote</option><option value="data">Data</option><option value="query">Query</option><option value="link">Link</option><option value="file">File text</option></select>
+      <input type="text" id="n-title" placeholder="Title" aria-label="Title">
+      <textarea id="n-body" rows="4" placeholder="Paste the text, data, or query" aria-label="Content"></textarea>
+      <div class="row"><button class="btn" id="add-src">Add source</button></div></div></details>`;
+    h += `<div><h3>Draft observations with your AI</h3>
+      <div class="note" style="margin-bottom:8px">Your AI tool reads this workspace over MCP and adds drafts, each with how sure it is and why. You check each one.</div>
+      <button class="btn" id="copy-obs-prompt">Copy prompt for your AI</button></div>`;
+  }
+  if (key !== "context") h += `<div class="row"><button class="btn primary" id="save-part" data-key="${key}">Save</button></div>`;
+  return h;
+}
+
+function panelSource(s) {
+  const uses = S.ws.blocks.filter(b => b.source_ids.includes(s.id));
+  let h = head("Source · " + (s.kind === "ai_text" ? "AI text" : s.kind), s.title);
+  h += `<div class="prompt">${esc(s.body)}</div><div class="meta">Added by ${esc(s.added_by)}${s.url ? ` · <a href="${esc(s.url)}" target="_blank" rel="noopener">link</a>` : ""}</div>`;
+  h += `<div><h3>Observations from this</h3><div class="under">${uses.length ? uses.map(u => `<button class="under-item" data-open="${u.id}"><span class="q">${esc(u.statement)}</span><span class="r${UNCHECKED.has(u.check.state) ? " bad" : ""}">${esc(u.check.label)}</span></button>`).join("") : `<div class="note">None yet.</div>`}</div></div>`;
+  return h;
+}
+
+function panelBreakdown() {
+  let h = head("Break down AI text", "Take a long AI answer apart");
+  h += `<div class="note">Long AI text can hide assumptions. Paste it here and ANCHOR splits it into one draft block per claim. Claims with nothing under them show up, and words like "most" or "clearly" are listed as assumptions. Nothing leaves this app.</div>
+    <input type="text" id="bd-title" placeholder="Title, for example: AI summary of the interviews" aria-label="Title">
+    <textarea id="bd-text" rows="9" placeholder="Paste AI text here" aria-label="AI text"></textarea>
+    <div class="row"><button class="btn primary" id="bd-run">Split into blocks</button><button class="linkbtn" id="bd-sample">Try a sample</button></div>
+    <div id="bd-result"></div>
+    <div><h3>Or let your AI tool do it</h3><div class="note" style="margin-bottom:8px">It does a smarter split over MCP: each block cites a source, is built on the right parts, and says how sure the AI is and why.</div>
+    <button class="btn" id="bd-prompt">Copy prompt for your AI</button></div>`;
+  return h;
+}
+
+function panelPackage() {
+  const items = S.ws.package.map(byId).filter(Boolean);
+  let h = head("Package", S.ws.question);
+  h += `<div class="note">The insights this workspace shares together. Each shows what it rests on, down to the sources.</div>`;
+  const leaves = id => new Set([id, ...below(id)].filter(x => byId(x)?.level === "observation"));
+  items.forEach(b => {
+    const lv = [...leaves(b.id)].map(byId);
+    const srcs = new Set(lv.flatMap(o => o.source_ids));
+    const weak = [...below(b.id)].filter(x => UNCHECKED.has(byId(x)?.check.state)).length;
+    h += `<div class="pkg-item"><div class="t">${esc(b.statement)}</div>
+      <div class="meta">${esc(b.check.label)}</div>
+      <div class="meta">Rests on ${plural(b.built_on.length, "block")}, ${plural(lv.length, "observation")}, ${plural(srcs.size, "source")}.${weak ? ` <span class="amber">${weak} still need a check.</span>` : " All checked."}</div>
+      <div><button class="linkbtn" data-open="${b.id}">Open</button></div></div>`;
+  });
+  for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
+    const a = leaves(items[i].id), c = leaves(items[j].id);
+    const shared = [...a].filter(x => c.has(x)).length;
+    if (shared) h += `<div class="note">"${esc(items[i].statement)}" and "${esc(items[j].statement)}" rest on ${plural(shared, "shared observation")}.</div>`;
+  }
+  h += `<div class="note" style="border-top:1px solid var(--line);padding-top:10px">Next: a narrative that turns this package into a story you can follow back to the parts. Coming later.</div>`;
+  return h;
+}
+
+// ---------- Prompts for the person's own AI tool ----------
+const obsPrompt = () => `Use the ANCHOR prompt "break_down_text", or: call get_workspace(study_id=${S.ws.id}) and read every source. Write observations: only what was seen or measured, one claim each, citing the source id. Then findings built on them, then insights built on findings. Give every block confidence (low, medium, high), why in one line, and what it assumes. Add them with add_blocks as drafts for me to check.`;
+const breakdownPrompt = text => `Take this AI text apart into building blocks in ANCHOR workspace ${S.ws.id}. Call add_source with it (kind "ai_text"), then add_blocks: one claim per block, observations citing sources, findings and insights built on the blocks that show them. Give every block confidence (low, medium, high), why, and what it assumes. Tell me which claims rest on nothing.\n\n${text || "<paste the text here>"}`;
+const connectPrompt = (ids, target) => `In ANCHOR workspace ${S.ws.id}, read blocks ${ids.map(i => "#" + i).join(", ")} with get. Write one ${target} they add up to, as one sentence. Add it with add(level="${target}", evidence=[${ids.join(", ")}], study_id=${S.ws.id}, origin="person_with_ai") and give confidence, why, and what it assumes.`;
+
+// ---------- Actions ----------
+async function saveCheck(verdict) {
+  const d = S.detail;
+  const note = $("check-note")?.value.trim() || null;
+  const body = { learning_id: d.id, by: S.me, note };
+  if (verdict === "owner") {
+    body.verdict = "looks_right";
+    body.statement = $("edit-text").value.trim();
+    if (d.stage !== "draft" && body.statement === d.statement) return toast("Change the wording first, or leave it as it is.", true);
+  } else {
+    body.verdict = verdict;
+    body.how = verdict === "looks_right" ? S.how : null;
+    if (verdict !== "looks_right" && !note) { $("check-note").focus(); return toast("Add a short reason first.", true); }
+  }
+  const out = await run(() => api("check", body));
+  if (!out) return;
+  toast(out.learning.check.label + ".");
+  const queueMode = S.queueMode;
+  await openWorkspace(S.ws.id);
+  if (queueMode && S.queue.length) { S.queueMode = true; await openPanel({ type: "block", id: S.queue.find(i => i.id !== d.id)?.id || S.queue[0].id }); }
+  else if (queueMode) { toast("All checked."); closePanel(); }
+  else await openPanel({ type: "block", id: out.learning.id });
+}
+
+async function setPackage(ids) {
+  const out = await run(() => api("set_package", { study_id: S.ws.id, by: S.me, learning_ids: ids }));
+  if (!out) return;
+  if (out.warnings.length) toast("In the package. Note: " + out.warnings.join(", ") + ".");
+  await reload();
+}
+
+async function connect() {
+  const input = $("connect-text");
+  const sel = [...S.selected];
+  const target = $("connect-add").dataset.target;
+  const text = input.value.trim();
+  if (!text) { input.focus(); return toast("Write one sentence first, or copy the prompt for your AI.", true); }
+  const out = await run(() => api("add", { statement: text, level: target, owner: S.me, evidence: sel, study_id: S.ws.id }));
+  if (!out) return;
+  S.selected.clear(); S.connecting = false; S.fresh.add(out.learning.id);
+  await openWorkspace(S.ws.id);
+  await openPanel({ type: "block", id: out.learning.id });
+}
+
+async function breakDown() {
+  const text = $("bd-text").value.trim();
+  if (!text) { $("bd-text").focus(); return toast("Paste some AI text first.", true); }
+  const out = await run(() => api("break_down", { study_id: S.ws.id, by: S.me, text, title: $("bd-title").value.trim() || null }));
+  if (!out) return;
+  out.ids.forEach(i => S.fresh.add(i));
+  const nothing = out.blocks.filter(b => b.rests_on_nothing).length;
+  const assumed = out.blocks.filter(b => b.assumes.length).length;
+  await openWorkspace(S.ws.id, true);
+  $("bd-result").innerHTML = `<div class="stack"><div><b>Made ${plural(out.blocks.length, "draft block")}.</b> ${nothing ? `<span class="amber">${nothing} rest on nothing in the text.</span>` : ""} ${assumed ? `${assumed} take something as given.` : ""}</div>
+    <div class="under">${out.blocks.map(b => `<button class="under-item" data-open="${b.id}"><span class="q">${esc(b.statement)}</span><span class="r${b.rests_on_nothing ? " bad" : ""}">${LEVEL[b.level]}${b.rests_on_nothing ? " · rests on nothing" : ""}${b.assumes.length ? " · assumes " + plural(b.assumes.length, "thing") : ""}</span></button>`).join("")}</div>
+    <div class="note">They are drafts owned by you. Check each one: fix the level or wording, and connect findings to what shows them.</div></div>`;
+}
+
+function setView(v) {
+  S.view = v;
+  if (v !== "build") { S.connecting = false; S.selected.clear(); }
+  renderWorkspace();
+}
+
+// ---------- Events ----------
+document.addEventListener("submit", async e => {
+  if (e.target.id !== "new-ws") return;
+  e.preventDefault();
+  const out = await run(() => api("start_study", { question: $("nw-q").value.trim(), owner: S.me, decision: $("nw-d").value.trim() || null }));
+  if (out) location.hash = "#w/" + out.study.id;
+});
+
+document.addEventListener("click", async e => {
+  const t = e.target.closest("button, .brick");
+  if (!t) return;
+  if (t.classList.contains("brick")) {
+    const id = +t.dataset.id;
+    if (S.connecting) {
+      if (byId(id).level === "insight") return toast("Insights are the top. Pick observations or findings.");
+      S.selected.has(id) ? S.selected.delete(id) : S.selected.add(id);
+      renderConnect(); renderBuild(); return;
+    }
+    return openPanel({ type: "block", id });
+  }
+  const d = t.dataset;
+  if (d.src) return openPanel({ type: "source", id: +d.src });
+  if (d.part) return openPanel({ type: "part", id: d.part });
+  if (d.open) return openPanel({ type: "block", id: +d.open });
+  if (d.openAny) return openPanel({ type: "block", id: +d.openAny });
+  if (d.openSrc) return openPanel({ type: "source", id: +d.openSrc });
+  if (d.panel) return openPanel({ type: d.panel });
+  if (t.hasAttribute("data-close")) return closePanel();
+  if (d.verdict) { S.verdict = d.verdict; S.how = null; await renderPanel(); $("check-note")?.focus(); return; }
+  if (d.save) return saveCheck(d.save);
+  if (d.how) { S.how = S.how === d.how ? null : d.how; document.querySelectorAll("[data-how]").forEach(b => b.setAttribute("aria-pressed", b.dataset.how === S.how)); return; }
+  if (t.hasAttribute("data-skip")) {
+    const i = S.queue.findIndex(x => x.id === S.panel.id);
+    const next = S.queue[(i + 1) % S.queue.length];
+    S.queueMode = true; return openPanel({ type: "block", id: next.id });
+  }
+  if (d.pkg) { await setPackage([...S.ws.package, +d.pkg]); return S.panel && renderPanel(); }
+  if (d.unpkg) { await setPackage(S.ws.package.filter(x => x !== +d.unpkg)); return S.panel && renderPanel(); }
+  if (d.filter) { S.filter = d.filter; return renderReview(); }
+  if (t.hasAttribute("data-mine")) { S.mine = !S.mine; return renderReview(); }
+  switch (t.id) {
+    case "queue-btn": if (S.queue.length) { S.queueMode = true; await openPanel({ type: "block", id: S.queue[0].id }); } return;
+    case "v-build": return setView("build");
+    case "v-review": return setView("review");
+    case "breakdown-btn": return openPanel({ type: "breakdown" });
+    case "connect-btn": S.connecting = !S.connecting; S.selected.clear(); if (S.connecting && S.panel) closePanel(true); renderConnect(); renderBuild(); return;
+    case "connect-cancel": S.selected.clear(); S.connecting = false; renderConnect(); renderBuild(); return;
+    case "connect-add": return connect();
+    case "connect-prompt": return copy(connectPrompt([...S.selected], $("connect-add").dataset.target), "Prompt copied. Paste it into your AI tool.");
+    case "bd-run": return breakDown();
+    case "bd-sample": $("bd-text").value = SAMPLE_AI_TEXT; $("bd-title").value = "AI summary of checkout research"; return;
+    case "bd-prompt": return copy(breakdownPrompt($("bd-text").value.trim()), "Prompt copied. Paste it into your AI tool.");
+    case "copy-obs-prompt": return copy(obsPrompt(), "Prompt copied. Paste it into your AI tool.");
+    case "save-part": {
+      const k = d.key, body = { study_id: S.ws.id, by: S.me };
+      if (k === "question") { body.question = $("f-question").value.trim(); body.decision = $("f-decision").value.trim(); }
+      else body[k] = $("f-" + k).value.trim();
+      if (await run(() => api("update_study", body))) { toast("Base updated."); await reload(); }
+      return;
+    }
+    case "add-src": {
+      const title = $("n-title").value.trim(), body = $("n-body").value.trim();
+      if (!title || !body) return toast("Add a title and some text.", true);
+      if (await run(() => api("add_source", { study_id: S.ws.id, by: S.me, title, body, kind: $("n-kind").value }))) { toast("Source added to the base."); await reload(); }
+      return;
+    }
+  }
+});
+document.addEventListener("mouseover", e => {
+  if (S.view !== "build" || S.connecting || !S.ws) return;
+  const b = e.target.closest?.(".brick");
+  if (b) trace(+b.dataset.id);
+});
+document.addEventListener("mouseout", e => {
+  if (S.view !== "build" || !S.ws) return;
+  const b = e.target.closest?.(".brick");
+  if (b && !b.contains(e.relatedTarget)) highlight();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { if (S.panel) closePanel(); else if (S.connecting) { S.connecting = false; S.selected.clear(); renderConnect(); renderBuild(); } }
+  if ((e.key === "Enter" || e.key === " ") && e.target.classList?.contains("brick")) { e.preventDefault(); e.target.click(); }
+  if (e.key === "Enter" && e.target.id === "connect-text") connect();
+});
+$("me").addEventListener("change", async e => {
+  S.me = e.target.value;
+  try { localStorage.setItem("anchor-me", S.me); } catch (err) {}
+  if (S.ws) { const p = S.panel; await openWorkspace(S.ws.id); if (p) await openPanel(p); } else renderHome();
+});
+let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => S.ws && S.view === "build" && renderBuild(), 120); });
+
+// ---------- Start ----------
+(async () => {
+  try {
+    [S.people, S.config] = await Promise.all([api("people"), api("config")]);
+    let saved = null;
+    try { saved = localStorage.getItem("anchor-me"); } catch (e) {}
+    S.me = S.people.find(p => p.name === saved)?.name || S.people.find(p => p.sme)?.name || S.people[0]?.name || "You";
+    $("me").innerHTML = (S.people.length ? S.people : [{ name: S.me }]).map(p => `<option value="${esc(p.name)}"${p.name === S.me ? " selected" : ""}>${esc(p.name)}${p.sme ? " (SME)" : ""}</option>`).join("");
+    await route();
+  } catch (e) {
+    $("main").innerHTML = `<div class="loading">Could not load: ${esc(e.message)}</div>`;
+  }
 })();
 </script>
 </body>

@@ -21,7 +21,7 @@ def test_add_rejects_bad_level_origin_and_unknown_evidence(store):
 
 
 def test_finding_without_evidence_warns(store):
-    assert "no evidence" in store.add("Users like dark mode", "finding", "ana")["warnings"][0]
+    assert "built on nothing" in store.add("Users like dark mode", "finding", "ana")["warnings"][0]
 
 
 def test_reviews_stay_individual(store):

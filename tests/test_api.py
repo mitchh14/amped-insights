@@ -35,14 +35,14 @@ def test_handle_json_round_trip(store):
     assert json.loads(handle_json(store, "POST", "/api/add", "{bad"))["status"] == 400
 
 
-def test_seed_walks_the_whole_loop(store):
+def test_seed_shows_every_check_state(store):
     seed(store)
-    learnings = store.query("", limit=500, trust=None)
-    assert {f["level"] for f in learnings} == {"observation", "finding", "insight"}
-    assert {f["origin"] for f in learnings} == {"person", "person_with_ai", "ai_agent"}
-    chips = [f["chip"]["key"] for f in learnings]
-    assert chips.count("contested") == 2 and "draft" in chips and "checked_by_sme" in chips
-    assert store.query("", trust="replaced")
-    assert store.list_studies(status="requested") and store.list_decisions()[0]["outcome_due"]
-    assert {p["role"] for p in store.people()} == {"researcher", "pwdr", "stakeholder"}
+    ws = handle(store, "GET", "/api/workspaces/1")[1]
+    assert {b["check"]["state"] for b in ws["blocks"]} == {
+        "needs_check", "checked_by_owner", "checked_by_peers", "checked_by_sme", "needs_changes", "disagreement"}
+    assert {b["level"] for b in ws["blocks"]} == {"observation", "finding", "insight"}
+    assert len(ws["sources"]) == 4 and ws["package"]
+    assert [p["ok"] for p in ws["base"]] == [True, True, True, False]
+    assert any(b["unchecked_parts"] for b in ws["blocks"]) and any(b["confidence"] == "low" for b in ws["blocks"])
+    assert handle(store, "GET", "/api/needs-check?who=Jordan")[1]["items"][0]["reason"] == "Your AI draft to check"
     assert sorted(p["name"] for p in store.people() if p["sme"]) == ["Dana", "Sam"]

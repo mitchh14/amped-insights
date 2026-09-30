@@ -2,6 +2,8 @@
 
 This page shows how research moves through ANCHOR, who does what, and how a team sets it up. The words are defined in [GLOSSARY.md](GLOSSARY.md). The backlog lives in [GitHub issues](https://github.com/mitchh14/amped-insights/issues), with the live roadmap in [#47](https://github.com/mitchh14/amped-insights/issues/47).
 
+**Current focus.** The app today is the workbench: the Learn and Review parts of this loop, where blocks are built up from a base of context and checked one by one. See [EXPERIENCE.md](EXPERIENCE.md). Plan, Decide, and Loop back below are the wider vision. The core supports them, and the app shows them as coming later.
+
 Two ideas shape everything below:
 
 - **Everyone generates insights.** That is the intended state, not a side effect. Researchers, PwDR, and the AI tools they work with all turn what they see into learnings.

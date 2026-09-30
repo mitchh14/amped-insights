@@ -4,6 +4,12 @@ This is the why behind Amped Insights (ANCHOR): what we believe, and why the fra
 
 ANCHOR is an open source framework. It is meant to be used, adapted, and improved together by the people and teams who run it.
 
+## We govern insights, not people
+
+ANCHOR checks claims, not the people who make them. What gets looked at is an insight and every part that makes it up: the observations under it, the sources those came from, the method, and what was assumed along the way. Nobody is ranked, and nobody is blocked because of who they are.
+
+This matters most for work made with AI. An AI can write a long, confident answer in seconds. The words read well, and the assumptions inside them are easy to miss. So ANCHOR takes that work apart into small building blocks, one claim each, and asks a person to check each block before anything is built on it. A claim with nothing under it shows up as resting on nothing. When an AI makes a block, it also says how confident it is, why, and what it took as given. That is useful for a checker, and it never counts as a check.
+
 ## The problem we're actually solving
 
 As AI makes it fast for anyone to generate an analysis or a claim, the risk isn't slow research, it's ungrounded research. What teams learn lives in decks, docs, and chat threads with no shared, checkable place for what the org actually knows. People re-research settled questions, contradictions pile up quietly, and nobody can tell what's proven, what's a guess, or what's already been checked.
@@ -30,13 +36,13 @@ Collaborative insight generation matters more than who gets credit for it. Anyon
 
 That includes working with AI. The collaboration between a person and an AI agent shouldn't happen behind closed doors either. It should be visible enough that the rest of the team can see it, question it, and add to it, the same way they would with a colleague's work.
 
-The risk isn't that people can't be trusted. It's that judgment gets lost when a person hands the work to an AI. So anything an AI drafts is marked as a draft, and stays one until the person who owns it has checked it and confirmed it. Only then is it shared for others to review.
+The risk isn't that people can't be trusted. It's that judgment gets lost when a person hands the work to an AI. So anything an AI drafts is marked as a draft, and stays one until the person who owns it has checked it. Only then is it open for others to check.
 
-## Everyone generates insights, and trust varies
+## Everyone generates insights, and every part gets checked
 
 Everyone generating insights is the goal, not a side effect. Researchers, people who do research, and AI agents working for them should all be able to turn what they see into insights.
 
-Review is open in the same way. Anyone can review, and people who do research will often check each other's work. But not every review carries the same weight. The most trusted ones come from SMEs: people the team trusts in an area, on any team, including research. Research doesn't need to look more important than anyone else; the framework lets the most engaged people lead, and trust follows the work. The system never blocks someone because of who they are. It shows who reviewed what, and how they checked, so anyone reading can judge how much to lean on it.
+Checking is open in the same way. Anyone can check a block, and people who do research will often check each other's work. What the system tracks is how well each block has been checked: by its owner, by peers, or by an SME, the people the team trusts in an area, on any team, including research. A block shows that plainly, and so does anything built on a block that still needs a check. The system never blocks someone because of who they are. It shows who checked what, and how, so anyone reading can judge how far to lean on the insight.
 
 ## Fit the team, not the other way around
 

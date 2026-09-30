@@ -25,7 +25,13 @@ store = Store(DEFAULT_DB_PATH)
 mcp = _Server(
     "anchor",
     instructions=(
-        "A shared layer of team learnings. Each learning has a level (observation: what we saw; "
+        "ANCHOR governs insights, not people: it checks the claims AI helps make and every part they rest on. "
+        "Work happens in workspaces (the tools call them studies): a question, the decision it serves, and "
+        "sources of context. Break work into small blocks instead of long text, because long text hides "
+        "assumptions. Every block you make states confidence (low, medium, high), why, and what it assumes; "
+        "that is your judgment and never counts as a check. Observations cite sources; findings and insights "
+        "are built on other blocks. get_workspace shows a workspace; add_blocks adds your blocks; check is how "
+        "people check them. A shared layer of team learnings. Each learning has a level (observation: what we saw; "
         "finding: what we think it means, not yet an insight; insight: what it means for us and what "
         "to do), an origin (person, person_with_ai, ai_agent), a stage (draft, shared, replaced), and "
         "one trust state (Not reviewed, Needs changes, Checked by peers, Checked by an SME, Contested). "
@@ -167,17 +173,84 @@ def add(
     evidence: list[int] | None = None,
     study_id: int | None = None,
     owner: str | None = None,
+    source_ids: list[int] | None = None,
+    confidence: str | None = None,
+    why: str | None = None,
+    assumes: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Write down a learning. level is observation, finding, or insight.
+    """Write down one block (a learning). level is observation, finding, or insight.
 
     origin is who made it: person (the person wrote it), person_with_ai (you
     helped write it), or ai_agent (you made it on your own). Anything made
-    with AI starts as a draft until its owner confirms it. evidence is the ids
-    of learnings that support it. study_id places it in a study. The response
-    includes checked learnings that may conflict with it, for a person to judge.
-    owner defaults to this session's identity.
+    with AI starts as a draft until its owner checks it. evidence is the ids
+    of blocks it is built on; source_ids the workspace sources it came from.
+    study_id places it in a workspace. When you made it, give confidence
+    (low, medium, high), why in one line, and assumes: what you took as given.
+    The response includes checked blocks that may conflict with it. owner
+    defaults to this session's identity. To add several at once, use add_blocks.
     """
-    return _call(lambda: store.add(statement, level, _who(owner), evidence, study_id, origin))
+    return _call(lambda: store.add(statement, level, _who(owner), evidence, study_id, origin,
+                                   source_ids, confidence, why, assumes))
+
+
+@mcp.tool()
+def get_workspace(study_id: int) -> dict[str, Any]:
+    """One workspace: its question, the decision it serves, its base (context,
+    method, notes), every source with its full text, every current block with
+    its check state and what it rests on, and the package. Read this before
+    making blocks, so you work from the sources."""
+    return _call(store.get_workspace, study_id)
+
+
+@mcp.tool()
+def add_source(study_id: int, title: str, body: str, kind: str = "note", url: str | None = None) -> dict[str, Any]:
+    """Add context to a workspace. kind is note, quote, data, query, link, file,
+    or ai_text (pasted AI output). Observations cite sources by id."""
+    return _call(lambda: store.add_source(study_id, _who(None), title, body, kind, url))
+
+
+@mcp.tool()
+def add_blocks(study_id: int, blocks: list[dict[str, Any]], origin: str = "person_with_ai") -> dict[str, Any]:
+    """Add several blocks to a workspace in one go, as drafts the person checks.
+
+    Each block: {"ref": "o1", "level": "observation", "statement": "...",
+    "sources": [source ids], "built_on": [block ids or earlier refs],
+    "confidence": "low|medium|high", "why": "one line", "assumes": ["..."]}.
+    Put observations first (each citing a source), then findings built on
+    them, then insights built on findings. Keep each statement to one claim.
+    """
+    return _call(lambda: store.add_blocks(study_id, _who(None), blocks, origin))
+
+
+@mcp.tool()
+def break_down(study_id: int, text: str, title: str | None = None) -> dict[str, Any]:
+    """The built-in splitter: keeps the text as a source and makes one draft
+    block per sentence, with a guessed level and flagged assumptions. Use it
+    only when asked; you can usually do better by reading the text yourself and
+    calling add_blocks with confidence and why."""
+    return _call(lambda: store.break_down(study_id, _who(None), text, title))
+
+
+@mcp.tool()
+def check(learning_id: int, verdict: str = "looks_right", how: str | None = None, note: str | None = None,
+          statement: str | None = None) -> dict[str, Any]:
+    """Record a person's check of a block: looks_right, needs_changes, or
+    disagree, plus how they checked and a note. Only call this with the
+    person's own verdict, never your own. For the owner of an AI draft this
+    confirms it (pass statement if they changed the wording)."""
+    return _call(lambda: store.check(learning_id, _who(None), verdict, how, note, statement))
+
+
+@mcp.tool()
+def needs_check(study_id: int | None = None) -> dict[str, Any]:
+    """Blocks waiting on this person's check, most pressing first, optionally in one workspace."""
+    return _call(lambda: store.needs_check(_who(None), study_id))
+
+
+@mcp.tool()
+def set_package(study_id: int, learning_ids: list[int]) -> dict[str, Any]:
+    """Choose the insights a workspace shares together, in order."""
+    return _call(lambda: store.set_package(study_id, _who(None), learning_ids))
 
 
 @mcp.tool()
@@ -392,6 +465,7 @@ GROUND_RULES = """Ground rules for working with ANCHOR (words from its glossary)
 - For every learning you mention, give its level and its trust in plain words.
 - Never present a learning that is Not reviewed, Needs changes, Contested, or a Draft as settled.
 - Surface conflicts. If a learning is contested, show both sides.
+- Make blocks, not long text. One claim per block. For each block you make, give confidence (low, medium, high), why in one line, and what it assumes. Your confidence is never a check.
 - You draft; the person decides. Anything you helped write is added with origin="person_with_ai", so it stays a draft until the person confirms it. Ask them what they checked or changed, then call confirm.
 - Never review on your own, and check with the person before adding, promoting, or logging anything."""
 
@@ -437,10 +511,30 @@ def prompt_synthesize_notes(notes: str, study_id: str = "") -> str:
         "(findings).\n"
         "2. For each, query for learnings that already say it, support it, or conflict with it.\n"
         "3. Show me the draft list: statement, level, evidence, and any duplicates or conflicts found.\n"
-        "4. For the ones I keep, add them with origin=\"person_with_ai\""
-        + (f" and study_id={study_id}" if study_id else "")
-        + ", observations first so findings can use them as evidence.\n"
+        "4. For the ones I keep, call add_blocks"
+        + (f" with study_id={study_id}" if study_id else "")
+        + ", observations first so findings can be built on them. Give each confidence, why, and assumes.\n"
         "5. Then walk me through confirming each draft: ask what I checked or changed, and call confirm.",
+    )
+
+
+@mcp.prompt(name="break_down_text", title="Break down AI text")
+def prompt_break_down_text(text: str, study_id: str = "") -> str:
+    """Take a long piece of AI writing apart into blocks a person can check one by one."""
+    where = f" in workspace {study_id}" if study_id else ""
+    return _prompt(
+        "Take this text apart into building blocks" + where + ", so each claim can be checked on its own. "
+        "Long text hides assumptions; blocks show them.\n\n" + text,
+        (f"1. Call get_workspace(study_id={study_id}) and read the sources.\n" if study_id else
+         "1. Ask which workspace this belongs to, then call get_workspace.\n")
+        + "2. Call add_source with the text (kind=\"ai_text\") so the blocks can point back to it.\n"
+        "3. Split it into one claim per block. Observations: only what was seen or measured, each citing the "
+        "source it came from. Findings: what observations mean, built on them. Insights: what to do, built on "
+        "findings.\n"
+        "4. For every block give confidence (low, medium, high), why in one line, and assumes: anything the "
+        "text takes as given. If a claim has nothing under it, still add it, and say so in assumes.\n"
+        "5. Show me the list first. Then call add_blocks with origin=\"person_with_ai\".\n"
+        "6. Tell me which claims rest on nothing or on low confidence, so I check those first.",
     )
 
 

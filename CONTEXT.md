@@ -10,20 +10,27 @@ As AI makes it fast for anyone to generate an analysis or a claim about users, t
 
 The fix is not a better search tool. It is a shared, checkable layer of learnings, at different levels, that any person or AI agent can query before generating something new, and that stays honest about who said what, whether an AI drafted it, and how sure anyone should be.
 
+The sharpest part of the problem is long AI text. An AI can write a confident page of analysis in seconds, and the assumptions inside it are easy to miss. ANCHOR governs insights, not people: it takes that work apart into building blocks, one claim each, shows what each block rests on, and asks a person to check each one before anything is built on it.
+
+## Current focus: the workbench
+
+The workbench is the core the rest builds on. A workspace holds a question, the decision it serves, and a base of context, method, and notes. Blocks build up from it: observations from sources, findings from observations, insights from findings. Each block has one check state, and anything built on an unchecked block shows it. AI blocks say how confident the AI is, why, and what it assumes. Long AI text can be broken down into blocks. Checked insights go into a package. Decisions, narratives, and research requests come later; see [docs/EXPERIENCE.md](docs/EXPERIENCE.md).
+
 ## Why now
 
 Researcher roles are shifting from executing every study personally to orchestrating and curating a shared body of knowledge that AI agents and other contributors can draw from and add to. This framework is built for that shift. Researchers become the people who hold and grow the trust layer, not the only people allowed to produce insights.
 
 ## Core principles
 
-1. Transparency over authority. The system does not grant credibility by role. It makes the basis for credibility visible: who stated something, what evidence backs it, who reviewed it. Trust is earned by the work, not handed out by a badge.
-2. Not all learnings are equal, and the system should never pretend they are. An observation, a finding, and an insight are different things, and one that nobody has reviewed looks different from one an SME has checked.
-3. More than one person can review a learning. Reviews are shown individually, not merged into a single verdict, so agreement and disagreement are both visible.
-4. Contradictions get surfaced, not hidden or silently overwritten. When a new learning conflicts with a checked one, both stay visible as Contested and the conflict triggers a re-evaluation, with the history of what changed and why kept intact.
-5. Framework over system. This should be a small set of primitives (add, confirm, review, query, check for conflicts) that teams can run and adapt themselves, not a heavy platform people have to migrate into.
-6. Data stays where the org already trusts it, self-hosted by default, no required outbound calls, storage that stays boring and inspectable so the data always stays yours. See PRINCIPLES.md for the full reasoning.
-7. Everyone generates insights, by design. Review is open to everyone, with varied trust: the most trusted reviews come from the SMEs the team names, from any team. Roles inform, they never block.
-8. Fit the team, not the other way around. Teams trust different roles differently and work in their own ways. Setup bends ANCHOR to the team. Defaults are open, and the people implementing it decide how much structure to add.
+1. Govern insights, not people. What gets checked is a claim and every part that makes it up. Nobody is ranked or blocked.
+2. Transparency over authority. The system does not grant credibility by role. It makes the basis for credibility visible: who stated something, what evidence backs it, who reviewed it. Trust is earned by the work, not handed out by a badge.
+3. Not all learnings are equal, and the system should never pretend they are. An observation, a finding, and an insight are different things, and one that nobody has reviewed looks different from one an SME has checked.
+4. More than one person can review a learning. Reviews are shown individually, not merged into a single verdict, so agreement and disagreement are both visible.
+5. Contradictions get surfaced, not hidden or silently overwritten. When a new learning conflicts with a checked one, both stay visible as Contested and the conflict triggers a re-evaluation, with the history of what changed and why kept intact.
+6. Framework over system. This should be a small set of primitives (add, confirm, review, query, check for conflicts) that teams can run and adapt themselves, not a heavy platform people have to migrate into.
+7. Data stays where the org already trusts it, self-hosted by default, no required outbound calls, storage that stays boring and inspectable so the data always stays yours. See PRINCIPLES.md for the full reasoning.
+8. Everyone generates insights, by design. Review is open to everyone, with varied trust: the most trusted reviews come from the SMEs the team names, from any team. Roles inform, they never block.
+9. Fit the team, not the other way around. Teams trust different roles differently and work in their own ways. Setup bends ANCHOR to the team. Defaults are open, and the people implementing it decide how much structure to add.
 
 ## The user types
 
@@ -45,7 +52,9 @@ See [docs/FLOW.md](docs/FLOW.md) for how these people move through the work mode
 
 Level says how far a learning goes, not how far to trust it. Anyone can add at any level, and one nobody has reviewed says so. A hypothesis is what a study sets out to test, not a level.
 
-Escalation path: observations support a finding, and a checked finding is promoted to an insight.
+Escalation path: observations are taken from sources, findings are built on observations, and insights are built on findings. Each is one claim, so each can be checked on its own. A block with nothing under it is shown as resting on nothing.
+
+When an AI makes a block, it states its confidence (low, medium, high), a one line why, and what it assumes. That helps the person checking it, and it never counts as a check.
 
 ## Trust model
 
@@ -60,7 +69,7 @@ Three layers, one core:
 
 1. Core layer: the data store and the logic for add, confirm, review, query, check for conflicts, the digest, and the next step. No UI opinion.
 2. MCP server: a thin wrapper exposing the core layer's functions as tools. This is the primary way researchers, PMs, and enterprise AI agents interact with the system, directly inside whatever AI tool they already use (Claude, ChatGPT, an internal agent).
-3. Web app: a lightweight client on the same core functions, not a separate data path. It shows each person one next step and what changed for them, is a full place to work without opening an AI chat, and is where an org connects its own AI tools or manages permissions.
+3. Web app: a lightweight client on the same core functions, not a separate data path. It is the workbench: blocks built up from the base, a review list of what needs a check, a check panel, and a way to break down AI text. It is a full place to work without opening an AI chat.
 
 Roles and SMEs are set up by the team that implements ANCHOR in `anchor.toml` (see [docs/SETUP.md](docs/SETUP.md)), and can also be changed from the web app, with every change logged. The web app and the MCP server always write through the same core functions, so there is never a second, competing version of the truth.
 
