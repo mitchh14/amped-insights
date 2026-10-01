@@ -223,12 +223,14 @@ def add_blocks(study_id: int, blocks: list[dict[str, Any]], origin: str = "perso
 
 
 @mcp.tool()
-def break_down(study_id: int, text: str, title: str | None = None) -> dict[str, Any]:
+def break_down(study_id: int, text: str, title: str | None = None, preview: bool = False,
+               blocks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """The built-in splitter: keeps the text as a source and makes one draft
     block per sentence, with a guessed level and flagged assumptions. Use it
     only when asked; you can usually do better by reading the text yourself and
-    calling add_blocks with confidence and why."""
-    return _call(lambda: store.break_down(study_id, _who(None), text, title))
+    calling add_blocks with confidence and why. preview=True writes nothing and
+    returns the pieces; pass the ones to keep back as blocks (statement, level)."""
+    return _call(lambda: store.break_down(study_id, _who(None), text, title, preview, blocks))
 
 
 @mcp.tool()

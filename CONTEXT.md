@@ -69,7 +69,7 @@ Three layers, one core:
 
 1. Core layer: the data store and the logic for add, confirm, review, query, check for conflicts, the digest, and the next step. No UI opinion.
 2. MCP server: a thin wrapper exposing the core layer's functions as tools. This is the primary way researchers, PMs, and enterprise AI agents interact with the system, directly inside whatever AI tool they already use (Claude, ChatGPT, an internal agent).
-3. Web app: a lightweight client on the same core functions, not a separate data path. It is the workbench: blocks built up from the base, a review list of what needs a check, a check panel, and a way to break down AI text. It is a full place to work without opening an AI chat.
+3. Web app: a lightweight client on the same core functions, not a separate data path. It is the workbench: blocks built up from the base, a list of what waits on you, a cabinet on the right with the detail and the check, and a way to break down AI text. It is a full place to work without opening an AI chat.
 
 Roles and SMEs are set up by the team that implements ANCHOR in `anchor.toml` (see [docs/SETUP.md](docs/SETUP.md)), and can also be changed from the web app, with every change logged. The web app and the MCP server always write through the same core functions, so there is never a second, competing version of the truth.
 
