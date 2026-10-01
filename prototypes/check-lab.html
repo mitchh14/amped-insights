@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Workbench Check Lab</title>
+<style>
+  /* Check Lab: a prototype of five ideas for the workbench, side by side, on the
+     same sample workspace as the app. It uses the app's colors and words.
+     Layout: a top bar, a tab per idea, the idea itself, then "Evaluate this idea".
+     Nothing here talks to the real core. Checks live in memory until you reset. */
+  :root {
+    --bg: #ECEFF3; --surface: #FFFFFF; --ink: #15202C; --muted: #5A6776; --line: #C4CDD8;
+    --accent: #2D5BD7; --accent-soft: #E3EAFB; --on-accent: #FFFFFF;
+    --fill-owner: #DDE6F7; --fill-peers: #A9C1F2; --fill-sme: #2D5BD7; --on-sme: #FFFFFF;
+    --amber: #A8660C; --amber-bg: #FFF1D9; --red: #C23B32; --red-bg: #FDE5E2; --green: #1F7A4D; --green-bg: #DDF3E6;
+    --glow: #F2B33D; --stone: #DFE4EA; --slab: #CBD3DC;
+    --shadow: 0 1px 0 rgba(21,32,44,.08), 0 2px 6px rgba(21,32,44,.06);
+    --lift: 0 10px 30px rgba(21,32,44,.16);
+    --f-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E141B; --surface: #17202A; --ink: #E4EAF1; --muted: #93A1B1; --line: #2D3947;
+      --accent: #6F97FF; --accent-soft: #1C2A44; --on-accent: #0E141B;
+      --fill-owner: #1F2E45; --fill-peers: #2B4A82; --fill-sme: #4C7DF0; --on-sme: #FFFFFF;
+      --amber: #E6A646; --amber-bg: #3A2A12; --red: #F0766C; --red-bg: #3D1C1A; --green: #5CC98E; --green-bg: #12301F;
+      --glow: #F2B33D; --stone: #2B3643; --slab: #26313E;
+      --shadow: 0 1px 0 rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+      --lift: 0 12px 34px rgba(0,0,0,.5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E141B; --surface: #17202A; --ink: #E4EAF1; --muted: #93A1B1; --line: #2D3947;
+    --accent: #6F97FF; --accent-soft: #1C2A44; --on-accent: #0E141B;
+    --fill-owner: #1F2E45; --fill-peers: #2B4A82; --fill-sme: #4C7DF0; --on-sme: #FFFFFF;
+    --amber: #E6A646; --amber-bg: #3A2A12; --red: #F0766C; --red-bg: #3D1C1A; --green: #5CC98E; --green-bg: #12301F;
+    --glow: #F2B33D; --stone: #2B3643; --slab: #26313E;
+    --shadow: 0 1px 0 rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3);
+    --lift: 0 12px 34px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: var(--accent); }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  h1 { font-size: 24px; line-height: 1.15; font-weight: 800; letter-spacing: -.01em; }
+  h2 { font-size: 17px; }
+  .wrap { padding-inline: 24px; max-width: 1240px; margin: 0 auto; }
+
+  /* Top bar and tabs */
+  .bar { border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; }
+  .bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-block: 10px; }
+  .brand { font-weight: 800; letter-spacing: .04em; font-size: 15px; }
+  .proto { font-family: var(--f-mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--muted); }
+  .grow { flex: 1; }
+  .who { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+  .who select { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); }
+  .tabs { display: flex; gap: 4px; overflow-x: auto; padding-block: 0 8px; scrollbar-width: none; }
+  .tabs a { white-space: nowrap; text-decoration: none; color: var(--muted); font-weight: 600; font-size: 13.5px; padding: 6px 12px; border-radius: 999px; }
+  .tabs a[aria-current="page"] { background: var(--ink); color: var(--bg); }
+  .tabs .n { font-family: var(--f-mono); font-size: 11px; margin-left: 4px; opacity: .8; }
+
+  .main { padding-block: 18px 40px; display: flex; flex-direction: column; gap: 16px; }
+  .ws-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; align-items: flex-end; }
+  .ws-head .q { font-weight: 700; font-size: 15px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+  .idea { font-size: 13px; color: var(--muted); max-width: 70ch; }
+  .idea b { color: var(--ink); }
+
+  .btn { border: 1px solid var(--line); background: var(--surface); padding: 7px 12px; border-radius: 7px; box-shadow: var(--shadow); white-space: nowrap; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .btn.ghost { background: none; box-shadow: none; border-color: transparent; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .linkbtn { border: 0; background: none; color: var(--accent); padding: 0; font-weight: 500; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: none; padding: 6px 12px; font-size: 13px; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  textarea, input[type="text"], select.fld { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); resize: vertical; }
+
+  /* Shared marks */
+  .shape { width: 11px; height: 11px; display: inline-block; border: 1.5px solid currentColor; flex: none; }
+  .shape.observation { border-radius: 1px; }
+  .shape.finding { border-radius: 50%; border-style: dashed; }
+  .shape.insight { transform: rotate(45deg) scale(.85); }
+  .eyebrow { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: var(--surface); border: 1px solid var(--line); }
+  .tag.t-needs_check { border-style: dashed; border-color: var(--muted); }
+  .tag.t-needs_changes { color: var(--amber); border-color: var(--amber); background: var(--amber-bg); }
+  .tag.t-disagreement { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+  .tag.t-nothing { color: var(--amber); border-color: var(--amber); background: transparent; }
+  .tag.quiet { color: var(--muted); }
+  .ai { font-family: var(--f-mono); font-size: 10px; border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; opacity: .8; line-height: 1.5; white-space: nowrap; }
+  .sq { width: 12px; height: 8px; border-radius: 2px; border: 1px solid var(--line); display: inline-block; vertical-align: 0; }
+  .s-needs_check { background: transparent; border: 1.5px dashed var(--muted); }
+  .s-checked_by_owner { background: var(--fill-owner); }
+  .s-checked_by_peers { background: var(--fill-peers); }
+  .s-checked_by_sme { background: var(--fill-sme); border-color: var(--fill-sme); }
+  .s-needs_changes { background: var(--amber-bg); border-color: var(--amber); }
+  .s-disagreement { background: var(--red-bg); border-color: var(--red); }
+  .warn { color: var(--amber); }
+  mark { background: color-mix(in srgb, var(--glow) 40%, transparent); color: inherit; padding: 0 2px; border-radius: 2px; }
+
+  /* ---------- Swipe deck ---------- */
+  .swipe { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .deck-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+  .count { font-family: var(--f-mono); font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .deck { display: grid; position: relative; }
+  .scard { grid-area: 1 / 1; background: var(--surface); border-radius: 16px; box-shadow: var(--lift); border: 1px solid var(--line); padding: 18px 18px 14px; display: flex; flex-direction: column; gap: 12px; touch-action: none; user-select: none; -webkit-user-select: none; transition: transform .28s cubic-bezier(.2,.8,.3,1), opacity .28s; position: relative; min-width: 0; }
+  .scard.back1 { transform: translateY(12px) scale(.965); opacity: .7; pointer-events: none; }
+  .scard.back2 { transform: translateY(24px) scale(.93); opacity: .4; pointer-events: none; }
+  .scard.top { cursor: grab; z-index: 2; }
+  .scard.top:active { cursor: grabbing; }
+  .scard.sheet-open { touch-action: auto; user-select: auto; -webkit-user-select: auto; cursor: default; }
+  .scard .st { font-size: 20px; line-height: 1.3; font-weight: 650; text-wrap: pretty; }
+  .scard.insight .st { font-size: 22px; }
+  .scard .who { display: block; font-size: 12.5px; color: var(--muted); margin-top: -4px; }
+  .scard .head { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+  .ctx { display: flex; flex-direction: column; gap: 8px; }
+  .ctx-row { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 10px; font-size: 13px; align-items: start; }
+  .ctx-row .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-top: 2px; font-weight: 600; }
+  .ctx-row .v { min-width: 0; }
+  .quote { display: block; margin-top: 3px; font-size: 12.5px; white-space: pre-line; color: var(--ink); border-left: 2px solid var(--line); padding-left: 8px; }
+  .aibox { border: 1.5px dashed var(--line); border-radius: 10px; padding: 8px 10px; font-size: 12.5px; }
+  .aibox .lbl { font-weight: 700; }
+  .aibox .lbl.low { color: var(--amber); }
+  .aibox .not { color: var(--muted); font-size: 11.5px; }
+  .flag { border: 1px solid var(--amber); background: var(--amber-bg); color: var(--ink); border-radius: 10px; padding: 8px 10px; font-size: 12.5px; }
+  .flag b { color: var(--amber); }
+  .scard .foot { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 10px; }
+  .stamp { position: absolute; top: 18px; padding: 4px 10px; border: 2.5px solid; border-radius: 8px; font-weight: 800; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; opacity: 0; pointer-events: none; background: var(--surface); }
+  .stamp.yes { right: 18px; color: var(--green); transform: rotate(8deg); }
+  .stamp.no { left: 18px; color: var(--amber); transform: rotate(-8deg); }
+  .stamp.up { left: 50%; top: auto; bottom: 60px; transform: translateX(-50%); color: var(--accent); }
+  .sheet { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .sheet .t { font-weight: 700; }
+  .vchoice { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .vchoice button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px; font-weight: 600; text-align: left; }
+  .vchoice button small { display: block; font-weight: 400; color: var(--muted); font-size: 11.5px; }
+  .vchoice button[aria-pressed="true"][data-v="needs_changes"] { border-color: var(--amber); background: var(--amber-bg); }
+  .vchoice button[aria-pressed="true"][data-v="disagree"] { border-color: var(--red); background: var(--red-bg); }
+  .actions { display: grid; grid-template-columns: 1fr auto 1fr 1fr; gap: 8px; margin-top: 18px; }
+  .act { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 8px; font-weight: 700; display: flex; flex-direction: column; align-items: center; gap: 2px; box-shadow: var(--shadow); min-width: 0; }
+  .act .i { font-size: 18px; line-height: 1; }
+  .act span:last-child { font-size: 12px; font-weight: 600; }
+  .act.no { color: var(--amber); }
+  .act.yes { color: var(--green); }
+  .act.up { color: var(--accent); }
+  .act.later { color: var(--muted); font-weight: 600; padding-inline: 14px; justify-content: center; }
+  .keys { font-size: 11.5px; color: var(--muted); margin-top: 8px; text-align: center; }
+  .done { background: var(--surface); border-radius: 16px; border: 1px solid var(--line); padding: 28px 22px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .panelbox { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .panelbox h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .legend { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 10px; font-size: 13px; align-items: center; }
+  .legend .g { font-weight: 800; font-size: 16px; text-align: center; }
+  .done-list { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+  .done-list div { display: flex; gap: 8px; align-items: baseline; }
+  .done-list .v { font-weight: 700; white-space: nowrap; }
+
+  .howbar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); border-radius: 14px; padding: 10px 12px; z-index: 60; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; max-width: calc(100% - 32px); box-shadow: var(--lift); font-size: 13px; }
+  .howbar .chip { border: 1px solid color-mix(in srgb, var(--bg) 40%, transparent); background: none; color: var(--bg); border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+  .howbar .chip[aria-pressed="true"] { background: var(--bg); color: var(--ink); }
+  .howbar .undo { border: 0; background: none; color: var(--bg); text-decoration: underline; font-size: 12.5px; }
+
+  /* ---------- Deep page ---------- */
+  .deep { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+  .deep-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .deep-head { display: flex; flex-direction: column; gap: 6px; }
+  .deep-head h1 { font-size: 26px; }
+  .sec { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .sec > h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .src { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--bg); display: flex; flex-direction: column; gap: 4px; }
+  .src .body { font-size: 13px; white-space: pre-line; font-family: var(--f-body); }
+  .src .meta { font-size: 11.5px; color: var(--muted); }
+  .under { display: flex; flex-direction: column; gap: 6px; }
+  .uitem { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 4px 10px; align-items: start; text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 8px 10px; width: 100%; }
+  .uitem .shape { margin-top: 4px; }
+  .uitem .s { font-size: 13px; }
+  .uitem .m { grid-column: 2; font-size: 11.5px; color: var(--muted); }
+  .asks { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+  .hist { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+  .check-panel { position: sticky; top: calc(110px + env(safe-area-inset-top, 0px)); }
+  .verdicts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .verdicts button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 8px; padding: 9px 4px; font-weight: 600; font-size: 13px; }
+  .verdicts button[aria-pressed="true"][data-v="looks_right"] { border-color: var(--green); background: var(--green-bg); }
+  .verdicts button[aria-pressed="true"][data-v="needs_changes"] { border-color: var(--amber); background: var(--amber-bg); }
+  .verdicts button[aria-pressed="true"][data-v="disagree"] { border-color: var(--red); background: var(--red-bg); }
+  .hows { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hows button { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 3px 10px; font-size: 12px; }
+  .hows button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .backlink { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; font-size: 13px; text-decoration: none; }
+
+  /* ---------- Queue (list and panel) ---------- */
+  .queue { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .qlist { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .qgroup { padding: 10px 14px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; }
+  .qrow { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 2px 10px; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--line); background: none; padding: 10px 14px; }
+  .qrow .shape { margin-top: 4px; }
+  .qrow .s { font-size: 13.5px; }
+  .qrow .m { grid-column: 2; font-size: 11.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: center; }
+  .qrow:hover { background: var(--bg); }
+  .qrow[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .qpanel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .qnav { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
+
+  /* ---------- Break down ---------- */
+  .bd { display: flex; flex-direction: column; gap: 12px; max-width: 860px; }
+  .bd textarea { min-height: 150px; font-size: 13px; background: var(--surface); }
+  .summary { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; font-size: 14px; }
+  .summary b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .summary .amber { color: var(--amber); }
+  .ftabs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ftabs button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+  .ftabs button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .bdrows { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .bdrow { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; gap: 6px 12px; padding: 12px 14px; border-top: 1px solid var(--line); align-items: start; }
+  .bdrow:first-child { border-top: 0; }
+  .bdrow textarea { min-height: 0; height: auto; padding: 6px 8px; font-size: 13.5px; background: var(--bg); }
+  .bdrow .flags { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); align-items: center; }
+  .bdrow .x { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 6px; }
+  .bdrow.removed { opacity: .45; }
+  .bdrow.removed textarea { text-decoration: line-through; }
+
+  /* ---------- Build lines ---------- */
+  .hint { display: flex; align-items: center; gap: 10px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+  .canvas-wrap { overflow-x: auto; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); }
+  .canvas { position: relative; padding: 18px 18px 18px 110px; display: flex; flex-direction: column; gap: 46px; width: max-content; min-width: 100%; }
+  .canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .lrow { display: flex; gap: 14px; justify-content: center; align-items: stretch; position: relative; }
+  .lrow .rl { position: absolute; left: -92px; top: 50%; transform: translateY(-50%); font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); width: 80px; }
+  .brick { width: 150px; border-radius: 7px; padding: 9px 10px; border: 1.5px solid color-mix(in srgb, var(--accent) 35%, var(--line)); font-size: 12.5px; line-height: 1.3; text-align: left; display: flex; flex-direction: column; gap: 5px; transition: opacity .15s, transform .12s, box-shadow .12s; color: var(--ink); }
+  .brick.finding { width: 210px; }
+  .brick.insight { width: 250px; font-weight: 600; font-size: 13.5px; }
+  .brick.stone { width: 150px; background: var(--stone); border: 1px solid var(--line); font-size: 12px; }
+  .brick .t { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .brick.s-checked_by_sme { color: var(--on-sme); }
+  .brick.s-needs_check { border: 1.5px dashed var(--muted); }
+  .brick:hover { transform: translateY(-2px); }
+  .brick.glow { box-shadow: 0 0 0 2px var(--glow), 0 0 18px color-mix(in srgb, var(--glow) 50%, transparent); }
+  .canvas.tracing .brick:not(.near) { opacity: .22; }
+  .brick.pinned { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .wire { fill: none; stroke: var(--muted); stroke-width: 1.4; opacity: .45; }
+  .wire.weak { stroke: var(--amber); stroke-dasharray: 4 4; opacity: .85; }
+  .wire.src { stroke-dasharray: 2 3; opacity: .35; }
+  .wire.hot { stroke: var(--accent); stroke-width: 2.2; opacity: 1; stroke-dasharray: none; }
+  .wire.hot.weak { stroke: var(--amber); stroke-dasharray: 4 4; }
+  .canvas.tracing .wire:not(.hot) { opacity: .06; }
+  .canvas.only .wire:not(.hot) { opacity: 0; }
+  .pinbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; background: var(--ink); color: var(--bg); border-radius: 12px; padding: 10px 12px; font-size: 13px; }
+  .pinbar .s { flex: 1 1 260px; min-width: 0; }
+  .pinbar .btn { box-shadow: none; color: var(--ink); }
+  .pinbar .btn.ghost { color: var(--bg); }
+
+  /* ---------- Connect columns ---------- */
+  .cols-wrap { overflow-x: auto; padding-bottom: 6px; }
+  .cols { display: flex; gap: 12px; align-items: flex-start; min-width: min-content; }
+  .col { width: 270px; flex: none; background: color-mix(in srgb, var(--surface) 55%, var(--bg)); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .col.loose { border-style: dashed; }
+  .col-head { display: flex; flex-direction: column; gap: 4px; padding: 2px 2px 6px; border-bottom: 1px solid var(--line); }
+  .col-head .t { font-weight: 700; font-size: 13.5px; line-height: 1.3; }
+  .col-head .m { font-size: 11.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .ocard { text-align: left; background: var(--surface); border: 1.5px solid var(--line); border-radius: 9px; padding: 9px 10px; display: flex; flex-direction: column; gap: 5px; box-shadow: var(--shadow); width: 100%; }
+  .ocard .s { font-size: 13px; line-height: 1.3; }
+  .ocard .m { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .ocard[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .connectbar { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--ink); color: var(--bg); padding: 10px 12px; border-radius: 12px; box-shadow: var(--lift); }
+  .connectbar input { flex: 1 1 240px; min-width: 0; background: var(--bg); color: var(--ink); border: 0; }
+  .connectbar .btn { box-shadow: none; color: var(--ink); }
+  .connectbar .btn.primary { color: var(--on-accent); }
+  .connectbar .btn.ghost { color: var(--bg); }
+
+  /* ---------- Evaluate ---------- */
+  .eval { background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+  .eval h2 { font-size: 15px; }
+  .eval ul { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
+  .rate button[data-r="keep"][aria-pressed="true"] { background: var(--green); color: var(--surface); }
+  .rate button[data-r="change"][aria-pressed="true"] { background: var(--amber); color: var(--surface); }
+  .rate button[data-r="drop"][aria-pressed="true"] { background: var(--red); color: var(--surface); }
+  .eval textarea { min-height: 60px; }
+
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 13px; z-index: 70; max-width: calc(100% - 32px); display: flex; gap: 12px; align-items: center; box-shadow: var(--lift); }
+  .toast button { border: 0; background: none; color: var(--bg); text-decoration: underline; padding: 0; }
+
+  @media (max-width: 900px) {
+    .wrap { padding-inline: 16px; }
+    .swipe, .deep, .queue { grid-template-columns: minmax(0, 1fr); }
+    .check-panel { position: static; }
+    .scard .st { font-size: 18px; }
+    .bdrow { grid-template-columns: minmax(0, 1fr) auto; }
+    .bdrow select { grid-column: 1; }
+    .bdrow textarea, .bdrow .flags { grid-column: 1 / -1; }
+    .bdrow .x { grid-row: 1; grid-column: 2; }
+    h1 { font-size: 21px; }
+    .deep-head h1 { font-size: 21px; }
+  }
+  @media (max-width: 420px) {
+    .actions { grid-template-columns: 1fr 1fr; }
+    .act.later { order: 4; }
+    .ctx-row { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .scard, .brick { transition: none; } }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <span class="brand">ANCHOR</span><span class="proto">Check Lab prototype</span>
+    <span class="grow"></span>
+    <label class="who" for="me">You are <select id="me"></select></label>
+    <button class="btn ghost" id="reset" type="button">Reset sample</button>
+    <button class="btn" id="copy-notes" type="button">Copy my notes</button>
+  </div>
+  <nav class="wrap tabs" id="tabs" aria-label="Ideas"></nav>
+</header>
+<main class="wrap main" id="main"></main>
+
+<script>
+// ---------- Sample workspace (anchor/seed.py, plus five blocks so the deck has cards) ----------
+const PEOPLE = {
+  Dana: { role: "Data science lead", sme: true },
+  Sam: { role: "Researcher", sme: true },
+  Lee: { role: "Research lead", sme: false },
+  Priya: { role: "Analytics", sme: false },
+  Jordan: { role: "Product manager", sme: false },
+};
+const WS = { question: "Why do mobile shoppers leave checkout before paying?", decision: "Whether to fund address autofill in Q3",
+  method: "Funnel analysis of 30 days of mobile web sessions, plus 8 remote interviews with recent mobile shoppers." };
+const BASE_SOURCES = {
+  funnel: { kind: "Query", title: "Checkout funnel, last 30 days", by: "Priya", body: "Mobile web, Aug 29 to Sep 27.\nCart 12,000\nStarted address form 10,900\nFinished address form 6,650\nReached payment 5,600\nPaid 5,040 (42%)" },
+  int1: { kind: "Note", title: "Interviews, shoppers 1 to 4", by: "Sam", body: "S1: \"Typing my whole address with my thumbs, no thanks.\"\nS2: \"The keyboard kept covering the zip field.\"\nS3: \"I gave up and finished on my laptop.\"\nS4: \"It is tedious. I only do it if I really want the thing.\"" },
+  int2: { kind: "Note", title: "Interviews, shoppers 5 to 8", by: "Sam", body: "S5: \"Address was fine, I have it saved.\"\nS6: \"The form is long on a phone.\"\nS7: \"I would have used Apple Pay if it was there.\"\nS8: \"Typing it out is a pain. Keyboard jumped around.\"" },
+  split: { kind: "Data", title: "Returning vs new shoppers", by: "Priya", body: "Returning shoppers: 31% of mobile checkouts, 61% pay.\nNew shoppers: 69% of mobile checkouts, 34% pay.\nReturning shoppers with a saved address skip the address step." },
+};
+const ck = (by, verdict = "looks_right", how = null, note = "", extra = {}) => ({ by, verdict, how, note, ...extra });
+const BASE_BLOCKS = [
+  { id: 1, level: "observation", statement: "Mobile checkout conversion is 42 percent", owner: "Priya", ai: false, sources: ["funnel"], marks: ["Paid 5,040"], checks: [ck("Sam", "looks_right", "source_data", "Matches the dashboard")] },
+  { id: 2, level: "observation", statement: "39 percent of shoppers who start the address form leave before finishing it", owner: "Jordan", ai: true, conf: "high", why: "Worked out from the funnel: 10,900 started the form, 6,650 finished it", sources: ["funnel"], marks: ["Started address form", "Finished address form"], checks: [ck("Jordan", "looks_right", null, "Did the math again from the funnel")] },
+  { id: 3, level: "observation", statement: "6 of 8 shoppers said typing an address on a phone is tedious", owner: "Sam", ai: false, sources: ["int1", "int2"], marks: ["S1:", "S2:", "S4:", "S6:", "S8:", "S3:"], checks: [ck("Lee", "looks_right", "evidence", "Listened to the recordings")] },
+  { id: 4, level: "observation", statement: "2 shoppers said the keyboard covered or moved the form fields", owner: "Jordan", ai: true, conf: "medium", why: "S2 and S8 describe it", assumes: ["The keyboard problem happens on most phones, not just theirs"], sources: ["int1", "int2"], marks: ["S2:", "S8:"], checks: [] },
+  { id: 5, level: "observation", statement: "2 shoppers said they would pay with Apple Pay if offered", owner: "Jordan", ai: true, conf: "low", why: "Read from the interview notes", assumes: ["Other shoppers feel the same as the one who said it"], sources: ["int2"], marks: ["S7:"], checks: [ck("Jordan"), ck("Lee", "needs_changes", null, "Only S7 said this. It is 1 shopper, not 2.")] },
+  { id: 6, level: "observation", statement: "Returning shoppers pay 61 percent of the time, new shoppers 34 percent", owner: "Priya", ai: true, conf: "high", why: "Straight from the export", sources: ["split"], marks: ["Returning shoppers: 31%", "New shoppers"], checks: [ck("Priya", "looks_right", null, "Checked against the export"), ck("Dana", "looks_right", "reran", "Rebuilt it from raw events")] },
+  { id: 7, level: "observation", statement: "Returning shoppers with a saved address skip the address step", owner: "Priya", ai: true, conf: "medium", why: "Stated in the export notes", assumes: ["A saved address always skips the step, on every device"], sources: ["split"], marks: ["saved address skip"], checks: [] },
+  { id: 13, level: "observation", statement: "1 shopper gave up on the phone and finished on a laptop", owner: "Jordan", ai: true, conf: "high", why: "S3 says it directly", sources: ["int1"], marks: ["S3:"], checks: [ck("Jordan")] },
+  { id: 14, level: "observation", statement: "Shoppers with a saved address did not mention the form", owner: "Jordan", ai: true, conf: "medium", why: "S5 says the address was fine because it was saved", assumes: ["One shopper speaks for everyone with a saved address"], sources: ["int2"], marks: ["S5:"], checks: [ck("Jordan")] },
+  { id: 16, level: "observation", statement: "The address form loses 4,250 shoppers, the biggest drop in the funnel", owner: "Priya", ai: true, conf: "high", why: "10,900 started the form and 6,650 finished it", sources: ["funnel"], marks: ["Started address form", "Finished address form"], checks: [ck("Priya")] },
+  { id: 8, level: "finding", statement: "Shoppers leave mobile checkout mainly because the address form is hard to fill in on a phone", aiWording: "Shoppers abandon checkout because forms are long", owner: "Jordan", ai: true, conf: "medium", why: "The funnel and the interviews point the same way", assumes: ["The 8 people we interviewed are like most mobile shoppers"], on: [2, 3, 4], checks: [ck("Jordan", "looks_right", null, "Narrowed it to the address form, which is what the evidence shows", { changed: true }), ck("Sam", "looks_right", "evidence", "Funnel and interviews agree")] },
+  { id: 9, level: "finding", statement: "Adding Apple Pay would fix most mobile checkout drop-off", owner: "Jordan", ai: true, conf: "low", why: "One shopper asked for it", assumes: ["What one shopper wants, most shoppers want"], on: [5], checks: [ck("Jordan"), ck("Dana", "disagree", null, "One quote cannot carry this. The funnel says the loss is at the address step.")] },
+  { id: 10, level: "finding", statement: "Not having to type an address roughly doubles the chance a shopper pays", owner: "Priya", ai: false, on: [6, 7], checks: [ck("Lee", "looks_right", "evidence")] },
+  { id: 15, level: "finding", statement: "Shoppers do not trust saving a card on a phone", owner: "Jordan", ai: true, conf: "low", why: "Common in other checkout studies", assumes: ["What other studies found holds for our shoppers"], on: [], checks: [ck("Jordan")] },
+  { id: 11, level: "insight", statement: "Address autofill is likely our biggest mobile checkout win", owner: "Jordan", ai: false, on: [8, 10], checks: [ck("Sam", "looks_right", "judgment", "Strong. Check the two open observations before the pitch.")] },
+  { id: 12, level: "insight", statement: "Test autofill with returning shoppers first, where the gain is easiest to measure", owner: "Priya", ai: true, conf: "medium", why: "Returning shoppers are the group we can measure fastest", assumes: ["Returning shoppers react to autofill the same way new ones would"], on: [10], checks: [] },
+];
+const SAMPLE_AI_TEXT = `Checkout summary (drafted by an AI assistant)
+
+Mobile checkout conversion is 42 percent, well below desktop.
+Most shoppers leave because the address form is too long.
+Returning shoppers clearly convert better because they trust the brand.
+Adding Apple Pay would likely fix the rest of the drop-off.
+We should prioritize autofill and Apple Pay in Q3.`;
+
+// ---------- Words (docs/GLOSSARY.md) ----------
+const LEVEL = { observation: "Observation", finding: "Finding", insight: "Insight" };
+const STATE = { needs_check: "Needs a check", checked_by_owner: "Checked by owner", checked_by_peers: "Checked by peers", checked_by_sme: "Checked by an SME", needs_changes: "Needs changes", disagreement: "Disagree" };
+const UNCHECKED = new Set(["needs_check", "needs_changes", "disagreement"]);
+const VERDICT = { looks_right: "Looks right", needs_changes: "Needs changes", disagree: "Disagree" };
+const HOW = { evidence: "Read the evidence", source_data: "Checked the source data", reran: "Reran the numbers", judgment: "Used my judgment" };
+const ASKS = {
+  observation: ["Does the source say exactly this, no more and no less?", "If there is a number, does it match the source?", "Would someone else pull the same thing from it?"],
+  finding: ["Do the blocks under it really add up to this?", "Is anything under it still unchecked?", "Would a skeptic read the same evidence the same way?"],
+  insight: ["Does it follow from the findings under it?", "Is it clear what to do, and for which decision?", "What would have to be true for it to be wrong?"],
+};
+const TABS = [
+  ["swipe", "Swipe to check"], ["queue", "List and panel"], ["breakdown", "Break down review"], ["build", "Calm lines"], ["connect", "Columns"],
+];
+const EVAL = {
+  swipe: { idea: "<b>Swipe to check.</b> One block at a time, with just enough context to judge it. Swipe right if it looks right, left if it does not, up to think it through on a full page.",
+    asks: ["Is the topline enough to judge most blocks without opening them?", "Does a swipe feel too quick for a real check? Does the \"How did you check?\" strip after a right swipe fix that?", "Is the order right: the base first, then what is built on it?", "Does \"Think it through\" give you the space you need?"] },
+  queue: { idea: "<b>List and panel.</b> The queue on the left and the block on the right, like a moderation queue. Move with the arrows or J and K. After a check it moves to the next one.",
+    asks: ["Is this faster than swiping when you have many blocks?", "Does seeing the whole queue help you choose what to check?", "Should this replace the Review view, or sit beside it?"] },
+  breakdown: { idea: "<b>Break down review.</b> After you paste AI text, see a one-line summary and a row per block. Fix the level, edit, or remove before anything lands in the workspace.",
+    asks: ["Does the summary line tell you where to look first?", "Would you rather fix blocks here, or after they land?", "Are the \"takes as given\" words useful or noisy?"] },
+  build: { idea: "<b>Calm lines.</b> The Build view with a choice: show every line, or only the line for the block you hover or tap. A one-time hint says you can trace a line.",
+    asks: ["Is \"Only the traced line\" calmer? Do you lose a sense of the whole?", "Did the hint help you find tracing?", "Is tapping a block, then \"Check it\", a good way into a check?"] },
+  connect: { idea: "<b>Columns.</b> Observations grouped under the finding they hold up, with loose ones at the end. Pick a few and write the finding they add up to.",
+    asks: ["Is this easier to read than the stacked canvas?", "Would you make new findings here?", "Should it be a third view next to Build and Review?"] },
+};
+
+// ---------- State ----------
+const clone = x => JSON.parse(JSON.stringify(x));
+const S = { me: "Dana", tab: "swipe", deep: null, back: "swipe", later: [], undo: [], form: {}, queueAt: 0, lines: "all", pinned: null, hover: null, picked: new Set(), bd: null, bdFilter: "all", newCount: 0 };
+let BLOCKS, SOURCES, NEXT_ID;
+function resetData() { BLOCKS = clone(BASE_BLOCKS).map(b => ({ on: [], sources: [], assumes: [], marks: [], ...b })); SOURCES = clone(BASE_SOURCES); NEXT_ID = 17; S.later = []; S.undo = []; S.picked.clear(); S.pinned = null; S.bd = null; S.newCount = 0; }
+resetData();
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("anchor-check-lab:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("anchor-check-lab:" + k, JSON.stringify(v)); } catch {} },
+};
+
+// ---------- Helpers ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+const byId = id => BLOCKS.find(b => b.id === id);
+const live = b => b.checks.filter(c => !c.old);
+function latestBy(b) { const m = new Map(); live(b).forEach(c => m.set(c.by, c)); return [...m.values()]; }
+function state(b) {
+  const L = latestBy(b);
+  if (L.some(c => c.verdict === "disagree")) return "disagreement";
+  if (L.some(c => c.verdict === "needs_changes")) return "needs_changes";
+  const ok = L.filter(c => c.verdict === "looks_right");
+  if (ok.some(c => c.by !== b.owner && PEOPLE[c.by]?.sme)) return "checked_by_sme";
+  if (ok.some(c => c.by !== b.owner)) return "checked_by_peers";
+  if (ok.some(c => c.by === b.owner)) return "checked_by_owner";
+  return "needs_check";
+}
+const waitingOnOwner = b => b.ai && !live(b).some(c => c.by === b.owner);
+const restsOnNothing = b => b.level === "observation" ? !b.sources.length : !b.on.length;
+const holdsUp = b => BLOCKS.filter(x => x.on.includes(b.id));
+function weakBelow(b, seen = new Set()) {
+  for (const id of b.on) { if (seen.has(id)) continue; seen.add(id); const u = byId(id); if (!u) continue; if (UNCHECKED.has(state(u)) || weakBelow(u, seen)) return true; }
+  return false;
+}
+const glows = b => b.level === "insight" && latestBy(b).some(c => c.verdict === "looks_right" && c.by !== b.owner) && !UNCHECKED.has(state(b));
+const tag = b => { const st = state(b); return UNCHECKED.has(st) ? `<span class="tag t-${st}">${STATE[st]}</span>` : `<span class="tag quiet">${STATE[st]}</span>`; };
+const shape = l => `<i class="shape ${l}" aria-hidden="true"></i>`;
+function origin(b) {
+  if (!b.ai) return "By " + b.owner;
+  const own = live(b).find(c => c.by === b.owner);
+  return "AI draft for " + b.owner + (own ? " · confirmed by " + b.owner + (own.changed || b.aiWording ? ", wording changed" : "") : " · not confirmed yet");
+}
+function markLines(body, marks) {
+  return body.split("\n").map(l => marks.some(m => l.includes(m)) ? `<mark>${esc(l)}</mark>` : esc(l)).join("\n");
+}
+function marked(b) {
+  const out = [];
+  b.sources.forEach(k => SOURCES[k].body.split("\n").forEach(l => { if (b.marks.some(m => l.includes(m))) out.push({ k, l }); }));
+  return out;
+}
+function canCheck(b, me) {
+  if (b.owner === me) return b.ai && waitingOnOwner(b) ? "owner" : "own";
+  if (waitingOnOwner(b)) return "waiting";
+  if (latestBy(b).some(c => c.by === me)) return "done";
+  return "check";
+}
+// The deck: what is waiting on me, the base first, then what holds up the most.
+function deckFor(me) {
+  const rank = { observation: 0, finding: 1, insight: 2 };
+  const items = BLOCKS.filter(b => {
+    const c = canCheck(b, me);
+    if (c === "owner") return true;
+    if (c !== "check") return false;
+    return ["needs_check", "checked_by_owner"].includes(state(b));
+  });
+  items.sort((a, b) => (S.later.indexOf(a.id) - S.later.indexOf(b.id)) || (rank[a.level] - rank[b.level]) || (holdsUp(b).length - holdsUp(a).length) || a.id - b.id);
+  return items;
+}
+const attention = () => BLOCKS.filter(b => ["needs_changes", "disagreement"].includes(state(b)) || restsOnNothing(b));
+
+function addCheck(b, by, verdict, how = null, note = "", statement = null) {
+  const prev = { id: b.id, checks: clone(b.checks), statement: b.statement, aiWording: b.aiWording };
+  if (statement && statement.trim() && statement.trim() !== b.statement) {
+    if (b.ai && !b.aiWording) b.aiWording = b.statement;
+    b.statement = statement.trim();
+    b.checks.forEach(c => { if (c.verdict === "needs_changes") c.old = true; });
+  }
+  b.checks.push(ck(by, verdict, how, note, statement && statement.trim() !== prev.statement ? { changed: true } : {}));
+  S.later = S.later.filter(x => x !== b.id);
+  S.undo.push(prev);
+  return b.checks[b.checks.length - 1];
+}
+function undo() {
+  const p = S.undo.pop(); if (!p) return;
+  const b = byId(p.id); b.checks = p.checks; b.statement = p.statement; b.aiWording = p.aiWording;
+  hideHow(); render(); toast("Undone.");
+}
+
+let toastTimer;
+function toast(msg, action, fn) {
+  document.querySelectorAll(".toast").forEach(x => x.remove()); clearTimeout(toastTimer);
+  const t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status");
+  t.innerHTML = `<span>${esc(msg)}</span>` + (action ? `<button type="button">${esc(action)}</button>` : "");
+  if (action) t.querySelector("button").onclick = () => { t.remove(); fn(); };
+  document.body.appendChild(t); toastTimer = setTimeout(() => t.remove(), 4200);
+}
+function copyText(text, done) {
+  const ok = () => toast(done);
+  try { navigator.clipboard.writeText(text).then(ok, () => fallbackCopy(text, done)); } catch { fallbackCopy(text, done); }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch {}
+  ta.remove(); toast(ok ? done : "Copy did not work here. Your notes are in each Evaluate box.");
+}
+
+// ---------- Topline: just enough to judge a block ----------
+function topline(b) {
+  const rows = [];
+  if (b.level === "observation") {
+    const m = marked(b);
+    if (m.length) {
+      const first = m.slice(0, 2).map(x => esc(x.l)).join("\n");
+      const titles = [...new Set(m.map(x => SOURCES[x.k].title))];
+      rows.push(`<div class="ctx-row"><span class="k">From</span><span class="v"><b>${esc(titles.join(", "))}</b><span class="quote">${first}</span>${m.length > 2 ? `<span class="muted small">and ${m.length - 2} more lines</span>` : ""}</span></div>`);
+    }
+  } else if (b.on.length) {
+    const under = b.on.map(byId);
+    const weak = under.filter(u => UNCHECKED.has(state(u)));
+    rows.push(`<div class="ctx-row"><span class="k">Built on</span><span class="v">${under.map(u => `<i class="sq s-${state(u)}" title="${esc(STATE[state(u)])}"></i>`).join(" ")} ${plural(under.length, "block")}${weak.length ? ` · <span class="warn">⚠ ${weak.length} still ${weak.length === 1 ? "needs" : "need"} a check</span>` : ", all checked"}
+      <span class="quote">${esc(under[0].statement)}${under.length > 1 ? ` <span class="muted">+${under.length - 1} more</span>` : ""}</span></span></div>`);
+  }
+  const up = holdsUp(b);
+  rows.push(`<div class="ctx-row"><span class="k">Holds up</span><span class="v">${up.length ? up.map(u => `${LEVEL[u.level]} #${u.id}`).join(", ") + (up.some(u => u.level === "insight" || holdsUp(u).length) ? " <span class=\"muted\">and what is built on that</span>" : "") : "<span class=\"muted\">Nothing yet</span>"}</span></div>`);
+  const flag = restsOnNothing(b) ? `<div class="flag"><b>Rests on nothing.</b> Nothing is linked under this claim. Ask what it comes from before you say it looks right.</div>` : "";
+  const ai = b.ai && b.conf ? `<div class="aibox"><span class="lbl ${b.conf === "low" ? "low" : ""}">AI says: ${b.conf} confidence.</span> ${esc(b.why || "")}${b.assumes.length ? `<br><span class="muted">Assumes:</span> ${b.assumes.map(esc).join("; ")}` : ""}<br><span class="not">This is the AI's own view. It never counts as a check.</span></div>` : "";
+  return `<div class="ctx">${rows.join("")}</div>${flag}${ai}`;
+}
+
+// ---------- Tabs ----------
+function renderTabs() {
+  const n = deckFor(S.me).length;
+  $("tabs").innerHTML = TABS.map(([k, label]) => `<a href="#${k}" data-tab="${k}" ${S.tab === k && !S.deep ? 'aria-current="page"' : ""}>${label}${(k === "swipe" || k === "queue") && n ? `<span class="n">${n}</span>` : ""}</a>`).join("");
+}
+function wsHead() {
+  return `<div class="ws-head"><div style="min-width:0"><div class="q">${esc(WS.question)}</div><div class="muted small">For the decision: ${esc(WS.decision)}</div></div></div>`;
+}
+function evalBox(k) {
+  const e = EVAL[k], saved = store.get("eval", {})[k] || {};
+  return `<section class="eval" aria-labelledby="ev-${k}"><h2 id="ev-${k}">Evaluate this idea</h2>
+    <ul>${e.asks.map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+    <div class="row"><span class="small muted">My call:</span><div class="seg rate" role="group" aria-label="My call">${[["keep", "Keep"], ["change", "Change it"], ["drop", "Drop"]].map(([r, l]) => `<button type="button" data-rate="${k}" data-r="${r}" aria-pressed="${saved.r === r}">${l}</button>`).join("")}</div></div>
+    <label class="small muted" for="ev-note-${k}">What to keep, change, or try next</label>
+    <textarea id="ev-note-${k}" data-evnote="${k}" placeholder="For example: the topline needs the source date">${esc(saved.note || "")}</textarea>
+  </section>`;
+}
+
+// ---------- 1. Swipe deck ----------
+function renderSwipe() {
+  const deck = deckFor(S.me);
+  const total = deck.length + S.sessionDone.length;
+  const pos = S.sessionDone.length + (deck.length ? 1 : 0);
+  const top = deck[0];
+  const cards = deck.slice(0, 3).map((b, i) => swipeCard(b, i)).reverse().join("");
+  const mode = top ? canCheck(top, S.me) : null;
+  const waiting = BLOCKS.filter(b => b.owner !== S.me && waitingOnOwner(b));
+  const mineAsked = BLOCKS.filter(b => b.owner === S.me && state(b) === "needs_changes");
+  $("main").innerHTML = `${wsHead()}<p class="idea">${EVAL.swipe.idea}</p>
+  <div class="swipe">
+    <div>
+      <div class="deck-head"><h2>Check blocks</h2><span class="count">${deck.length ? `${pos} of ${total}` : `${S.sessionDone.length} checked`}</span></div>
+      ${top ? `<div class="deck" id="deck">${cards}</div>
+        <div class="actions" role="group" aria-label="Check this block">
+          <button class="act no" type="button" data-act="left"><span class="i">✕</span><span>${mode === "owner" ? "Fix wording" : "Not right"}</span></button>
+          <button class="act later" type="button" data-act="later"><span>Later</span></button>
+          <button class="act up" type="button" data-act="up"><span class="i">↑</span><span>Think it through</span></button>
+          <button class="act yes" type="button" data-act="right"><span class="i">✓</span><span>Looks right</span></button>
+        </div>
+        <div class="keys">Keys: → looks right · ← ${mode === "owner" ? "fix wording" : "not right"} · ↑ or Enter, think it through · L, later · U, undo</div>`
+      : `<div class="done"><h2>Nothing waiting on you</h2><p class="muted small">${S.sessionDone.length ? `You checked ${plural(S.sessionDone.length, "block")} this round.` : `Switch person at the top to see someone else's checks.`}</p>
+          ${waiting.length ? `<p class="small">${waiting.map(b => `#${b.id} waits on ${esc(b.owner)}`).join(" · ")}</p>` : ""}
+          <button class="btn" type="button" data-goto="breakdown">Break down some AI text</button></div>`}
+    </div>
+    <aside class="side">
+      <div class="panelbox"><h3>How it works</h3>
+        <div class="legend"><span class="g" style="color:var(--green)">→</span><span>Looks right. Then say how you checked, if you like.</span>
+          <span class="g" style="color:var(--amber)">←</span><span>Not right. Pick Needs changes or Disagree, and say why.</span>
+          <span class="g" style="color:var(--accent)">↑</span><span>Think it through: the full sources, everything under and above it, and space for notes.</span>
+          <span class="g muted">·</span><span>Tap the card to open it too. Later moves it to the end.</span></div>
+      </div>
+      ${mineAsked.length ? `<div class="panelbox"><h3>Yours, with changes asked</h3>${mineAsked.map(b => `<button class="uitem" type="button" data-deep="${b.id}">${shape(b.level)}<span class="s">${esc(b.statement)}</span>${tag(b)}</button>`).join("")}</div>` : ""}
+      ${S.sessionDone.length ? `<div class="panelbox"><h3>This round</h3><div class="done-list">${S.sessionDone.slice().reverse().map(d => `<div><span class="v" style="color:${d.v === "looks_right" ? "var(--green)" : d.v === "disagree" ? "var(--red)" : "var(--amber)"}">${VERDICT[d.v]}</span><span>#${d.id} ${esc(byId(d.id).statement)}</span></div>`).join("")}</div></div>` : ""}
+    </aside>
+  </div>${evalBox("swipe")}`;
+  if (top) bindSwipe(document.querySelector(".scard.top"), top);
+}
+function swipeCard(b, i) {
+  const mode = canCheck(b, S.me);
+  const cls = i === 0 ? "top" : i === 1 ? "back1" : "back2";
+  return `<article class="scard ${b.level} ${cls}" data-id="${b.id}" ${i === 0 ? 'tabindex="0" aria-label="Block to check"' : 'aria-hidden="true"'}>
+    <span class="stamp yes">Looks right</span><span class="stamp no">${mode === "owner" ? "Fix it" : "Not right"}</span><span class="stamp up">Think it through</span>
+    <div class="head"><span class="eyebrow">${shape(b.level)} ${LEVEL[b.level]} #${b.id}</span>${tag(b)}${b.ai ? `<span class="ai">AI</span>` : ""}${weakBelow(b) ? `<span class="warn" title="Something under it still needs a check">⚠</span>` : ""}</div>
+    ${mode === "owner" ? `<div class="small" style="color:var(--accent);font-weight:600">Your AI draft. You check it first, then others can.</div>` : ""}
+    <div class="st">${esc(b.statement)}</div>
+    <span class="who">${esc(origin(b))}</span>
+    ${topline(b)}
+    <div class="slot"></div>
+    <div class="foot"><span>Tap or swipe up for everything</span><span>${plural(latestBy(b).length, "check")} so far</span></div>
+  </article>`;
+}
+function setStamps(el, dx, dy) {
+  const s = q => el.querySelector(".stamp." + q);
+  s("yes").style.opacity = Math.max(0, Math.min(1, dx / 110));
+  s("no").style.opacity = Math.max(0, Math.min(1, -dx / 110));
+  s("up").style.opacity = Math.abs(dx) < 80 ? Math.max(0, Math.min(1, -dy / 110)) : 0;
+}
+function bindSwipe(el, b) {
+  let x0 = 0, y0 = 0, dx = 0, dy = 0, drag = false;
+  const reset = () => { el.style.transform = ""; setStamps(el, 0, 0); };
+  el.addEventListener("pointerdown", e => {
+    if (el.classList.contains("sheet-open") || e.target.closest("button, textarea, input, select, a")) return;
+    drag = true; x0 = e.clientX; y0 = e.clientY; dx = dy = 0; el.setPointerCapture(e.pointerId); el.style.transition = "none";
+  });
+  el.addEventListener("pointermove", e => {
+    if (!drag) return; dx = e.clientX - x0; dy = e.clientY - y0;
+    el.style.transform = `translate(${dx}px, ${Math.min(dy, 40)}px) rotate(${dx / 20}deg)`; setStamps(el, dx, dy);
+  });
+  const end = () => {
+    if (!drag) return; drag = false; el.style.transition = "";
+    if (Math.abs(dx) < 6 && Math.abs(dy) < 6) { reset(); return openDeep(b.id, "swipe"); }
+    if (dx > 110) return fling(el, b, "right");
+    if (dx < -110) { reset(); return act("left"); }
+    if (dy < -100 && Math.abs(dx) < 110) { reset(); return act("up"); }
+    reset();
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", () => { drag = false; el.style.transition = ""; reset(); });
+}
+function fling(el, b, dir) {
+  el.style.transform = dir === "right" ? "translate(140%, 0) rotate(16deg)" : "translate(-140%, 0) rotate(-16deg)";
+  el.style.opacity = "0";
+  setTimeout(() => { dir === "right" ? lookRight(b) : null; }, 220);
+}
+function act(dir) {
+  const b = deckFor(S.me)[0]; if (!b) return;
+  const el = document.querySelector(".scard.top");
+  const mode = canCheck(b, S.me);
+  if (dir === "right") return fling(el, b, "right");
+  if (dir === "up") return openDeep(b.id, "swipe");
+  if (dir === "later") { S.later.push(b.id); return render(); }
+  if (dir === "left") return mode === "owner" ? openFix(el, b) : openNotRight(el, b);
+}
+function lookRight(b) {
+  const mode = canCheck(b, S.me);
+  addCheck(b, S.me, "looks_right");
+  S.sessionDone.push({ id: b.id, v: "looks_right" });
+  render();
+  if (mode === "owner") toast("Confirmed. Others can check it now.", "Undo", undoSwipe);
+  else showHow(b);
+}
+function undoSwipe() { S.sessionDone.pop(); undo(); }
+function openNotRight(el, b) {
+  el.classList.add("sheet-open");
+  el.querySelector(".slot").innerHTML = `<div class="sheet"><div class="t">What is not right?</div>
+    <div class="vchoice" role="group" aria-label="Verdict"><button type="button" data-v="needs_changes" aria-pressed="true">Needs changes<small>Close, but the wording or detail is off</small></button><button type="button" data-v="disagree" aria-pressed="false">Disagree<small>The claim does not hold</small></button></div>
+    <label class="small muted" for="nr-note" id="nr-lbl">What should change?</label>
+    <textarea id="nr-note" rows="2" placeholder="For example: only S7 said this"></textarea>
+    <div class="row"><button class="btn primary" type="button" id="nr-send">Send</button><button class="btn ghost" type="button" id="nr-cancel">Cancel</button><span class="small muted">${esc(b.owner)} is asked to look.</span></div></div>`;
+  let v = "needs_changes";
+  el.querySelectorAll(".vchoice button").forEach(btn => btn.onclick = () => {
+    v = btn.dataset.v; el.querySelectorAll(".vchoice button").forEach(x => x.setAttribute("aria-pressed", x === btn));
+    $("nr-lbl").textContent = v === "disagree" ? "Why does it not hold?" : "What should change?";
+  });
+  $("nr-note").focus();
+  $("nr-cancel").onclick = () => render();
+  $("nr-send").onclick = () => {
+    const note = $("nr-note").value.trim();
+    if (!note) { $("nr-note").focus(); return toast(v === "disagree" ? "Say why, so the owner knows what to fix." : "Say what should change, so the owner can fix it."); }
+    el.style.transform = "translate(-140%, 0) rotate(-16deg)"; el.style.opacity = "0";
+    setTimeout(() => { addCheck(b, S.me, v, null, note); S.sessionDone.push({ id: b.id, v }); render(); toast(`Sent. ${b.owner} is asked to look.`, "Undo", undoSwipe); }, 220);
+  };
+}
+function openFix(el, b) {
+  el.classList.add("sheet-open");
+  el.querySelector(".slot").innerHTML = `<div class="sheet"><div class="t">Fix the wording</div><span class="small muted">Say what the evidence shows, no more and no less. The AI's wording stays in the history.</span>
+    <textarea id="fx-text" rows="3">${esc(b.statement)}</textarea>
+    <label class="small muted" for="fx-note">What did you check or change? (optional)</label><input type="text" id="fx-note">
+    <div class="row"><button class="btn primary" type="button" id="fx-save">Save and confirm</button><button class="btn ghost" type="button" id="fx-cancel">Cancel</button></div></div>`;
+  $("fx-text").focus();
+  $("fx-cancel").onclick = () => render();
+  $("fx-save").onclick = () => {
+    addCheck(b, S.me, "looks_right", null, $("fx-note").value.trim(), $("fx-text").value);
+    S.sessionDone.push({ id: b.id, v: "looks_right" }); render(); toast("Saved and confirmed. Others can check it now.", "Undo", undoSwipe);
+  };
+}
+let howTimer;
+function showHow(b) {
+  hideHow();
+  const bar = document.createElement("div"); bar.className = "howbar"; bar.id = "howbar"; bar.setAttribute("role", "status");
+  bar.innerHTML = `<span>Looks right. How did you check?</span>${Object.entries(HOW).map(([k, l]) => `<button class="chip" type="button" data-how="${k}" aria-pressed="false">${l}</button>`).join("")}<button class="undo" type="button">Undo</button>`;
+  bar.querySelectorAll("[data-how]").forEach(btn => btn.onclick = () => {
+    const c = live(b).filter(c => c.by === S.me).pop(); if (c) c.how = btn.dataset.how;
+    bar.querySelectorAll("[data-how]").forEach(x => x.setAttribute("aria-pressed", x === btn));
+    clearTimeout(howTimer); howTimer = setTimeout(hideHow, 1400);
+  });
+  bar.querySelector(".undo").onclick = undoSwipe;
+  document.body.appendChild(bar); howTimer = setTimeout(hideHow, 7000);
+}
+function hideHow() { clearTimeout(howTimer); $("howbar")?.remove(); }
+
+// ---------- Think it through (deep page) ----------
+function openDeep(id, back) { hideHow(); S.deep = id; S.back = back || S.tab; S.form = {}; render(); window.scrollTo(0, 0); }
+function renderDeep() {
+  const b = byId(S.deep);
+  const up = holdsUp(b);
+  const backLabel = { swipe: "Back to the deck", queue: "Back to the list", build: "Back to the lines", connect: "Back to the columns" }[S.back] || "Back";
+  const from = b.level === "observation"
+    ? `<section class="sec"><h3>From</h3>${b.sources.length ? b.sources.map(k => `<div class="src"><b>${esc(SOURCES[k].title)}</b><span class="meta">${esc(SOURCES[k].kind)} · added by ${esc(SOURCES[k].by)}</span><div class="body">${markLines(SOURCES[k].body, b.marks)}</div></div>`).join("") : `<div class="flag"><b>Rests on nothing.</b> No source is linked.</div>`}<span class="small muted">Marked lines are what the block is taken from.</span></section>`
+    : `<section class="sec"><h3>Built on</h3>${b.on.length ? `<div class="under">${b.on.map(byId).map(uRow).join("")}</div>` : `<div class="flag"><b>Rests on nothing.</b> No blocks are linked under this claim. Ask the owner what it comes from.</div>`}</section>`;
+  const hist = b.checks.map(c => `<div><b>${esc(c.by)}</b> said <b>${VERDICT[c.verdict]}</b>${c.how ? ` · ${HOW[c.how]}` : ""}${c.note ? `: "${esc(c.note)}"` : ""}${c.old ? ` <span class="muted">(before the rewrite)</span>` : ""}</div>`).join("") || `<div class="muted">No checks yet.</div>`;
+  const myNote = store.get("think:" + b.id, "");
+  $("main").innerHTML = `<a class="backlink" href="#${S.back}" data-back>← ${backLabel}</a>
+  <div class="deep">
+    <div class="deep-main">
+      <div class="deep-head"><div class="row"><span class="eyebrow">${shape(b.level)} ${LEVEL[b.level]} #${b.id}</span>${tag(b)}${b.ai ? `<span class="ai">AI</span>` : ""}${weakBelow(b) ? `<span class="warn small">⚠ something under it needs a check</span>` : ""}</div>
+        <h1>${esc(b.statement)}</h1><span class="muted small">${esc(origin(b))}</span></div>
+      <section class="sec"><h3>Think it through</h3><ul class="asks">${ASKS[b.level].map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+        <span class="small muted">From the workspace method: ${esc(WS.method)}</span></section>
+      ${from}
+      ${b.ai && b.conf ? `<section class="sec"><h3>AI says</h3><div class="aibox" style="font-size:13.5px"><span class="lbl ${b.conf === "low" ? "low" : ""}">${b.conf[0].toUpperCase() + b.conf.slice(1)} confidence.</span> ${esc(b.why || "")}${b.assumes.length ? `<div style="margin-top:6px"><span class="muted">It assumes:</span><ul class="asks" style="font-size:13px">${b.assumes.map(a => `<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}<div class="not" style="margin-top:6px">This is the AI's own view. It never counts as a check.</div></div></section>` : ""}
+      <section class="sec"><h3>Holds up</h3>${up.length ? `<div class="under">${up.map(uRow).join("")}</div><span class="small muted">If this block is wrong, these are affected.</span>` : `<span class="muted small">Nothing is built on this yet.</span>`}</section>
+      <section class="sec"><h3>Your notes while you think</h3><label class="small muted" for="think-${b.id}">Only you see these. They stay in this browser.</label><textarea id="think-${b.id}" data-think="${b.id}" rows="4" placeholder="What would make this wrong? What would you ask the owner?">${esc(myNote)}</textarea></section>
+      <details class="sec"><summary class="small muted" style="cursor:pointer">History (${b.checks.length}${b.aiWording ? ", AI wording changed" : ""})</summary><div class="hist" style="margin-top:8px">${b.aiWording ? `<div><span class="muted">AI's first wording:</span> "${esc(b.aiWording)}"</div>` : ""}${hist}</div></details>
+    </div>
+    <aside class="check-panel">${checkForm(b, "deep")}</aside>
+  </div>`;
+  bindForm(b, "deep");
+}
+function uRow(u) {
+  return `<button class="uitem" type="button" data-deep="${u.id}">${shape(u.level)}<span class="s">${esc(u.statement)}</span>${tag(u)}<span class="m">${LEVEL[u.level]} #${u.id} · ${esc(u.owner)}${u.ai ? " · AI" : ""}</span></button>`;
+}
+
+// The check form, shared by the deep page and the list panel.
+function checkForm(b, ctx) {
+  const mode = canCheck(b, S.me);
+  if (mode === "own") return `<section class="sec"><h3>Your check</h3><p class="small">This is yours. Someone else checks it.${state(b) === "needs_changes" ? ` A reviewer asked for changes: "${esc(latestBy(b).find(c => c.verdict === "needs_changes")?.note || "")}"` : ""}</p>
+    ${state(b) === "needs_changes" ? `<label class="small muted" for="rv-${ctx}">New wording</label><textarea id="rv-${ctx}" rows="3">${esc(b.statement)}</textarea><button class="btn primary" type="button" data-revise>Save new version</button>` : ""}</section>`;
+  if (mode === "waiting") return `<section class="sec"><h3>Your check</h3><p class="small">Waiting on <b>${esc(b.owner)}</b> to check their AI draft first. Then anyone can check it.</p></section>`;
+  if (mode === "done") { const c = latestBy(b).find(c => c.by === S.me); return `<section class="sec"><h3>Your check</h3><p class="small">You said <b>${VERDICT[c.verdict]}</b>${c.note ? `: "${esc(c.note)}"` : ""}.</p></section>`; }
+  if (mode === "owner") return `<section class="sec"><h3>Your check</h3><p class="small">Your AI draft. Fix the wording if it says more, or less, than the evidence.</p>
+    <textarea id="ow-text-${ctx}" rows="3">${esc(b.statement)}</textarea>
+    <label class="small muted" for="ow-note-${ctx}">What did you check or change? (optional)</label><input type="text" id="ow-note-${ctx}">
+    <button class="btn primary" type="button" data-owner-ok>Looks right</button></section>`;
+  const v = S.form.verdict;
+  return `<section class="sec"><h3>Your check</h3>
+    <div class="verdicts" role="group" aria-label="Verdict">${Object.entries(VERDICT).map(([k, l]) => `<button type="button" data-v="${k}" aria-pressed="${v === k}">${l}</button>`).join("")}</div>
+    ${v === "looks_right" ? `<span class="small muted">How did you check? (optional)</span><div class="hows">${Object.entries(HOW).map(([k, l]) => `<button type="button" data-how="${k}" aria-pressed="${S.form.how === k}">${l}</button>`).join("")}</div>` : ""}
+    ${v ? `<label class="small muted" for="note-${ctx}">${v === "looks_right" ? "Anything to add? (optional)" : v === "disagree" ? "Why does it not hold?" : "What should change?"}</label><textarea id="note-${ctx}" rows="3">${esc(S.form.note || "")}</textarea>
+      <button class="btn primary" type="button" data-send>Send check</button>` : `<span class="small muted">Pick one, then say how you checked or why.</span>`}
+  </section>`;
+}
+function bindForm(b, ctx) {
+  const root = $("main");
+  root.querySelectorAll(".verdicts [data-v]").forEach(btn => btn.onclick = () => { S.form.note = $("note-" + ctx)?.value || S.form.note; S.form.verdict = btn.dataset.v; render(); });
+  root.querySelectorAll(".hows [data-how]").forEach(btn => btn.onclick = () => { S.form.note = $("note-" + ctx)?.value || ""; S.form.how = S.form.how === btn.dataset.how ? null : btn.dataset.how; render(); });
+  const send = root.querySelector("[data-send]");
+  if (send) send.onclick = () => {
+    const note = $("note-" + ctx).value.trim(), v = S.form.verdict;
+    if (v !== "looks_right" && !note) { $("note-" + ctx).focus(); return toast("Say why, so the owner knows what to do."); }
+    addCheck(b, S.me, v, S.form.how, note); S.sessionDone.push({ id: b.id, v }); afterCheck(b, VERDICT[v]);
+  };
+  const ok = root.querySelector("[data-owner-ok]");
+  if (ok) ok.onclick = () => { addCheck(b, S.me, "looks_right", null, $("ow-note-" + ctx).value.trim(), $("ow-text-" + ctx).value); S.sessionDone.push({ id: b.id, v: "looks_right" }); afterCheck(b, "Confirmed"); };
+  const rv = root.querySelector("[data-revise]");
+  if (rv) rv.onclick = () => { const t = $("rv-" + ctx).value.trim(); if (t === b.statement) return toast("Change the wording first."); addCheck(b, S.me, "looks_right", null, "Revised after the ask", t); afterCheck(b, "New version saved"); };
+}
+function afterCheck(b, what) {
+  S.form = {};
+  if (S.deep) { S.deep = null; S.tab = S.back; }
+  if (S.tab === "queue") { const list = deckFor(S.me); S.queueAt = Math.min(S.queueAt, Math.max(0, list.length - 1)); }
+  render(); toast(`${what}: #${b.id}.`, "Undo", () => { S.sessionDone.pop(); undo(); });
+}
+
+// ---------- 2. List and panel ----------
+function renderQueue() {
+  const list = deckFor(S.me);
+  const att = attention().filter(b => !list.includes(b));
+  if (S.queueAt >= list.length) S.queueAt = Math.max(0, list.length - 1);
+  const cur = list[S.queueAt];
+  const row = (b, i) => `<button class="qrow" type="button" ${i != null ? `data-qi="${i}"` : `data-deep="${b.id}"`} aria-current="${cur && b.id === cur.id}">${shape(b.level)}<span class="s">${esc(b.statement)}</span><span class="m">${LEVEL[b.level]} #${b.id} · ${esc(b.owner)}${b.ai ? ` · <span class="ai">AI ${b.conf || ""}</span>` : ""} ${restsOnNothing(b) ? `<span class="tag t-nothing">Rests on nothing</span>` : ""}${weakBelow(b) ? `<span class="warn">⚠</span>` : ""}${UNCHECKED.has(state(b)) && state(b) !== "needs_check" ? tag(b) : ""}</span></button>`;
+  $("main").innerHTML = `${wsHead()}<p class="idea">${EVAL.queue.idea}</p>
+  <div class="queue">
+    <div class="qlist">
+      <div class="qgroup"><span>Waiting on you</span><span>${list.length}</span></div>${list.map((b, i) => row(b, i)).join("") || `<div class="qrow muted small" style="cursor:default">Nothing waiting on you.</div>`}
+      <div class="qgroup" style="border-top:1px solid var(--line)"><span>Needs attention</span><span>${att.length}</span></div>${att.map(b => row(b, null)).join("")}
+    </div>
+    <div class="qpanel">${cur ? `
+      <div class="qnav"><span class="count">${S.queueAt + 1} of ${list.length}</span><div class="row"><button class="btn" type="button" data-qmove="-1" ${S.queueAt ? "" : "disabled"} aria-label="Previous">↑</button><button class="btn" type="button" data-qmove="1" ${S.queueAt < list.length - 1 ? "" : "disabled"} aria-label="Next">↓</button><span class="small muted">J and K move</span></div></div>
+      <section class="sec"><div class="row"><span class="eyebrow">${shape(cur.level)} ${LEVEL[cur.level]} #${cur.id}</span>${tag(cur)}${cur.ai ? `<span class="ai">AI</span>` : ""}</div>
+        <h2 style="font-size:19px;line-height:1.3">${esc(cur.statement)}</h2><span class="muted small">${esc(origin(cur))}</span>${topline(cur)}
+        <button class="linkbtn small" type="button" data-deep="${cur.id}" style="align-self:flex-start">Think it through: open the full page →</button></section>
+      ${checkForm(cur, "q")}` : `<div class="done"><h2>Nothing waiting on you</h2><p class="small muted">Switch person at the top, or open one that needs attention.</p></div>`}
+    </div>
+  </div>${evalBox("queue")}`;
+  if (cur) bindForm(cur, "q");
+}
+
+// ---------- 3. Break down review ----------
+const GIVEN = ["most", "clearly", "because", "likely", "always", "never", "everyone", "all", "should", "well below", "obviously"];
+function breakDown(text) {
+  let lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  let title = "Pasted AI text";
+  if (lines.length && !/[.!?]$/.test(lines[0])) title = lines.shift();
+  const sents = lines.flatMap(l => l.split(/(?<=[.!?])\s+(?=[A-Z])/)).map(s => s.trim()).filter(Boolean);
+  return { title, text, rows: sents.map((s, i) => {
+    const level = /\b(should|we need|prioriti[sz]e|let'?s)\b/i.test(s) ? "insight" : /\b(because|would|likely|leads? to|fix|so that)\b/i.test(s) ? "finding" : /\d/.test(s) ? "observation" : "finding";
+    const given = GIVEN.filter(w => new RegExp("\\b" + w + "\\b", "i").test(s));
+    return { i, text: s, level, given, removed: false };
+  }) };
+}
+const bdNothing = r => r.level !== "observation";
+const bdLook = r => bdNothing(r) || r.given.length;
+function renderBreakdown() {
+  const d = S.bd;
+  let body = "";
+  if (!d) {
+    body = `<div class="bd"><label class="small muted" for="bd-text">Paste a long AI answer. It stays a source, and each claim becomes a draft block for you to check.</label>
+      <textarea id="bd-text">${esc(SAMPLE_AI_TEXT)}</textarea>
+      <div class="row"><button class="btn primary" type="button" id="bd-go">Break it down</button><span class="small muted">The sample is filled in. Nothing leaves this page.</span></div></div>`;
+  } else {
+    const keep = d.rows.filter(r => !r.removed);
+    const nothing = keep.filter(bdNothing).length, given = keep.filter(r => r.given.length).length, clean = keep.filter(r => !bdLook(r)).length;
+    const shown = d.rows.filter(r => S.bdFilter === "all" ? true : S.bdFilter === "look" ? bdLook(r) : !bdLook(r));
+    body = `<div class="bd">
+      <div class="summary"><span><b>${keep.length}</b> draft blocks</span><span class="amber"><b>${nothing}</b> rest on nothing</span><span class="amber"><b>${given}</b> take things as given</span><span><b>${clean}</b> look clean</span></div>
+      <div class="small muted">From "${esc(d.title)}". Findings and insights from pasted text have nothing under them yet. Link them after they land, or let your AI tool do it over MCP.</div>
+      <div class="ftabs" role="group" aria-label="Show">${[["all", "All", d.rows.length], ["look", "Needs a look", d.rows.filter(bdLook).length], ["clean", "Clean", d.rows.filter(r => !bdLook(r)).length]].map(([k, l, n]) => `<button type="button" data-bdf="${k}" aria-pressed="${S.bdFilter === k}">${l} ${n}</button>`).join("")}</div>
+      <div class="bdrows">${shown.map(r => `<div class="bdrow ${r.removed ? "removed" : ""}">
+        <select class="fld" data-bdlevel="${r.i}" aria-label="Level">${Object.entries(LEVEL).map(([k, l]) => `<option value="${k}" ${r.level === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+        <textarea data-bdtext="${r.i}" rows="2" aria-label="Statement" ${r.removed ? "disabled" : ""}>${esc(r.text)}</textarea>
+        <button class="x" type="button" data-bdx="${r.i}" aria-label="${r.removed ? "Put back" : "Remove"}">${r.removed ? "↺" : "×"}</button>
+        <div class="flags">${bdNothing(r) ? `<span class="tag t-nothing">Rests on nothing</span>` : `<span class="muted">From the pasted text</span>`}${r.given.length ? `<span>Takes as given: <b class="warn">${r.given.map(esc).join(", ")}</b></span>` : ""}</div>
+      </div>`).join("") || `<div class="bdrow muted small">Nothing in this filter.</div>`}</div>
+      <div class="row"><button class="btn primary" type="button" id="bd-add" ${keep.length ? "" : "disabled"}>Add ${plural(keep.length, "draft block")}</button><button class="btn ghost" type="button" id="bd-again">Start over</button><span class="small muted">They land as AI drafts for ${esc(S.me)}, who checks them first.</span></div>
+    </div>`;
+  }
+  $("main").innerHTML = `${wsHead()}<p class="idea">${EVAL.breakdown.idea}</p>${body}${evalBox("breakdown")}`;
+  if (!d) $("bd-go").onclick = () => { const t = $("bd-text").value.trim(); if (!t) return toast("Paste some AI text first."); S.bd = breakDown(t); S.bdFilter = "all"; render(); };
+  else {
+    $("bd-again").onclick = () => { S.bd = null; render(); };
+    $("bd-add").onclick = () => {
+      const key = "ai" + NEXT_ID;
+      SOURCES[key] = { kind: "AI text", title: d.title, by: S.me, body: d.text };
+      const keep = d.rows.filter(r => !r.removed);
+      keep.forEach(r => BLOCKS.push({ id: NEXT_ID++, level: r.level, statement: r.text, owner: S.me, ai: true, conf: null, why: null, assumes: r.given.map(w => `"${w}"`), sources: r.level === "observation" ? [key] : [], marks: r.level === "observation" ? [r.text.slice(0, 24)] : [], on: [], checks: [] }));
+      S.bd = null; render(); toast(`Added ${plural(keep.length, "draft")}. They are first in your deck.`, "Open the deck", () => { location.hash = "#swipe"; });
+    };
+  }
+}
+
+// ---------- 4. Calm lines ----------
+function renderBuild() {
+  const insights = BLOCKS.filter(b => b.level === "insight");
+  const findings = BLOCKS.filter(b => b.level === "finding");
+  const obsOrder = [];
+  findings.forEach(f => f.on.forEach(id => { const o = byId(id); if (o && o.level === "observation" && !obsOrder.includes(o)) obsOrder.push(o); }));
+  BLOCKS.filter(b => b.level === "observation" && !obsOrder.includes(b)).forEach(b => obsOrder.push(b));
+  const srcKeys = Object.keys(SOURCES);
+  const brick = b => `<button class="brick ${b.level} s-${state(b)} ${glows(b) ? "glow" : ""} ${S.pinned === b.id ? "pinned" : ""}" type="button" data-b="${b.id}"><span class="t">${esc(b.statement)}</span><span class="row" style="gap:4px">${UNCHECKED.has(state(b)) ? tag(b) : ""}${restsOnNothing(b) ? `<span class="tag t-nothing">Rests on nothing</span>` : ""}${weakBelow(b) ? `<span class="warn">⚠</span>` : ""}${b.ai ? `<span class="ai">AI</span>` : ""}</span></button>`;
+  const hintSeen = store.get("hint", false);
+  const pin = S.pinned && byId(S.pinned);
+  $("main").innerHTML = `${wsHead()}<p class="idea">${EVAL.build.idea}</p>
+    <div class="row"><span class="small muted">Lines:</span><div class="seg" role="group" aria-label="Lines"><button type="button" data-lines="all" aria-pressed="${S.lines === "all"}">Show all</button><button type="button" data-lines="only" aria-pressed="${S.lines === "only"}">Only the traced line</button></div></div>
+    ${hintSeen ? "" : `<div class="hint"><span class="grow">Hover or tap a block to trace its line, down to the sources and up to what it holds up.</span><button class="btn ghost" type="button" id="hint-x">Got it</button></div>`}
+    ${pin ? `<div class="pinbar"><span class="s"><b>${LEVEL[pin.level]} #${pin.id}</b> ${esc(pin.statement)}</span><button class="btn" type="button" data-deep="${pin.id}">Check it</button><button class="btn ghost" type="button" id="unpin">Clear</button></div>` : ""}
+    <div class="canvas-wrap"><div class="canvas ${S.lines === "only" ? "only" : ""}" id="canvas"><svg id="wires" aria-hidden="true"></svg>
+      <div class="lrow"><span class="rl">Insights</span>${insights.map(brick).join("")}</div>
+      <div class="lrow"><span class="rl">Findings</span>${findings.map(brick).join("")}</div>
+      <div class="lrow"><span class="rl">Observations</span>${obsOrder.map(brick).join("")}</div>
+      <div class="lrow"><span class="rl">Base</span>${srcKeys.map(k => `<button class="brick stone" type="button" data-s="${k}"><b class="t">${esc(SOURCES[k].title)}</b><span class="muted" style="font-size:11px">${esc(SOURCES[k].kind)}</span></button>`).join("")}</div>
+    </div></div>
+    <div class="row small muted"><span><i class="sq s-needs_check"></i> Needs a check</span><span><i class="sq s-checked_by_owner"></i> Owner</span><span><i class="sq s-checked_by_peers"></i> Peers</span><span><i class="sq s-checked_by_sme"></i> SME</span><span class="warn">- - - leads into something unchecked</span></div>
+    ${evalBox("build")}`;
+  $("hint-x")?.addEventListener("click", () => { store.set("hint", true); render(); });
+  $("unpin")?.addEventListener("click", () => { S.pinned = null; render(); });
+  requestAnimationFrame(drawWires);
+}
+function edges() {
+  const out = [];
+  BLOCKS.forEach(b => { b.on.forEach(id => out.push({ from: b.id, to: id, weak: UNCHECKED.has(state(byId(id))) })); b.sources.forEach(k => out.push({ from: b.id, to: "s:" + k, src: true })); });
+  return out;
+}
+function near(id) {
+  const set = new Set([id]);
+  const down = x => { const b = byId(x); if (!b) return; b.on.forEach(y => { set.add(y); down(y); }); b.sources.forEach(k => set.add("s:" + k)); };
+  const up = x => BLOCKS.filter(b => b.on.includes(x)).forEach(b => { set.add(b.id); up(b.id); });
+  down(id); up(id); return set;
+}
+function drawWires() {
+  const cv = $("canvas"); if (!cv) return;
+  const box = cv.getBoundingClientRect();
+  const el = key => cv.querySelector(String(key).startsWith("s:") ? `[data-s="${String(key).slice(2)}"]` : `[data-b="${key}"]`);
+  const focus = S.hover ?? S.pinned;
+  const hot = focus ? near(focus) : null;
+  const paths = edges().map(e => {
+    const a = el(e.from), b = el(e.to); if (!a || !b) return "";
+    const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    const x1 = ra.left + ra.width / 2 - box.left, y1 = ra.bottom - box.top, x2 = rb.left + rb.width / 2 - box.left, y2 = rb.top - box.top;
+    const my = (y1 + y2) / 2;
+    const isHot = hot && hot.has(e.from) && hot.has(e.to);
+    return `<path class="wire ${e.src ? "src" : ""} ${e.weak ? "weak" : ""} ${isHot ? "hot" : ""}" d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}"/>`;
+  }).join("");
+  $("wires").innerHTML = paths;
+  cv.classList.toggle("tracing", !!hot);
+  cv.querySelectorAll("[data-b],[data-s]").forEach(n => { const k = n.dataset.b ? +n.dataset.b : "s:" + n.dataset.s; n.classList.toggle("near", !!hot && hot.has(k)); });
+}
+
+// ---------- 5. Columns ----------
+function renderConnect() {
+  const findings = BLOCKS.filter(b => b.level === "finding");
+  const used = new Set(findings.flatMap(f => f.on));
+  const loose = BLOCKS.filter(b => b.level === "observation" && !used.has(b.id));
+  const card = o => `<button class="ocard" type="button" data-pick="${o.id}" aria-pressed="${S.picked.has(o.id)}"><span class="s">${esc(o.statement)}</span><span class="m"><i class="sq s-${state(o)}"></i>${UNCHECKED.has(state(o)) ? `<span class="${state(o) === "needs_check" ? "" : "warn"}">${STATE[state(o)]}</span>` : STATE[state(o)]}${o.sources[0] ? ` · ${esc(SOURCES[o.sources[0]].title)}` : ""}</span></button>`;
+  const col = f => { const obs = f.on.map(byId).filter(o => o && o.level === "observation"); const weak = obs.filter(o => UNCHECKED.has(state(o))).length;
+    return `<div class="col"><div class="col-head"><span class="eyebrow">${shape("finding")} Finding #${f.id}</span><button class="linkbtn t" type="button" data-deep="${f.id}" style="text-align:left;color:var(--ink)">${esc(f.statement)}</button>
+      <span class="m">${UNCHECKED.has(state(f)) ? tag(f) : `<span>${STATE[state(f)]}</span>`}${restsOnNothing(f) ? `<span class="tag t-nothing">Rests on nothing</span>` : ""}<span>${plural(obs.length, "observation")}${weak ? ` · <span class="warn">${weak} unchecked</span>` : ""}</span></span></div>
+      ${obs.map(card).join("") || `<span class="small muted">Nothing under it. Pick observations and add them.</span>`}${S.picked.size ? `<button class="btn" type="button" data-addto="${f.id}">Add picked here</button>` : ""}</div>`; };
+  $("main").innerHTML = `${wsHead()}<p class="idea">${EVAL.connect.idea}</p>
+    <div class="cols-wrap"><div class="cols">${findings.map(col).join("")}
+      <div class="col loose"><div class="col-head"><span class="eyebrow">Not in a finding yet</span><span class="m">${plural(loose.length, "observation")}</span></div>${loose.map(card).join("")}</div>
+    </div></div>
+    ${S.picked.size ? `<div class="connectbar"><span><b>${S.picked.size}</b> picked</span><input type="text" id="cn-text" placeholder="Write the finding they add up to" aria-label="New finding"><button class="btn primary" type="button" id="cn-make">Make finding</button><button class="btn ghost" type="button" id="cn-prompt">Copy prompt for your AI</button><button class="btn ghost" type="button" id="cn-clear">Clear</button></div>` : ""}
+    ${evalBox("connect")}`;
+  $("cn-clear")?.addEventListener("click", () => { S.picked.clear(); render(); });
+  $("cn-make")?.addEventListener("click", () => {
+    const t = $("cn-text").value.trim(); if (!t) { $("cn-text").focus(); return toast("Write the finding first."); }
+    BLOCKS.push({ id: NEXT_ID++, level: "finding", statement: t, owner: S.me, ai: false, on: [...S.picked], sources: [], assumes: [], marks: [], checks: [] });
+    S.picked.clear(); render(); toast("Finding added. It needs a check from someone else.");
+  });
+  $("cn-prompt")?.addEventListener("click", () => {
+    const obs = [...S.picked].map(byId).map(o => `- #${o.id} ${o.statement} (${STATE[state(o)]})`).join("\n");
+    copyText(`Workspace: ${WS.question}\nThese observations were picked together:\n${obs}\nWrite one finding they add up to, no more than the evidence shows. Say how confident you are, why, and what you assume. Use add_blocks with built_on set to these ids.`, "Prompt copied.");
+  });
+}
+
+// ---------- Render and events ----------
+S.sessionDone = [];
+function render() {
+  renderTabs();
+  if (S.deep) return renderDeep();
+  ({ swipe: renderSwipe, queue: renderQueue, breakdown: renderBreakdown, build: renderBuild, connect: renderConnect })[S.tab]();
+}
+function fromHash() {
+  const h = location.hash.slice(1);
+  if (TABS.some(t => t[0] === h)) { S.tab = h; S.deep = null; S.form = {}; hideHow(); render(); }
+}
+window.addEventListener("hashchange", fromHash);
+window.addEventListener("resize", () => { if (S.tab === "build" && !S.deep) drawWires(); });
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("button, a"); if (!t) return;
+  if (t.dataset.act) return act(t.dataset.act);
+  if (t.dataset.deep) return openDeep(+t.dataset.deep, S.deep ? S.back : S.tab);
+  if (t.hasAttribute("data-back")) { e.preventDefault(); S.deep = null; S.tab = S.back; S.form = {}; if (location.hash !== "#" + S.back) location.hash = "#" + S.back; else render(); return; }
+  if (t.dataset.goto) { location.hash = "#" + t.dataset.goto; return; }
+  if (t.dataset.qi) { S.queueAt = +t.dataset.qi; S.form = {}; return render(); }
+  if (t.dataset.qmove) { S.queueAt += +t.dataset.qmove; S.form = {}; return render(); }
+  if (t.dataset.bdf) { S.bdFilter = t.dataset.bdf; return render(); }
+  if (t.dataset.bdx) { const r = S.bd.rows[+t.dataset.bdx]; r.removed = !r.removed; return render(); }
+  if (t.dataset.lines) { S.lines = t.dataset.lines; return render(); }
+  if (t.dataset.b) { const id = +t.dataset.b; S.pinned = S.pinned === id ? null : id; S.hover = null; return render(); }
+  if (t.dataset.pick) { const id = +t.dataset.pick; S.picked.has(id) ? S.picked.delete(id) : S.picked.add(id); return render(); }
+  if (t.dataset.addto) { const f = byId(+t.dataset.addto); S.picked.forEach(id => { if (!f.on.includes(id)) f.on.push(id); }); S.picked.clear(); render(); return toast(`Added to finding #${f.id}. Its owner is asked to check the link.`); }
+  if (t.dataset.rate) { const all = store.get("eval", {}); all[t.dataset.rate] = { ...(all[t.dataset.rate] || {}), r: t.dataset.r }; store.set("eval", all); t.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === t)); return; }
+});
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset.evnote) { const all = store.get("eval", {}); all[t.dataset.evnote] = { ...(all[t.dataset.evnote] || {}), note: t.value }; store.set("eval", all); }
+  if (t.dataset.think) store.set("think:" + t.dataset.think, t.value);
+  if (t.dataset.bdtext != null && S.bd) { const r = S.bd.rows[+t.dataset.bdtext]; r.text = t.value; r.given = GIVEN.filter(w => new RegExp("\\b" + w + "\\b", "i").test(t.value)); }
+});
+document.addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.bdlevel != null && S.bd) { S.bd.rows[+t.dataset.bdlevel].level = t.value; render(); }
+});
+document.addEventListener("mouseover", e => {
+  if (S.tab !== "build" || S.deep) return;
+  const t = e.target.closest("[data-b]"); const id = t ? +t.dataset.b : null;
+  if (id !== S.hover) { S.hover = id; drawWires(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.target.closest("textarea, input, select")) return;
+  if (S.tab === "swipe" && !S.deep && !document.querySelector(".scard.sheet-open")) {
+    const k = { ArrowRight: "right", ArrowLeft: "left", ArrowUp: "up", Enter: "up", l: "later", L: "later" }[e.key];
+    if (k && deckFor(S.me).length) { e.preventDefault(); return act(k); }
+  }
+  if ((e.key === "u" || e.key === "U") && S.undo.length && !S.deep) { S.sessionDone.pop(); return undo(); }
+  if (S.tab === "queue" && !S.deep && (e.key === "j" || e.key === "k")) {
+    const n = deckFor(S.me).length; S.queueAt = Math.max(0, Math.min(n - 1, S.queueAt + (e.key === "j" ? 1 : -1))); S.form = {}; render();
+  }
+});
+
+$("me").innerHTML = Object.entries(PEOPLE).map(([n, p]) => `<option value="${n}">${n} (${p.role}${p.sme ? ", SME" : ""})</option>`).join("");
+$("me").value = S.me;
+$("me").onchange = () => { S.me = $("me").value; S.sessionDone = []; S.later = []; S.form = {}; S.queueAt = 0; hideHow(); render(); };
+$("reset").onclick = () => { resetData(); S.sessionDone = []; S.deep = null; S.form = {}; hideHow(); render(); toast("Sample reset."); };
+$("copy-notes").onclick = () => {
+  const all = store.get("eval", {});
+  const label = { keep: "Keep", change: "Change it", drop: "Drop" };
+  const text = TABS.map(([k, l]) => `${l}: ${all[k]?.r ? label[all[k].r] : "no call yet"}${all[k]?.note ? "\n  " + all[k].note.replace(/\n/g, "\n  ") : ""}`).join("\n");
+  copyText("Check Lab notes\n" + text, "Notes copied. Paste them back in the chat.");
+};
+const h = location.hash.slice(1);
+if (TABS.some(t => t[0] === h)) S.tab = h;
+render();
+</script>
+</body>
+</html>
