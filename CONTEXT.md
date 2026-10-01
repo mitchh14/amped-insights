@@ -14,7 +14,7 @@ The sharpest part of the problem is long AI text. An AI can write a confident pa
 
 ## Current focus: the workbench
 
-The workbench is the core the rest builds on. A workspace holds a question, the decision it serves, and a base of context, method, and notes. Blocks build up from it: observations from sources, findings from observations, insights from findings. Each block has one check state, and anything built on an unchecked block shows it. AI blocks say how confident the AI is, why, and what it assumes. Long AI text can be broken down into blocks. Checked insights go into a package. Decisions, narratives, and research requests come later; see [docs/EXPERIENCE.md](docs/EXPERIENCE.md).
+The workbench is the core the rest builds on. A workspace holds a question, the decision it serves, and a base of context, method, and notes. Blocks build up from it: observations from sources, findings from observations, insights from findings. Each block has one check state, and anything built on an unchecked block shows it. A plan breaks the question into a few sub-questions from the top, findings and insights say which one they answer, and each sub-question shows what other workspaces already know about it. AI blocks say how confident the AI is, why, and what it assumes. Long AI text can be broken down into blocks. Checked insights go into a package. Decisions, narratives, and research requests come later; see [docs/EXPERIENCE.md](docs/EXPERIENCE.md).
 
 ## Why now
 

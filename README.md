@@ -109,7 +109,8 @@ Point the web app and the MCP server at the same database file and changes from 
 
 Everything is plain SQLite tables. There is no migration code yet: an older database is refused with a clear message, so start a new file.
 
-- **learnings** (blocks): `statement`, `level` (observation, finding, insight), `stage` (draft, shared, replaced), `origin` (person, person_with_ai, ai_agent), `owner`, `evidence` (the blocks it is built on), `source_ids` (the sources it came from), `confidence` (low, medium, high), `why`, `assumes`, `study_id`, `promoted_from`, `revises`, and who is working on it. Check state is not stored: it is worked out from the stage, reviews, and conflicts.
+- **learnings** (blocks): `statement`, `level` (observation, finding, insight), `stage` (draft, shared, replaced), `origin` (person, person_with_ai, ai_agent), `owner`, `evidence` (the blocks it is built on), `source_ids` (the sources it came from), `confidence` (low, medium, high), `why`, `assumes`, `study_id`, `question_id` (the sub-question a finding or insight answers), `promoted_from`, `revises`, and who is working on it. Check state is not stored: it is worked out from the stage, reviews, and conflicts.
+- **questions**: the plan of a workspace. Sub-questions, each with `text`, an optional `expect` (what we think we will find), and a `position`. Whether one is Open, In progress, or Answered is worked out from the blocks that answer it.
 - **sources**: context in a workspace. `kind` (note, quote, data, query, link, file, ai_text), `title`, `body`, `url`, who added it.
 - **reviews**: one row per review, never collapsed. `verdict` (approve, changes, disagree), `how` they checked, `note`, and the reviewer's `role` and SME standing at the time. A person's latest review counts; earlier ones stay visible.
 - **review_requests**: who was asked (a person, anyone in a role, or any SME), and whether it is open, done, or withdrawn.
@@ -144,9 +145,13 @@ In MCP, the person's name is set once per session with `set_identity` (or the `A
 | Workbench | `needs_check(who, study_id)` | `needs_check` | `GET /api/needs-check?who=&study_id=` |
 | Workbench | `set_package(study_id, by, learning_ids)` | `set_package` | `POST /api/set_package` |
 | Plan | `start_study(question, owner, decision, hypothesis, fields)` | `start_study` | `POST /api/start_study` |
+| Plan | `add_question(study_id, by, text, expect)` | `add_question` | `POST /api/add_question` |
+| Plan | `update_question(question_id, by, text, expect, position)`, `remove_question(question_id, by)` | `update_question`, `remove_question` | `POST /api/update_question`, `/api/remove_question` |
+| Plan | `set_answers(learning_id, by, question_id)` | `set_answers` | `POST /api/set_answers` |
+| Plan | `already_known(question_id, limit)` | `already_known` | `GET /api/questions/{id}/known` |
 | Plan | `update_study(study_id, by, ...)` | `update_study` | `POST /api/update_study` |
 | Plan | `get_study(id)`, `list_studies(status, owner)` | `get_study`, `list_studies` | `GET /api/studies/{id}`, `/api/studies` |
-| Learn | `add(statement, level, owner, evidence, study_id, origin, source_ids, confidence, why, assumes)` | `add` | `POST /api/add` |
+| Learn | `add(statement, level, owner, evidence, study_id, origin, source_ids, confidence, why, assumes, question_id)` | `add` | `POST /api/add` |
 | Learn | `confirm(learning_id, by, statement, note)` | `confirm` | `POST /api/confirm` |
 | Learn | `promote(learning_id, by, statement, note, origin)` | `promote` | `POST /api/promote` |
 | Learn | `revise(learning_id, by, statement, note, origin)` | `revise` | `POST /api/revise` |
@@ -173,6 +178,7 @@ Open by default. Roles inform, they never block, unless a team turns on a rule t
 - `check` is the one verb people use. For the owner of an AI draft it confirms it; for the owner of a block with changes asked, a new wording saves a new version; for anyone else it is a review. Blocks built on a revised block follow the newest version.
 - Building on unchecked blocks is allowed. The block built on them reports `unchecked_parts` (directly under it) and `deep_unchecked` (further down) until they are checked.
 - An observation with no source, or a finding or insight built on no blocks, reports `rests_on_nothing`.
+- A sub-question is Open when nothing answers it, In progress when findings or insights answer it, and Answered once an insight that answers it is Checked by peers or Checked by an SME. Already known lists checked blocks from other workspaces that share its words; drafts stay out.
 - AI confidence, why, and assumes are stored as the AI gave them. A block made with AI that leaves them out gets a warning. They never change the check state.
 - `break_down` is a plain text splitter with no AI: one draft block per sentence, a level guessed from cue words, and hedges or sweeping words listed as assumptions. With `preview` it writes nothing and returns the pieces; pass the ones to keep back as `blocks` (statement and level) to add exactly those.
 

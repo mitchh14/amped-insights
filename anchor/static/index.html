@@ -210,6 +210,14 @@
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   .stack { display: flex; flex-direction: column; gap: 8px; }
   .prompt { font-family: var(--f-mono); font-size: 11.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .plan-q { border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .plan-q > summary { padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; cursor: pointer; list-style: none; }
+  .plan-q > summary::-webkit-details-marker { display: none; }
+  .plan-q > summary .q { font-size: 13px; }
+  .plan-q > summary .r { font-size: 11.5px; color: var(--muted); }
+  .plan-q[open] > summary { border-bottom: 1px solid var(--line); }
+  .plan-q .inside { padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+  .pkg-group { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-top: 6px; }
   .pkg-item { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
   .pkg-item .t { font-weight: 600; font-size: 16px; line-height: 1.25; }
   /* Above the canvas: how lines show, and Connect */
@@ -320,6 +328,8 @@ const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
 const isPhone = () => window.matchMedia("(max-width: 900px)").matches;
 const byId = id => S.ws?.blocks.find(b => b.id === id);
 const srcById = id => S.ws?.sources.find(s => s.id === id);
+const qById = id => S.ws?.plan.find(q => q.id === id);
+const PLAN_TAG = { open: "Open", in_progress: "In progress", answered: "Answered" };
 const isSme = name => S.people.find(p => p.name === name)?.sme;
 const madeWithAI = b => b.origin !== "person";
 const originText = b => b.origin === "ai_agent" ? "AI draft for " + b.owner : b.origin === "person_with_ai" ? b.owner + " with AI" : b.owner;
@@ -378,7 +388,7 @@ async function renderHome() {
         <span class="q">${esc(s.question)}</span>
         ${s.decision ? `<span class="note">For the decision: ${esc(s.decision)}</span>` : ""}
         <span class="mini" aria-hidden="true">${counts.flatMap(([st, n]) => Array(n).fill(`<i style="${fill(st)}"></i>`)).join("")}</span>
-        <span class="note">${plural(total, "block")}${mineBy[s.id] ? ` · <b class="amber">${mineBy[s.id]} waiting on you</b>` : ""}${s.package?.length ? ` · ${plural(s.package.length, "insight")} in the package` : ""}</span>
+        <span class="note">${plural(total, "block")}${mineBy[s.id] ? ` · <b class="amber">${mineBy[s.id]} waiting on you</b>` : ""}${s.plan?.total ? ` · ${esc(s.plan.label)}` : ""}${s.package?.length ? ` · ${plural(s.package.length, "insight")} in the package` : ""}</span>
       </a>`;
     }).join("") || `<div class="note">No workspaces yet. Start one below.</div>`}</div>
     <form class="form" id="new-ws">
@@ -401,6 +411,8 @@ async function openWorkspace(id) {
   await fetchWorkspace(id);
   renderWorkspace();
   await openPanel(WS_PANEL);
+  // A new workspace starts with its plan: what do we need to know to decide?
+  if (S.startPlan) { S.startPlan = false; await openPanel({ type: "part", id: "plan" }); }
 }
 // Fetch again after a change and redraw, keeping what the cabinet shows.
 async function reload() {
@@ -661,9 +673,10 @@ function renderConnect() {
   if (!S.connecting) { bar.hidden = true; return; }
   bar.hidden = false;
   const sel = [...S.selected].map(byId).filter(Boolean);
-  if (!sel.length) { bar.innerHTML = `<span>Pick the observations or findings you want to connect.</span><button class="btn ghost" id="connect-cancel">Cancel</button>`; return; }
+  if (!sel.length) { bar.innerHTML = `<span>Pick the observations or findings you want to connect${qById(S.answering) ? ` to answer "${esc(qById(S.answering).text)}"` : ""}.</span><button class="btn ghost" id="connect-cancel">Cancel</button>`; return; }
   const target = NEXT[sel.some(b => b.level === "finding") ? "finding" : "observation"];
-  bar.innerHTML = `<span><b>${sel.length} picked</b></span>
+  const answers = S.ws.plan.length ? `<select id="connect-answers" aria-label="The sub-question it answers" style="max-width:220px"><option value="">Answers no sub-question</option>${S.ws.plan.map(q => `<option value="${q.id}"${S.answering === q.id ? " selected" : ""}>${esc(q.text)}</option>`).join("")}</select>` : "";
+  bar.innerHTML = `<span><b>${sel.length} picked</b></span>${answers}
     <input id="connect-text" type="text" placeholder="What do these add up to? One sentence." aria-label="New ${LEVEL[target]}">
     <button class="btn ghost" id="connect-prompt">Copy prompt for your AI</button>
     <button class="btn primary" id="connect-add" data-target="${target}">Add ${LEVEL[target].toLowerCase()}</button>
@@ -712,7 +725,10 @@ async function renderPanel() {
   el.scrollTop = 0;
 }
 function trailLabel(p) {
-  if (p.type === "block") { const b = byId(p.id); return b ? `${LEVEL[b.level]} #${b.id}` : "#" + p.id; }
+  if (p.type === "block") {
+    const b = byId(p.id) || (S.detail?.id === p.id ? S.detail : null);
+    return b ? `${LEVEL[b.level]} #${b.id}${byId(p.id) ? "" : " · elsewhere"}` : "#" + p.id;
+  }
   if (p.type === "source") return srcById(p.id)?.title || "Source";
   if (p.type === "part") return S.ws.base.find(x => x.key === p.id)?.label || "Base";
   return { package: "Package", breakdown: "Break down" }[p.type] || "Workspace";
@@ -735,11 +751,16 @@ function panelWorkspace() {
   const attn = ws.blocks.filter(b => ["needs_changes", "disagreement"].includes(b.check.state) || b.rests_on_nothing);
   const pkg = ws.package.map(byId).filter(Boolean);
   const item = b => `<button class="under-item" data-open="${b.id}"><span class="q">${esc(b.statement)}</span><span class="r bad">${LEVEL[b.level]} · ${TAG[b.check.state] && b.check.state !== "needs_check" ? TAG[b.check.state] : "Rests on nothing"}</span></button>`;
+  const answered = ws.plan.filter(q => q.state === "answered").length;
+  const plan = ws.plan.length
+    ? `<div class="under">${ws.plan.map(q => `<button class="under-item" data-part="plan"><span class="q">${esc(q.text)}</span><span class="r">${PLAN_TAG[q.state]}${q.state !== "answered" && q.already_known.length ? " · something is already known" : ""}</span></button>`).join("")}</div>`
+    : `<div class="note">What do you need to know to make the decision? <button class="linkbtn" data-part="plan">Add sub-questions</button></div>`;
   return `<div><div class="eyebrow">This workspace</div><h2>${esc(ws.question)}</h2><div class="meta">For the decision: ${esc(ws.decision || "not set yet")}</div></div>
+    <div><h3>The plan${ws.plan.length ? ` · ${answered} of ${ws.plan.length} answered` : ""}</h3>${plan}</div>
     <div><h3>Waiting on you</h3>${n ? `<div class="row" style="justify-content:space-between"><span>${plural(n, "block")} to check</span><button class="linkbtn" id="queue-start">Start</button></div>` : `<div class="note">Nothing waits on you.</div>`}</div>
     ${attn.length ? `<div><h3>Needs attention</h3><div class="under">${attn.map(item).join("")}</div></div>` : ""}
     <div><h3>Package</h3>${pkg.length ? `<div class="under">${pkg.map(b => `<button class="under-item" data-open="${b.id}"><span class="q">${esc(b.statement)}</span><span class="r${b.unchecked_parts || b.deep_unchecked ? " bad" : ""}">${b.unchecked_parts || b.deep_unchecked ? "⚠ Something under it still needs a check" : esc(b.check.label)}</span></button>`).join("")}</div><button class="linkbtn" data-panel="package" style="margin-top:6px">Open the package</button>` : `<div class="note">Add checked insights to share them together.</div>`}</div>
-    <details><summary>The base</summary><div class="under" style="margin-top:8px">${ws.base.map(p => `<button class="under-item" data-part="${p.key}"><span class="q">${esc(p.label)}</span><span class="r${p.ok ? "" : " bad"}">${p.key === "context" ? plural(p.count, "source") : p.ok ? "In place" : "Not filled in"}</span></button>`).join("")}</div></details>
+    <details><summary>The base</summary><div class="under" style="margin-top:8px">${ws.base.map(p => `<button class="under-item" data-part="${p.key}"><span class="q">${esc(p.label)}</span><span class="r${p.ok ? "" : " bad"}">${p.key === "context" ? plural(p.count, "source") : p.key === "plan" ? plural(p.count, "sub-question") : p.ok ? "In place" : "Not filled in"}</span></button>`).join("")}</div></details>
     <details><summary>Pair with your AI tool</summary><div class="stack" style="margin-top:8px"><div class="note">Your AI tool works in this workspace over MCP. It drafts blocks with sources and says how sure it is. You check them here.</div><div class="row"><button class="btn" id="copy-obs-prompt">Copy prompt for your AI</button></div></div></details>`;
 }
 const head = (eyebrow, title) => `<div class="panel-head"><div><div class="eyebrow">${eyebrow}</div><h2>${esc(title)}</h2></div></div>`;
@@ -755,17 +776,22 @@ function quoteFor(body, text) {
 function panelBlock(d) {
   const b = byId(d.id) || d;
   const st = d.check.state, mine = d.owner === S.me;
+  const here = !!byId(d.id);
   let h = head(`${LEVEL[d.level]} #${d.id}`, d.statement);
   h += `<div class="meta"><span class="status t-${st}">${esc(d.check.label)}</span> · ${originText(d)}</div>`;
+  if (!here && d.study) h += `<div class="note">From another workspace: <a href="#w/${d.study.id}">${esc(d.study.question)}</a></div>`;
 
   // What it rests on
   h += `<div><h3>${d.level === "observation" ? "From" : "Built on"}</h3><div class="under">`;
   if (d.level === "observation") d.sources.forEach(s => {
     h += `<button class="under-item" data-open-src="${s.id}"><span class="r">${esc(s.title)}</span><span class="q">${quoteFor(s.body, d.statement)}</span></button>`;
   });
-  else (b.built_on || []).map(byId).filter(Boolean).forEach(c => {
+  else if (here) (b.built_on || []).map(byId).filter(Boolean).forEach(c => {
     const bad = UNCHECKED.has(c.check.state);
     h += `<button class="under-item" data-open="${c.id}"><span class="q">${esc(c.statement)}</span><span class="r${bad ? " bad" : ""}">${bad ? "⚠ " : ""}${esc(c.check.label)}</span></button>`;
+  });
+  else d.evidence.forEach(c => {
+    h += `<button class="under-item" data-open="${c.id}"><span class="q">${esc(c.statement)}</span><span class="r">${esc(c.chip.label)}</span></button>`;
   });
   if (d.rests_on_nothing) h += `<div class="note amber">Nothing is under this yet. ${d.level === "observation" ? "Which source did it come from?" : "Which blocks show it? Use Connect to build it from them."}</div>`;
   h += `</div>${d.unchecked_parts ? `<div class="note" style="margin-top:6px">You can still build on this. It stays flagged until ${d.unchecked_parts === 1 ? "that block is" : "those blocks are"} checked.</div>` : ""}</div>`;
@@ -803,7 +829,11 @@ function panelBlock(d) {
   }
   h += `</div>`;
 
-  if (d.level === "insight") {
+  if (here && d.level !== "observation" && S.ws.plan.length) {
+    h += `<label class="stack"><h3>Answers</h3><select id="answers" data-answers="${d.id}" aria-label="The sub-question this answers">
+      <option value="">No sub-question</option>${S.ws.plan.map(q => `<option value="${q.id}"${d.answers?.id === q.id ? " selected" : ""}>${esc(q.text)}</option>`).join("")}</select></label>`;
+  }
+  if (here && d.level === "insight") {
     const inPkg = S.ws.package.includes(d.id);
     h += `<div class="row">${inPkg ? `<button class="btn" data-unpkg="${d.id}">Remove from package</button>` : `<button class="btn" data-pkg="${d.id}">Add to package</button>`}</div>`;
   }
@@ -812,7 +842,7 @@ function panelBlock(d) {
     <ul class="asks">${ASKS[d.level].map(a => `<li>${esc(a)}</li>`).join("")}</ul>
     <label class="note" for="think">Your notes. Only you see these, in this browser.</label>
     <textarea id="think" data-think="${d.id}" rows="${S.wide ? 6 : 3}">${esc(local.get("think-" + d.id, ""))}</textarea></div></details>`;
-  const ups = S.ws.blocks.filter(x => x.built_on.includes(d.id));
+  const ups = here ? S.ws.blocks.filter(x => x.built_on.includes(d.id)) : [];
   if (ups.length) h += `<details><summary>Holds up ${ups.length}</summary><div class="under" style="margin-top:8px">${ups.map(u => `<button class="under-item" data-open="${u.id}"><span class="q">${esc(u.statement)}</span><span class="r">${LEVEL[u.level]}</span></button>`).join("")}</div></details>`;
   const history = [];
   if (d.confirmed) history.push(`<div><b>Checked by owner</b> · ${esc(d.confirmed.by)}${d.confirmed.edited ? ` · changed the AI's wording<br><span class="meta">AI wrote: "${esc(d.confirmed.before)}"</span>` : ""}${d.confirmed.note ? `<br><span class="meta">${esc(d.confirmed.note)}</span>` : ""}</div>`);
@@ -827,9 +857,20 @@ function panelPart(key) {
   const ws = S.ws;
   const part = ws.base.find(p => p.key === key);
   let h = head("Base", part.label);
-  if (key === "question") {
-    h += `<label class="stack"><h3>Question</h3><textarea id="f-question" rows="2">${esc(ws.question)}</textarea></label>
-      <label class="stack"><h3>Decision it serves</h3><textarea id="f-decision" rows="2">${esc(ws.decision || "")}</textarea></label>`;
+  if (key === "plan") {
+    h += `<div><h3>Sub-questions</h3><div class="note" style="margin-bottom:8px">What you need to know to make the decision. A few sharp ones beat many. Findings and insights say which one they answer, and a sub-question is answered once an insight that answers it is checked by someone else.</div>
+      <div class="under">${ws.plan.map(planItem).join("") || `<div class="note">None yet.</div>`}</div></div>`;
+    h += `<details${ws.plan.length ? "" : " open"}><summary>Add a sub-question</summary><div class="stack" style="margin-top:8px">
+      <input type="text" id="q-text" placeholder="What do we need to know?" aria-label="Sub-question">
+      <input type="text" id="q-expect" placeholder="What do we expect to find? (optional)" aria-label="What we expect">
+      <div class="row"><button class="btn primary" id="add-q">Add sub-question</button></div></div></details>`;
+    h += `<div><h3>Plan with your AI</h3><div class="note" style="margin-bottom:8px">Your AI tool reads the workspace, drafts a few sub-questions, and says what other workspaces already know about each. You keep, change, or drop them.</div>
+      <button class="btn" id="copy-plan-prompt">Copy prompt for your AI</button></div>`;
+    h += `<details${ws.decision ? "" : " open"}><summary>Question and decision</summary><div class="stack" style="margin-top:8px">
+      <label class="stack"><span class="note">Question</span><textarea id="f-question" rows="2">${esc(ws.question)}</textarea></label>
+      <label class="stack"><span class="note">Decision it serves</span><textarea id="f-decision" rows="2">${esc(ws.decision || "")}</textarea></label>
+      <div class="row"><button class="btn" id="save-part" data-key="plan">Save</button></div></div></details>`;
+    return h;
   } else if (key === "method") {
     h += `<div class="note">How the work was done, so a checker can judge what it can and cannot show.</div><textarea id="f-method" rows="4" aria-label="Method">${esc(ws.method || "")}</textarea>`;
   } else if (key === "notes") {
@@ -848,6 +889,21 @@ function panelPart(key) {
   }
   if (key !== "context") h += `<div class="row"><button class="btn primary" id="save-part" data-key="${key}">Save</button></div>`;
   return h;
+}
+
+function planItem(q) {
+  const answering = q.block_ids.map(byId).filter(Boolean);
+  const known = q.already_known;
+  return `<details class="plan-q" data-q="${q.id}"${S.openQ === q.id ? " open" : ""}>
+    <summary><span class="q">${esc(q.text)}</span><span class="r">${PLAN_TAG[q.state]}${q.expect ? ` · We expect: ${esc(q.expect)}` : ""}</span></summary>
+    <div class="inside">
+      <div><h3>Answered by</h3><div class="under">${answering.length ? answering.map(b => `<button class="under-item" data-open="${b.id}"><span class="q">${esc(b.statement)}</span><span class="r${UNCHECKED.has(b.check.state) ? " bad" : ""}">${LEVEL[b.level]} · ${esc(b.check.label)}</span></button>`).join("") : `<div class="note">Nothing answers this yet.</div>`}</div>
+        <div class="row" style="margin-top:6px"><button class="linkbtn" data-answer-q="${q.id}">Connect blocks to answer it</button></div></div>
+      <div><h3>Already known</h3><div class="under">${known.length ? known.map(b => `<button class="under-item" data-open-any="${b.id}"><span class="q">${esc(b.statement)}</span><span class="r">${esc(b.check.label)}${b.workspace ? ` · ${esc(b.workspace.question)}` : ""}</span></button>`).join("") : `<div class="note">Nothing checked in other workspaces matches this yet.</div>`}</div></div>
+      <div class="stack"><input type="text" data-qtext="${q.id}" value="${esc(q.text)}" aria-label="Sub-question">
+        <input type="text" data-qexpect="${q.id}" value="${esc(q.expect || "")}" placeholder="What do we expect to find? (optional)" aria-label="What we expect">
+        <div class="row"><button class="btn" data-save-q="${q.id}">Save</button><button class="btn ghost" data-remove-q="${q.id}">Remove</button></div></div>
+    </div></details>`;
 }
 
 function panelSource(s) {
@@ -877,7 +933,10 @@ function panelPackage() {
   let h = head("Package", S.ws.question);
   h += `<div class="note">The insights this workspace shares together. Each shows what it rests on, down to the sources.</div>`;
   const leaves = id => new Set([id, ...below(id)].filter(x => byId(x)?.level === "observation"));
-  items.forEach(b => {
+  const groups = [...S.ws.plan.map(q => [q.text, items.filter(b => b.question_id === q.id)]),
+    ["Not tied to a sub-question", items.filter(b => !qById(b.question_id))]].filter(([, xs]) => xs.length);
+  groups.forEach(([title, xs]) => { if (S.ws.plan.length) h += `<div class="pkg-group">${esc(title)}</div>`; xs.forEach(pkgItem); });
+  function pkgItem(b) {
     const lv = [...leaves(b.id)].map(byId);
     const srcs = new Set(lv.flatMap(o => o.source_ids));
     const weak = [...below(b.id)].filter(x => UNCHECKED.has(byId(x)?.check.state)).length;
@@ -885,7 +944,7 @@ function panelPackage() {
       <div class="meta">${esc(b.check.label)}</div>
       <div class="meta">Rests on ${plural(b.built_on.length, "block")}, ${plural(lv.length, "observation")}, ${plural(srcs.size, "source")}.${weak ? ` <span class="amber">${weak} still need a check.</span>` : " All checked."}</div>
       <div><button class="linkbtn" data-open="${b.id}">Open</button></div></div>`;
-  });
+  }
   for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
     const a = leaves(items[i].id), c = leaves(items[j].id);
     const shared = [...a].filter(x => c.has(x)).length;
@@ -896,6 +955,7 @@ function panelPackage() {
 }
 
 // ---------- Prompts for the person's own AI tool ----------
+const planPrompt = () => `Use the ANCHOR prompt "plan_analysis" with study_id=${S.ws.id}, or: call get_workspace(study_id=${S.ws.id}) and read the question, the decision, and the sources. Draft 2 to 5 sub-questions the decision turns on, each with what we expect to find. For each, query it and tell me what other workspaces already know, with each block's check state. Let me keep, change, or drop each one, then add the ones I keep with add_question.`;
 const obsPrompt = () => `Use the ANCHOR prompt "break_down_text", or: call get_workspace(study_id=${S.ws.id}) and read every source. Write observations: only what was seen or measured, one claim each, citing the source id. Then findings built on them, then insights built on findings. Give every block confidence (low, medium, high), why in one line, and what it assumes. Add them with add_blocks as drafts for me to check.`;
 const breakdownPrompt = text => `Take this AI text apart into building blocks in ANCHOR workspace ${S.ws.id}. Call add_source with it (kind "ai_text"), then add_blocks: one claim per block, observations citing sources, findings and insights built on the blocks that show them. Give every block confidence (low, medium, high), why, and what it assumes. Tell me which claims rest on nothing.\n\n${text || "<paste the text here>"}`;
 const askPrompt = id => `In ANCHOR workspace ${S.ws.id}, read block #${id} with get, then what it is built on and its sources. Tell me if the evidence supports it as worded, what it takes as given, and what would make it wrong. Do not check it for me.`;
@@ -955,9 +1015,10 @@ async function connect() {
   const target = $("connect-add").dataset.target;
   const text = input.value.trim();
   if (!text) { input.focus(); return toast("Write one sentence first, or copy the prompt for your AI.", true); }
-  const out = await run(() => api("add", { statement: text, level: target, owner: S.me, evidence: sel, study_id: S.ws.id }));
+  const qid = +($("connect-answers")?.value || 0) || null;
+  const out = await run(() => api("add", { statement: text, level: target, owner: S.me, evidence: sel, study_id: S.ws.id, question_id: qid }));
   if (!out) return;
-  S.selected.clear(); S.connecting = false; S.fresh.add(out.learning.id);
+  S.selected.clear(); S.connecting = false; S.answering = null; S.fresh.add(out.learning.id);
   await fetchWorkspace(S.ws.id);
   renderWorkspace();
   await openPanel({ type: "block", id: out.learning.id });
@@ -976,7 +1037,7 @@ document.addEventListener("submit", async e => {
   if (e.target.id !== "new-ws") return;
   e.preventDefault();
   const out = await run(() => api("start_study", { question: $("nw-q").value.trim(), owner: S.me, decision: $("nw-d").value.trim() || null }));
-  if (out) location.hash = "#w/" + out.study.id;
+  if (out) { S.startPlan = true; location.hash = "#w/" + out.study.id; }
 });
 
 document.addEventListener("click", async e => {
@@ -1016,6 +1077,23 @@ document.addEventListener("click", async e => {
   if (t.hasAttribute("data-skip")) { S.checking.skipped.push(S.panel.id); return nextCheck(S.panel.id); }
   if (d.pkg) { await setPackage([...S.ws.package, +d.pkg]); return S.panel && renderPanel(); }
   if (d.unpkg) { await setPackage(S.ws.package.filter(x => x !== +d.unpkg)); return S.panel && renderPanel(); }
+  if (d.saveQ) {
+    const text = document.querySelector(`[data-qtext="${d.saveQ}"]`).value.trim();
+    if (!text) return toast("Write the sub-question first.", true);
+    S.openQ = +d.saveQ;
+    if (await run(() => api("update_question", { question_id: +d.saveQ, by: S.me, text, expect: document.querySelector(`[data-qexpect="${d.saveQ}"]`).value.trim() }))) { toast("Sub-question saved."); await reload(); }
+    return;
+  }
+  if (d.removeQ) {
+    const out = await run(() => api("remove_question", { question_id: +d.removeQ, by: S.me }));
+    if (out) { toast(out.untagged.length ? `Removed. ${plural(out.untagged.length, "block")} no longer ${out.untagged.length === 1 ? "answers" : "answer"} anything.` : "Removed."); await reload(); }
+    return;
+  }
+  if (d.answerQ) {
+    S.answering = +d.answerQ; S.selected.clear(); S.connecting = true;
+    if (S.view !== "build") await setView("build"); else { renderConnect(); renderBuild(); }
+    return toast("Pick the blocks that answer it, then write what they add up to.");
+  }
   switch (t.id) {
     case "queue-btn": case "queue-start": return startChecking();
     case "v-build": case "v-back": return setView("build");
@@ -1024,8 +1102,8 @@ document.addEventListener("click", async e => {
     case "wide":
       S.wide = !S.wide; local.set("wide", S.wide); $("app").classList.toggle("wide", S.wide);
       await renderPanel(); if (S.view === "build") setTimeout(renderBuild, 230); return;
-    case "connect-btn": S.connecting = !S.connecting; S.selected.clear(); renderConnect(); renderBuild(); return;
-    case "connect-cancel": S.selected.clear(); S.connecting = false; renderConnect(); renderBuild(); return;
+    case "connect-btn": S.connecting = !S.connecting; S.selected.clear(); S.answering = null; renderConnect(); renderBuild(); return;
+    case "connect-cancel": S.selected.clear(); S.connecting = false; S.answering = null; renderConnect(); renderBuild(); return;
     case "connect-add": return connect();
     case "connect-prompt": return copy(connectPrompt([...S.selected], $("connect-add").dataset.target), "Prompt copied. Paste it into your AI tool.");
     case "bd-run": return bdRun();
@@ -1034,9 +1112,17 @@ document.addEventListener("click", async e => {
     case "bd-again": S.bd = { text: S.bd.text, title: S.bd.title }; renderBreakdown(); return renderPanel();
     case "bd-prompt": return copy(breakdownPrompt($("bd-text").value.trim()), "Prompt copied. Paste it into your AI tool.");
     case "copy-obs-prompt": return copy(obsPrompt(), "Prompt copied. Paste it into your AI tool.");
+    case "copy-plan-prompt": return copy(planPrompt(), "Prompt copied. Paste it into your AI tool.");
+    case "add-q": {
+      const text = $("q-text").value.trim();
+      if (!text) { $("q-text").focus(); return toast("Write the sub-question first.", true); }
+      const out = await run(() => api("add_question", { study_id: S.ws.id, by: S.me, text, expect: $("q-expect").value.trim() || null }));
+      if (out) { toast(out.warnings.length ? out.warnings[0][0].toUpperCase() + out.warnings[0].slice(1) + "." : "Added to the plan."); await reload(); }
+      return;
+    }
     case "save-part": {
       const k = d.key, body = { study_id: S.ws.id, by: S.me };
-      if (k === "question") { body.question = $("f-question").value.trim(); body.decision = $("f-decision").value.trim(); }
+      if (k === "plan") { body.question = $("f-question").value.trim(); body.decision = $("f-decision").value.trim(); }
       else body[k] = $("f-" + k).value.trim();
       if (await run(() => api("update_study", body))) { toast("Base updated."); await reload(); }
       return;
@@ -1065,8 +1151,13 @@ document.addEventListener("input", e => {
   if (t.dataset.bdtext != null && S.bd?.pieces) S.bd.pieces[+t.dataset.bdtext].statement = t.value;
 });
 // After a level or wording change, ask the core again, so the flags stay true.
-document.addEventListener("change", e => {
+document.addEventListener("change", async e => {
   const t = e.target;
+  if (t.dataset.answers) {
+    const out = await run(() => api("set_answers", { learning_id: +t.dataset.answers, by: S.me, question_id: +t.value || null }));
+    if (out) { toast(t.value ? "Now answers that sub-question." : "No longer answers a sub-question."); await reload(); }
+    return;
+  }
   if (t.dataset.bdlevel != null && S.bd?.pieces) { S.bd.pieces[+t.dataset.bdlevel].level = t.value; bdPreview(true); }
   if (t.dataset.bdtext != null && S.bd?.pieces) bdPreview(true);
 });

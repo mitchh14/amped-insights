@@ -2,7 +2,7 @@
 
 This page shows how research moves through ANCHOR, who does what, and how a team sets it up. The words are defined in [GLOSSARY.md](GLOSSARY.md). The backlog lives in [GitHub issues](https://github.com/mitchh14/amped-insights/issues), with the live roadmap in [#47](https://github.com/mitchh14/amped-insights/issues/47).
 
-**Current focus.** The app today is the workbench: the Learn and Review parts of this loop, where blocks are built up from a base of context and checked one by one. See [EXPERIENCE.md](EXPERIENCE.md). Plan, Decide, and Loop back below are the wider vision. The core supports them, and the app shows them as coming later.
+**Current focus.** The app today is the workbench: the Plan, Learn, and Review parts of this loop. A plan breaks the question into sub-questions, blocks are built up from a base of context and checked one by one, and each sub-question shows what other workspaces already know. See [EXPERIENCE.md](EXPERIENCE.md). Plan, Decide, and Loop back below are the wider vision. The core supports them, and the app shows them as coming later.
 
 Two ideas shape everything below:
 
@@ -52,7 +52,7 @@ flowchart LR
 | Mode | Main user | What happens |
 |---|---|---|
 | Home | Everyone | One next step, what changed for you, and moments when your work mattered |
-| Plan | Researcher, PwDR | Start a study with its question and decision; details are asked for by stage |
+| Plan | Researcher, PwDR | Start a workspace with its question and decision, then break it into sub-questions; see what is already known |
 | Learn | Everyone | Add observations, findings, and insights, alone or with AI; promote one level up |
 | Review | Everyone; SMEs weigh most | Confirm your AI drafts, ask for review, approve, ask for changes, or disagree, and revise |
 | Decide | Stakeholder | Log a decision and what it relied on; say what happened later |

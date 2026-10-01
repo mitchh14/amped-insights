@@ -202,7 +202,7 @@ Once connected, look in your AI tool's prompt picker for ANCHOR's prompts:
 | Mode | Prompt |
 |---|---|
 | Home | Get started with ANCHOR (what changed, and your next step) |
-| Plan | Plan a study |
+| Plan | Plan a study, Plan the analysis (sub-questions and what is already known) |
 | Learn | Synthesize my notes, Break down AI text, Shape an insight |
 | Find | Check before I claim |
 | Review | Review my queue, Ask for review |

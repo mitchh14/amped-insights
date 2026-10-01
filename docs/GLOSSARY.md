@@ -9,7 +9,10 @@ The rule: each thing gets one word, and each word means one thing.
 | Word | Means |
 |---|---|
 | **Workspace** | One piece of analysis: the question, the decision it serves, its base, and its blocks. |
-| **Base** | What every block rests on. It has four parts: question and decision, context, method and approach, and notes. |
+| **Base** | What every block rests on. It has four parts: the plan, context, method and approach, and notes. |
+| **Plan** | The question, the decision it serves, and a few sub-questions. |
+| **Sub-question** | Something we need to know to make the decision. It can say what we expect to find. A finding or insight says which sub-question it **answers**. |
+| **Already known** | Checked blocks from other workspaces that speak to a sub-question. |
 | **Source** | One piece of context in a workspace: a note, a quote, data, a query, a link, file text, or pasted AI text. |
 | **Package** | The insights a workspace shares together, in order. |
 
@@ -28,6 +31,14 @@ The rule: each thing gets one word, and each word means one thing.
 Two questions tell the levels apart. Does it read into what we saw? If not, it is an observation. Does it say why it matters to us? If so, it is an insight. Anything in between is a finding.
 
 Level says how far a block goes, not how far to trust it.
+
+### How far a sub-question has got
+
+| State | Means |
+|---|---|
+| **Open** | Nothing answers it yet. |
+| **In progress** | Findings or insights answer it, but no insight that answers it is checked by someone other than its owner. |
+| **Answered** | An insight that answers it is Checked by peers or Checked by an SME. |
 
 ### Built on
 
@@ -79,6 +90,7 @@ In the app, how full a block looks says how far it has been checked: hollow, the
 | **Connect** | anyone | Pick blocks and build the next level from them. |
 | **Break down** | anyone | Take a long piece of AI text apart into blocks, one claim each. |
 | **Add to package** | anyone | Put an insight in the workspace's package. |
+| **Plan** | anyone | Add, change, or remove the sub-questions, and say which one a finding or insight answers. |
 
 **How I checked:** **Read the evidence**, **Checked the source data**, **Reran it**, **Expert judgment**. Teams can change these.
 
@@ -105,6 +117,7 @@ The code keeps some older names. This is how they map.
 | In the app and docs | In the code |
 |---|---|
 | Workspace | study (`start_study`, `get_workspace`) |
+| Sub-question | question (`add_question`, `question_id`) |
 | Block | learning |
 | Built on (blocks) | evidence |
 | Check, by the owner of a draft | confirm |
