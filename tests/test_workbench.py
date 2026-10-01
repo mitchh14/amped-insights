@@ -177,7 +177,8 @@ def test_break_down_preview_then_add_what_was_kept(ws):
 def test_workspace_base_and_package(ws):
     s, sid = ws
     w = s.get_workspace(sid)
-    assert [p["ok"] for p in w["base"]] == [True, False, False, False]
+    assert [p["ok"] for p in w["base"]] == [False, False, False, False]
+    s.add_question(sid, "Lee", "Where in checkout do shoppers stop?")
     s.update_study(sid, "Lee", method="Funnel and interviews", notes="Excludes app traffic")
     for t in ("A", "B"):
         s.add_source(sid, "Lee", t, "text")

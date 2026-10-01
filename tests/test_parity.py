@@ -106,3 +106,17 @@ def test_ai_tools_add_blocks_with_confidence(server):
     assert _call(server, "check", learning_id=out["ids"][0])["learning"]["check"]["state"] == "checked_by_owner"
     text = asyncio.run(server.mcp.get_prompt("break_down_text", {"text": "Users hate forms.", "study_id": str(sid)}))
     assert "add_blocks" in text.messages[0].content.text
+
+
+def test_ai_tools_plan_the_analysis(server):
+    _call(server, "set_identity", name="Ana")
+    sid = _call(server, "start_study", question="Why do trials churn?", decision="Fund onboarding")["study"]["id"]
+    q = _call(server, "add_question", study_id=sid, text="Where in setup do trial users get stuck?")["question"]["id"]
+    out = _call(server, "add", statement="Trial users get stuck on setup", level="finding", study_id=sid,
+                question_id=q, origin="person_with_ai")
+    assert out["learning"]["answers"]["id"] == q
+    plan = _call(server, "get_workspace", study_id=sid)["plan"]
+    assert plan[0]["state"] == "in_progress" and "already_known" in plan[0]
+    assert "blocks" in _call(server, "already_known", question_id=q)
+    text = asyncio.run(server.mcp.get_prompt("plan_analysis", {"study_id": str(sid)}))
+    assert "add_question" in text.messages[0].content.text

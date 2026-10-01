@@ -21,6 +21,7 @@ ACTIONS = (
     "link", "check_conflict", "working_on", "follow", "mark_seen",
     "log_decision", "update_decision",
     "add_source", "add_blocks", "break_down", "check", "set_package",
+    "add_question", "update_question", "remove_question", "set_answers",
 )
 
 # GET /api/<route> maps onto a core read. {x} is a path value passed first;
@@ -32,6 +33,7 @@ READS = (
     ("studies", "list_studies"),
     ("studies/{id}", "get_study"),
     ("workspaces/{id}", "get_workspace"),
+    ("questions/{id}/known", "already_known"),
     ("needs-check", "needs_check"),
     ("decisions", "list_decisions"),
     ("decisions/{id}", "get_decision"),

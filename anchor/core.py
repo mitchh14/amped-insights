@@ -49,6 +49,12 @@ CONFIDENCE = ("low", "medium", "high")
 # What a piece of context in a workspace is. ai_text is pasted AI output, kept
 # whole so the blocks taken from it can point back to it.
 SOURCE_KINDS = ("note", "quote", "data", "query", "link", "file", "ai_text")
+# The plan: how far each sub-question has got, worked out from its blocks.
+# Answered means an insight that answers it is checked by someone other than
+# its owner. Only findings and insights answer; observations sit under them.
+PLAN_LABEL = {"open": "Open", "in_progress": "In progress", "answered": "Answered"}
+ANSWER_LEVELS = ("finding", "insight")
+PLAN_SIZE = 5  # a nudge, never a limit
 
 # One trust state per learning. When more than one could apply, the first in
 # TRUST_ORDER wins.
@@ -104,6 +110,7 @@ CREATE TABLE IF NOT EXISTS learnings (
     why            TEXT,                         -- the AI's one line reason
     assumes        TEXT NOT NULL DEFAULT '[]',  -- JSON list of what it takes as given
     study_id       INTEGER REFERENCES studies(id),
+    question_id    INTEGER REFERENCES questions(id),  -- the sub-question a finding or insight answers
     promoted_from  INTEGER REFERENCES learnings(id),
     revises        INTEGER REFERENCES learnings(id),
     created_at     TEXT NOT NULL,
@@ -204,6 +211,18 @@ CREATE TABLE IF NOT EXISTS studies (
     from_decision_id  INTEGER,
     from_query        TEXT,
     created_at        TEXT NOT NULL
+);
+
+-- The plan: sub-questions a workspace needs answered to make its decision.
+-- Findings and insights say which one they answer.
+CREATE TABLE IF NOT EXISTS questions (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    study_id  INTEGER NOT NULL REFERENCES studies(id),
+    text      TEXT NOT NULL,
+    expect    TEXT,  -- what we expect to find, if anything
+    position  INTEGER NOT NULL,
+    added_by  TEXT NOT NULL,
+    at        TEXT NOT NULL
 );
 
 -- Context collected in a workspace (a study): notes, quotes, data, queries,
@@ -467,7 +486,7 @@ class Store:
         with self._conn() as conn:
             old = conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'findings'").fetchone() or (
                 conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'learnings'").fetchone()
-                and not any(c[1] == "source_ids" for c in conn.execute("PRAGMA table_info(learnings)")))
+                and not any(c[1] == "question_id" for c in conn.execute("PRAGMA table_info(learnings)")))
             if old:
                 raise CoreError(f"{path} was made by an older ANCHOR. Move it aside and start a new database.")
             conn.executescript(SCHEMA)
@@ -716,7 +735,7 @@ class Store:
         what it rests on, and what the AI said about it."""
         return {"id": row["id"], "statement": row["statement"], "level": row["level"], "stage": row["stage"],
                 "origin": row["origin"], "owner": row["owner"], "study_id": row["study_id"],
-                "check": self._check(conn, row),
+                "question_id": row["question_id"], "check": self._check(conn, row),
                 **self._ai_said(row), **self._parts(conn, row)}
 
     @staticmethod
@@ -817,6 +836,7 @@ class Store:
             links[group].append({"learning": self._brief(conn, other), "by": link["by"], "at": link["at"],
                                  "note": link["note"]})
         srow = conn.execute("SELECT * FROM studies WHERE id = ?", (row["study_id"],)).fetchone()
+        qrow = conn.execute("SELECT id, text, expect FROM questions WHERE id = ?", (row["question_id"],)).fetchone()
         prow = conn.execute("SELECT * FROM learnings WHERE id = ?", (row["promoted_from"],)).fetchone()
         rrow = conn.execute("SELECT * FROM learnings WHERE id = ?", (row["revises"],)).fetchone()
         promoted_to = [self._brief(conn, r) for r in conn.execute(
@@ -854,6 +874,7 @@ class Store:
                 "SELECT s.id, s.kind, s.title, s.body, s.url FROM sources s, json_each(?) j WHERE s.id = j.value",
                 (row["source_ids"],))],
             "study": {k: srow[k] for k in ("id", "question", "decision", "status")} if srow else None,
+            "answers": dict(qrow) if qrow else None,
             "evidence_ids": evidence_ids,
             "evidence": evidence,
             "supports": supports,
@@ -1022,6 +1043,16 @@ class Store:
             return f"{a} added the source \"{d.get('title')}\" to {study}"
         if kind == "package_set":
             return f"{a} set the package for {study}"
+        if kind == "question_added":
+            return f"{a} added the sub-question \"{_short(d.get('text'))}\" to {study}"
+        if kind == "question_changed":
+            return f"{a} changed the sub-question \"{_short(d.get('text'))}\" in {study}"
+        if kind == "question_removed":
+            return f"{a} removed the sub-question \"{_short(d.get('text'))}\" from {study}"
+        if kind == "answers_set":
+            if d.get("question"):
+                return f"{a} said {ref} answers \"{_short(d['question'])}\""
+            return f"{a} said {ref} no longer answers a sub-question"
         if kind == "working_on":
             return f"{a} is working on {ref}" if d.get("on") else f"{a} stopped working on {ref}"
         if kind == "followed":
@@ -1116,7 +1147,7 @@ class Store:
         return {"source_ids": ids, "confidence": confidence, "why": _clean(why), "assumes": assumes}
 
     def _insert(self, conn, statement, level, owner, evidence, study_id, origin, promoted_from=None,
-                revises=None, said: dict[str, Any] | None = None, **extra) -> int:
+                revises=None, said: dict[str, Any] | None = None, question_id=None, **extra) -> int:
         if origin not in ORIGINS:
             raise CoreError(f"origin must be one of {ORIGINS}")
         for e in evidence:
@@ -1124,15 +1155,20 @@ class Store:
         if study_id is not None:
             study_id = self._study_row(conn, int(study_id))["id"]
         said = said or self._said(conn, study_id)
+        question_id = self._answers(conn, level, study_id, question_id)
         stage = "shared" if origin == "person" else "draft"
         cur = conn.execute(
             "INSERT INTO learnings (statement, level, stage, origin, owner, evidence, source_ids, confidence, why, "
-            "assumes, study_id, promoted_from, revises, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "assumes, study_id, question_id, promoted_from, revises, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (statement, level, stage, origin, owner, json.dumps(evidence), json.dumps(said["source_ids"]),
-             said["confidence"], said["why"], json.dumps(said["assumes"]), study_id, promoted_from, revises, _now()),
+             said["confidence"], said["why"], json.dumps(said["assumes"]), study_id, question_id, promoted_from,
+             revises, _now()),
         )
         lid = cur.lastrowid
         detail = {"level": level, "origin": origin, "evidence": evidence, **extra}
+        if question_id:
+            detail["answers"] = question_id
         if promoted_from:
             detail["promoted_from"] = promoted_from
         if revises:
@@ -1163,6 +1199,7 @@ class Store:
         confidence: str | None = None,
         why: str | None = None,
         assumes: list[str] | None = None,
+        question_id: int | None = None,
     ) -> dict[str, Any]:
         """Write down a block (a learning), optionally inside a workspace (a study).
 
@@ -1171,8 +1208,9 @@ class Store:
         are the workspace sources it was taken from; evidence is the blocks it
         is built on. An AI that made it says how confident it is (low, medium,
         high), why, and what it assumes. That never counts as a check. A
-        conflict check runs at once, so contradictions surface on entry. It
-        never blocks.
+        finding or insight can say which of the workspace's sub-questions it
+        answers (question_id). A conflict check runs at once, so contradictions
+        surface on entry. It never blocks.
         """
         statement = self._require(statement, "statement")
         if level not in LEVELS:
@@ -1182,7 +1220,8 @@ class Store:
         with self._conn() as conn:
             owner = self._person(conn, owner, "owner")
             said = self._said(conn, study_id, source_ids, confidence, why, assumes)
-            lid = self._insert(conn, statement, level, owner, evidence, study_id, origin, said=said)
+            lid = self._insert(conn, statement, level, owner, evidence, study_id, origin, said=said,
+                               question_id=question_id)
         if level == "observation" and not said["source_ids"] and study_id is not None:
             warnings.append("this observation cites no source, so it rests on nothing yet")
         if level != "observation" and not evidence:
@@ -1248,7 +1287,8 @@ class Store:
             if row["level"] != "observation" and not json.loads(row["evidence"]):
                 warnings.append(f"#{learning_id} has no evidence, so this rests on it alone")
             new = (statement or "").strip() or row["statement"]
-            lid = self._insert(conn, new, to, by, [learning_id], row["study_id"], origin, promoted_from=learning_id)
+            lid = self._insert(conn, new, to, by, [learning_id], row["study_id"], origin, promoted_from=learning_id,
+                               question_id=row["question_id"])
             self._log(conn, learning_id, "promoted", by, row["study_id"], to=lid, to_level=to, note=_clean(note))
             self._built_on(conn, by, learning_id, "promoted")
         return self._created(lid, warnings)
@@ -1281,7 +1321,7 @@ class Store:
             draft = origin != "person"
             lid = self._insert(conn, statement, row["level"], by, json.loads(row["evidence"]), row["study_id"], origin,
                                said=self._said(conn, row["study_id"], json.loads(row["source_ids"])),
-                               promoted_from=row["promoted_from"], revises=learning_id,
+                               promoted_from=row["promoted_from"], revises=learning_id, question_id=row["question_id"],
                                **({"ask_again": asked} if draft and asked else {}))
             conn.execute("UPDATE learnings SET stage = 'replaced' WHERE id = ?", (learning_id,))
             self._log(conn, learning_id, "revised", by, row["study_id"], to=lid, before=row["statement"],
@@ -1581,6 +1621,7 @@ class Store:
                     counts[self._check(conn, r2)["state"]] += 1
                 study["counts"] = counts
                 study["package"] = json.loads(r["package"])
+                study["plan"] = self._plan_progress(self._plan(conn, r["id"], known=False))
                 out.append(study)
         return out
 
@@ -1673,10 +1714,14 @@ class Store:
     # -- the workbench ----------------------------------------------------
 
     def _base(self, conn, study: sqlite3.Row) -> list[dict[str, Any]]:
-        """The four parts every block rests on, and whether each is in place."""
+        """The four parts every block rests on, and whether each is in place.
+        The plan is in place once the question, the decision, and at least one
+        sub-question are set."""
         n = conn.execute("SELECT COUNT(*) FROM sources WHERE study_id = ?", (study["id"],)).fetchone()[0]
+        q = conn.execute("SELECT COUNT(*) FROM questions WHERE study_id = ?", (study["id"],)).fetchone()[0]
         return [
-            {"key": "question", "label": "Question and decision", "ok": bool(study["question"] and study["decision"])},
+            {"key": "plan", "label": "The plan", "count": q,
+             "ok": bool(study["question"] and study["decision"] and q)},
             {"key": "context", "label": "Context", "ok": n >= 2, "count": n},
             {"key": "method", "label": "Method and approach", "ok": bool(study["method"])},
             {"key": "notes", "label": "Notes", "ok": bool(study["notes"])},
@@ -1684,22 +1729,178 @@ class Store:
 
     def get_workspace(self, study_id: int) -> dict[str, Any]:
         """Everything the workbench draws for one workspace: the question and
-        decision, the base (context, method, notes), the sources, every current
-        block with its check state and what it rests on, and the package."""
+        decision, the plan (sub-questions, how far each has got, and what other
+        workspaces already know), the base (context, method, notes), the
+        sources, every current block with its check state and what it rests
+        on, and the package."""
         with self._conn() as conn:
             row = self._study_row(conn, study_id)
             blocks = [self._block(conn, r) for r in conn.execute(
                 "SELECT * FROM learnings WHERE study_id = ? AND stage != 'replaced' ORDER BY id", (study_id,))]
             sources = [dict(r) for r in conn.execute("SELECT * FROM sources WHERE study_id = ? ORDER BY id", (study_id,))]
             base = self._base(conn, row)
+            plan = self._plan(conn, row["id"])
         counts = {k: 0 for k in CHECK_LABEL}
         for b in blocks:
             counts[b["check"]["state"]] += 1
         live = {b["id"] for b in blocks}
         return {"id": row["id"], "question": row["question"], "decision": row["decision"], "method": row["method"],
                 "notes": row["notes"], "owner": row["owner"], "status": row["status"], "base": base,
-                "sources": sources, "blocks": blocks, "counts": counts,
+                "plan": plan, "sources": sources, "blocks": blocks, "counts": counts,
                 "package": [i for i in json.loads(row["package"]) if i in live]}
+
+    # -- the plan ---------------------------------------------------------
+
+    def _question_row(self, conn, question_id: int) -> sqlite3.Row:
+        row = conn.execute("SELECT * FROM questions WHERE id = ?", (int(question_id),)).fetchone()
+        if row is None:
+            raise CoreError(f"sub-question {question_id} does not exist")
+        return row
+
+    def _answers(self, conn, level: str, study_id, question_id) -> int | None:
+        """Check that a block can answer this sub-question: it is a finding or
+        insight in the same workspace."""
+        if question_id in (None, ""):
+            return None
+        q = self._question_row(conn, question_id)
+        if level not in ANSWER_LEVELS:
+            raise CoreError("only a finding or an insight answers a sub-question")
+        if study_id is None or int(study_id) != q["study_id"]:
+            raise CoreError(f"sub-question {q['id']} belongs to another workspace")
+        return q["id"]
+
+    def _known(self, conn, text: str, study_id: int, limit: int = 3) -> list[dict[str, Any]]:
+        """Blocks from other workspaces that speak to a sub-question, most
+        checked first. Drafts stay out until their owner has checked them."""
+        rank = {"checked_by_sme": 0, "checked_by_peers": 1, "checked_by_owner": 2}
+        found = []
+        for row in conn.execute("SELECT * FROM learnings WHERE stage = 'shared' "
+                                "AND (study_id IS NULL OR study_id != ?)", (study_id,)).fetchall():
+            score, shared = similarity(text, row["statement"])
+            if score < SIMILARITY_THRESHOLD or len(shared) < MIN_SHARED_WORDS:
+                continue
+            check = self._check(conn, row)
+            srow = conn.execute("SELECT id, question FROM studies WHERE id = ?", (row["study_id"],)).fetchone()
+            found.append({**self._brief(conn, row), "check": check, "similarity": round(score, 2),
+                          "workspace": dict(srow) if srow else None})
+        found.sort(key=lambda b: (rank.get(b["check"]["state"], 3), -b["similarity"], -b["id"]))
+        return found[:limit]
+
+    def _plan(self, conn, study_id: int, known: bool = True) -> list[dict[str, Any]]:
+        """Each sub-question, the current blocks that answer it, and its state."""
+        out = []
+        for q in conn.execute("SELECT * FROM questions WHERE study_id = ? ORDER BY position, id", (study_id,)):
+            rows = conn.execute("SELECT * FROM learnings WHERE question_id = ? AND stage != 'replaced' ORDER BY id",
+                                (q["id"],)).fetchall()
+            checks = {r["id"]: self._check(conn, r)["state"] for r in rows}
+            answered_by = [r["id"] for r in rows if r["level"] == "insight" and checks[r["id"]] in CHECKED]
+            state = "answered" if answered_by else "in_progress" if rows else "open"
+            item = {"id": q["id"], "text": q["text"], "expect": q["expect"], "position": q["position"],
+                    "added_by": q["added_by"], "state": state, "label": PLAN_LABEL[state],
+                    "block_ids": [r["id"] for r in rows], "answered_by": answered_by}
+            if known:
+                item["already_known"] = self._known(conn, q["text"], study_id)
+            out.append(item)
+        return out
+
+    @staticmethod
+    def _plan_progress(plan: list[dict[str, Any]]) -> dict[str, Any]:
+        done = sum(q["state"] == "answered" for q in plan)
+        return {"total": len(plan), "answered": done,
+                "label": f"{done} of {len(plan)} answered" if plan else "No sub-questions yet"}
+
+    def _plan_result(self, conn, study_id: int, **extra) -> dict[str, Any]:
+        plan = self._plan(conn, study_id)
+        warnings = extra.pop("warnings", [])
+        if len(plan) > PLAN_SIZE:
+            warnings.append(f"the plan has {len(plan)} sub-questions; a few sharp ones are easier to answer")
+        return {**extra, "plan": plan, "progress": self._plan_progress(plan), "warnings": warnings}
+
+    def add_question(self, study_id: int, by: str, text: str, expect: str | None = None) -> dict[str, Any]:
+        """Add a sub-question to a workspace's plan: something we need to know
+        to make the decision. expect says what we think we will find, if
+        anything. The result shows the plan, with what other workspaces
+        already know about each sub-question."""
+        text = self._require(text, "text")
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            self._study_row(conn, study_id)
+            pos = conn.execute("SELECT COALESCE(MAX(position), 0) + 1 FROM questions WHERE study_id = ?",
+                               (study_id,)).fetchone()[0]
+            cur = conn.execute("INSERT INTO questions (study_id, text, expect, position, added_by, at) "
+                               "VALUES (?, ?, ?, ?, ?, ?)", (study_id, text, _clean(expect), pos, by, _now()))
+            self._log(conn, None, "question_added", by, study_id, question_id=cur.lastrowid, text=text)
+            question = dict(self._question_row(conn, cur.lastrowid))
+            return self._plan_result(conn, study_id, question=question)
+
+    def update_question(self, question_id: int, by: str, text: str | None = None, expect: str | None = None,
+                        position: int | None = None) -> dict[str, Any]:
+        """Change a sub-question's wording, what we expect, or its place in the
+        plan (position, starting at 1). The earlier wording stays in the history."""
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            q = self._question_row(conn, question_id)
+            changes = {}
+            if text is not None:
+                changes["text"] = self._require(text, "text")
+            if expect is not None:
+                changes["expect"] = _clean(expect)
+            changes = {k: v for k, v in changes.items() if v != q[k]}
+            if changes:
+                conn.execute(f"UPDATE questions SET {', '.join(f'{k} = ?' for k in changes)} WHERE id = ?",
+                             (*changes.values(), q["id"]))
+            if position is not None:
+                ids = [r[0] for r in conn.execute("SELECT id FROM questions WHERE study_id = ? ORDER BY position, id",
+                                                  (q["study_id"],))]
+                ids.remove(q["id"])
+                ids.insert(max(0, min(int(position) - 1, len(ids))), q["id"])
+                for i, qid in enumerate(ids, 1):
+                    conn.execute("UPDATE questions SET position = ? WHERE id = ?", (i, qid))
+                changes["position"] = position
+            if changes:
+                self._log(conn, None, "question_changed", by, q["study_id"], question_id=q["id"],
+                          text=changes.get("text", q["text"]), changed=sorted(changes),
+                          previous={k: q[k] for k in changes})
+            question = dict(self._question_row(conn, q["id"]))
+            return self._plan_result(conn, q["study_id"], question=question)
+
+    def remove_question(self, question_id: int, by: str) -> dict[str, Any]:
+        """Take a sub-question out of the plan. Blocks that answered it stay,
+        and no longer answer anything. The history keeps what it said."""
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            q = self._question_row(conn, question_id)
+            untagged = [r[0] for r in conn.execute("SELECT id FROM learnings WHERE question_id = ?", (q["id"],))]
+            conn.execute("UPDATE learnings SET question_id = NULL WHERE question_id = ?", (q["id"],))
+            conn.execute("DELETE FROM questions WHERE id = ?", (q["id"],))
+            self._log(conn, None, "question_removed", by, q["study_id"], question_id=q["id"], text=q["text"],
+                      expect=q["expect"], untagged=untagged)
+            return self._plan_result(conn, q["study_id"], removed=q["id"], untagged=untagged)
+
+    def set_answers(self, learning_id: int, by: str, question_id: int | None = None) -> dict[str, Any]:
+        """Say which sub-question a finding or insight answers, or none (leave
+        question_id out). Anyone can. It is not a check, so the block's check
+        state does not change."""
+        with self._conn() as conn:
+            by = self._person(conn, by, "by")
+            row = self._row(conn, learning_id)
+            if row["stage"] == "replaced":
+                raise CoreError(f"#{learning_id} was replaced by a newer version; use that one")
+            qid = self._answers(conn, row["level"], row["study_id"], question_id)
+            if qid != row["question_id"]:
+                conn.execute("UPDATE learnings SET question_id = ? WHERE id = ?", (qid, learning_id))
+                text = self._question_row(conn, qid)["text"] if qid else None
+                self._log(conn, learning_id, "answers_set", by, row["study_id"], question_id=qid, question=text,
+                          previous=row["question_id"])
+            return self._plan_result(conn, row["study_id"], learning=self._block(conn, self._row(conn, learning_id)))
+
+    def already_known(self, question_id: int, limit: int = 3) -> dict[str, Any]:
+        """Blocks from other workspaces that already speak to a sub-question,
+        most checked first, matched on shared words. Read only: it shows what
+        the team knows before anyone builds something new."""
+        with self._conn() as conn:
+            q = self._question_row(conn, question_id)
+            return {"question": dict(q), "blocks": self._known(conn, q["text"], q["study_id"], int(limit))}
 
     def needs_check(self, who: str, study_id: int | None = None) -> dict[str, Any]:
         """Blocks waiting on a person's check, most pressing first: their AI
@@ -1791,7 +1992,8 @@ class Store:
         """Add many blocks to a workspace at once, the way an AI tool breaks a
         piece of work into parts. Each item has a level and statement, and can
         have: ref (a name later items can build on), sources (source ids),
-        built_on (block ids or earlier refs), confidence, why, and assumes.
+        built_on (block ids or earlier refs), answers (a sub-question id, for a
+        finding or insight), confidence, why, and assumes.
         Everything made with AI arrives as a draft for its owner to check."""
         if not isinstance(blocks, list) or not blocks:
             raise CoreError("give at least one block")
@@ -1808,7 +2010,7 @@ class Store:
         for i, b in enumerate(blocks):
             built = [refs[x] if isinstance(x, str) and x in refs else int(x) for x in b.get("built_on") or []]
             out = self.add(b.get("statement"), b.get("level"), by, built, study_id, origin,
-                           b.get("sources"), b.get("confidence"), b.get("why"), b.get("assumes"))
+                           b.get("sources"), b.get("confidence"), b.get("why"), b.get("assumes"), b.get("answers"))
             refs[str(b.get("ref") or i + 1)] = out["learning"]["id"]
             made.append(out["learning"]["id"])
             warnings += [f"#{out['learning']['id']}: {w}" for w in out["warnings"] if "is a draft until" not in w]
