@@ -177,6 +177,7 @@ def add(
     confidence: str | None = None,
     why: str | None = None,
     assumes: list[str] | None = None,
+    question_id: int | None = None,
 ) -> dict[str, Any]:
     """Write down one block (a learning). level is observation, finding, or insight.
 
@@ -186,16 +187,19 @@ def add(
     of blocks it is built on; source_ids the workspace sources it came from.
     study_id places it in a workspace. When you made it, give confidence
     (low, medium, high), why in one line, and assumes: what you took as given.
-    The response includes checked blocks that may conflict with it. owner
+    A finding or insight can say which sub-question of the plan it answers
+    (question_id). The response includes checked blocks that may conflict with it. owner
     defaults to this session's identity. To add several at once, use add_blocks.
     """
     return _call(lambda: store.add(statement, level, _who(owner), evidence, study_id, origin,
-                                   source_ids, confidence, why, assumes))
+                                   source_ids, confidence, why, assumes, question_id))
 
 
 @mcp.tool()
 def get_workspace(study_id: int) -> dict[str, Any]:
-    """One workspace: its question, the decision it serves, its base (context,
+    """One workspace: its question, the decision it serves, the plan
+    (sub-questions, whether each is Open, In progress, or Answered, and
+    checked blocks other workspaces already have on each), its base (context,
     method, notes), every source with its full text, every current block with
     its check state and what it rests on, and the package. Read this before
     making blocks, so you work from the sources."""
@@ -215,6 +219,7 @@ def add_blocks(study_id: int, blocks: list[dict[str, Any]], origin: str = "perso
 
     Each block: {"ref": "o1", "level": "observation", "statement": "...",
     "sources": [source ids], "built_on": [block ids or earlier refs],
+    "answers": sub-question id (findings and insights only),
     "confidence": "low|medium|high", "why": "one line", "assumes": ["..."]}.
     Put observations first (each citing a source), then findings built on
     them, then insights built on findings. Keep each statement to one claim.
@@ -241,6 +246,41 @@ def check(learning_id: int, verdict: str = "looks_right", how: str | None = None
     person's own verdict, never your own. For the owner of an AI draft this
     confirms it (pass statement if they changed the wording)."""
     return _call(lambda: store.check(learning_id, _who(None), verdict, how, note, statement))
+
+
+@mcp.tool()
+def add_question(study_id: int, text: str, expect: str | None = None) -> dict[str, Any]:
+    """Add a sub-question to a workspace's plan: something we need to know to
+    make the decision. expect is what we think we will find, if anything.
+    Keep the plan to a few sharp sub-questions. Only add the ones the person
+    agreed to."""
+    return _call(lambda: store.add_question(study_id, _who(None), text, expect))
+
+
+@mcp.tool()
+def update_question(question_id: int, text: str | None = None, expect: str | None = None,
+                    position: int | None = None) -> dict[str, Any]:
+    """Change a sub-question's wording, what we expect, or its place in the plan (1 is first)."""
+    return _call(lambda: store.update_question(question_id, _who(None), text, expect, position))
+
+
+@mcp.tool()
+def remove_question(question_id: int) -> dict[str, Any]:
+    """Take a sub-question out of the plan. Blocks that answered it stay."""
+    return _call(lambda: store.remove_question(question_id, _who(None)))
+
+
+@mcp.tool()
+def set_answers(learning_id: int, question_id: int | None = None) -> dict[str, Any]:
+    """Say which sub-question a finding or insight answers, or none. It is not a check."""
+    return _call(lambda: store.set_answers(learning_id, _who(None), question_id))
+
+
+@mcp.tool()
+def already_known(question_id: int, limit: int = 3) -> dict[str, Any]:
+    """Blocks from other workspaces that already speak to a sub-question, most
+    checked first. Use their check state when you mention them."""
+    return _call(store.already_known, question_id, limit)
 
 
 @mcp.tool()
@@ -501,6 +541,25 @@ def prompt_plan_study(question: str, decision: str = "") -> str:
         "is useful, and the method and sample. Ask me about anything unclear.\n"
         "4. Once I agree, call start_study, then update_study with method, sample, and status='running' "
         "when I am ready to run it.",
+    )
+
+
+@mcp.prompt(name="plan_analysis", title="Plan the analysis")
+def prompt_plan_analysis(study_id: str) -> str:
+    """Break a workspace's question into a few sub-questions, and see what is already known about each."""
+    return _prompt(
+        f"Help me plan the analysis in workspace {study_id}: the few sub-questions we need answered to make "
+        "the decision.",
+        f"1. Call get_workspace(study_id={study_id}). Read the question, the decision, the sources, and any plan "
+        "that is already there.\n"
+        "2. Draft 2 to 5 sub-questions. Each one should be something the decision turns on, small enough that "
+        "a few findings could answer it. For each, say what we expect to find, if anything, and why it matters "
+        "to the decision.\n"
+        "3. For each draft, query it and say what other workspaces already know, with each block's check state. "
+        "If something checked already answers it, say so: we may not need to work on that one.\n"
+        "4. Show me the list. Let me keep, change, or drop each one. Then call add_question for the ones I keep.\n"
+        "5. As blocks get made, pass answers (add_blocks) or question_id (add) on findings and insights, so the "
+        "plan shows what is answered.",
     )
 
 

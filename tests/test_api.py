@@ -37,7 +37,7 @@ def test_handle_json_round_trip(store):
 
 def test_seed_shows_every_check_state(store):
     seed(store)
-    ws = handle(store, "GET", "/api/workspaces/1")[1]
+    ws = handle(store, "GET", "/api/workspaces/2")[1]  # 1 is the earlier work Already known draws on
     assert {b["check"]["state"] for b in ws["blocks"]} == {
         "needs_check", "checked_by_owner", "checked_by_peers", "checked_by_sme", "needs_changes", "disagreement"}
     assert {b["level"] for b in ws["blocks"]} == {"observation", "finding", "insight"}
@@ -46,3 +46,5 @@ def test_seed_shows_every_check_state(store):
     assert any(b["unchecked_parts"] for b in ws["blocks"]) and any(b["confidence"] == "low" for b in ws["blocks"])
     assert handle(store, "GET", "/api/needs-check?who=Jordan")[1]["items"][0]["reason"] == "Your AI draft to check"
     assert sorted(p["name"] for p in store.people() if p["sme"]) == ["Dana", "Sam"]
+    assert [q["state"] for q in ws["plan"]] == ["in_progress", "answered", "in_progress", "open"]
+    assert ws["plan"][3]["already_known"][0]["workspace"]["id"] == 1

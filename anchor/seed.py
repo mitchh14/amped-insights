@@ -7,6 +7,11 @@ blocks. Some are checked by owners, peers, or an SME; two AI drafts still wait
 for their owners; one observation needs changes; and one finding built on a
 single quote draws a disagreement. A checked insight sits in the package.
 
+The workspace has a plan: four sub-questions the decision turns on. One is
+answered, two are in progress, and one is still open, but an older workspace on
+how shoppers move between devices already has a checked finding that speaks
+to it.
+
 Used by scripts/seed.py and by the browser demo.
 """
 
@@ -46,9 +51,35 @@ SOURCES = {
 }
 
 
+# Sub-questions for the plan: what we need to know, and what we expect.
+PLAN = (
+    ("Which checkout step loses the most people on a phone?", "The address step"),
+    ("Would not typing an address change whether shoppers pay?", "Yes, by a lot"),
+    ("Do other payment options matter as much as the address form?", None),
+    ("How many mobile shoppers finish checkout on a laptop instead?", None),
+)
+
+
+def _earlier_work(s: Store) -> None:
+    """A finished workspace from last quarter, so Already known has something to show."""
+    ws = s.start_study("How do shoppers move between phone and laptop?", "Dana",
+                       decision="Whether to build carts that follow you across devices")["study"]["id"]
+    src = s.add_source(ws, "Dana", "Cross-device sessions, Q2", "Mobile checkouts left: 18,400\n"
+                       "Same account paid on a laptop within 24 hours: 4,700 (26%)", "query")["source"]["id"]
+    o = s.add("26 percent of shoppers who leave mobile checkout pay on a laptop within a day", "observation",
+              "Dana", study_id=ws, source_ids=[src])["learning"]["id"]
+    s.check(o, "Priya", how="reran", note="Same number from raw events")
+    f = s.add("About a quarter of shoppers who leave mobile checkout finish on a laptop instead", "finding",
+              "Dana", [o], ws)["learning"]["id"]
+    s.check(f, "Sam", how="evidence")
+    s.update_study(ws, "Dana", status="finished", learned="A quarter of mobile drop-off is not lost, just moved.")
+
+
 def seed(s: Store) -> None:
     for name, role in TEAM.items():
         s.set_person(name, "Lee", role=role, sme=name in SMES)
+
+    _earlier_work(s)
 
     ws = s.start_study("Why do mobile shoppers leave checkout before paying?", "Sam",
                        decision="Whether to fund address autofill in Q3")["study"]["id"]
@@ -57,10 +88,13 @@ def seed(s: Store) -> None:
                           "with recent mobile shoppers.")
     src = {key: s.add_source(ws, by, title, body, kind)["source"]["id"]
            for key, (kind, title, by, body) in SOURCES.items()}
+    where, typing, payment, _laptop = (s.add_question(ws, "Sam", text, expect)["question"]["id"]
+                                       for text, expect in PLAN)
 
-    def block(statement, level, owner, *, sources=(), on=(), ai=False, confidence=None, why=None, assumes=()):
+    def block(statement, level, owner, *, sources=(), on=(), ai=False, confidence=None, why=None, assumes=(),
+              answers=None):
         return s.add(statement, level, owner, list(on), ws, "ai_agent" if ai else "person",
-                     [src[k] for k in sources], confidence, why, list(assumes))["learning"]["id"]
+                     [src[k] for k in sources], confidence, why, list(assumes), answers)["learning"]["id"]
 
     # Observations: what we saw, each taken from a source.
     o1 = block("Mobile checkout conversion is 42 percent", "observation", "Priya", sources=["funnel"])
@@ -96,6 +130,7 @@ def seed(s: Store) -> None:
 
     # Findings: what the observations mean, built on them.
     f1 = block("Shoppers abandon checkout because forms are long", "finding", "Jordan", on=[o2, o3, o4], ai=True,
+               answers=where,
                confidence="medium", why="The funnel and the interviews point the same way",
                assumes=["The 8 people we interviewed are like most mobile shoppers"])
     s.check(f1, "Jordan", statement="Shoppers leave mobile checkout mainly because the address form is hard "
@@ -104,17 +139,19 @@ def seed(s: Store) -> None:
     s.check(f1, "Sam", how="evidence", note="Funnel and interviews agree")
 
     f3 = block("Adding Apple Pay would fix most mobile checkout drop-off", "finding", "Jordan", on=[o7], ai=True,
+               answers=payment,
                confidence="low", why="One shopper asked for it",
                assumes=["What one shopper wants, most shoppers want"])
     s.check(f3, "Jordan")
     s.check(f3, "Dana", "disagree", note="One quote cannot carry this. The funnel says the loss is at the address step.")
 
     f2 = block("Not having to type an address roughly doubles the chance a shopper pays", "finding", "Priya",
-               on=[o5, o6])
+               on=[o5, o6], answers=typing)
     s.check(f2, "Lee", how="evidence")
 
     # Insights: what it means for us and what to do.
-    i1 = block("Address autofill is likely our biggest mobile checkout win", "insight", "Jordan", on=[f1, f2])
+    i1 = block("Address autofill is likely our biggest mobile checkout win", "insight", "Jordan", on=[f1, f2],
+               answers=typing)
     s.check(i1, "Sam", how="judgment", note="Strong. Check the two open observations before the pitch.")
 
     block("Test autofill with returning shoppers first, where the gain is easiest to measure", "insight", "Priya",
