@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Workbench Cabinet</title>
+<style>
+  /* Workbench Cabinet: a desktop prototype. One workspace, two views (Build with
+     calm lines, and List), Break down in the same place, and a cabinet on the
+     right that always says where you are and holds the detail.
+     Layout: top bar across, the work on the left, the cabinet on the right.
+     Same colors and words as the app. Nothing here talks to the real core. */
+  :root {
+    --bg: #ECEFF3; --surface: #FFFFFF; --ink: #15202C; --muted: #5A6776; --line: #C4CDD8; --line-soft: #DCE2E9;
+    --accent: #2D5BD7; --accent-soft: #E3EAFB; --on-accent: #FFFFFF;
+    --fill-owner: #DDE6F7; --fill-peers: #A9C1F2; --fill-sme: #2D5BD7; --on-sme: #FFFFFF;
+    --amber: #A8660C; --amber-bg: #FFF1D9; --red: #C23B32; --red-bg: #FDE5E2; --green: #1F7A4D; --green-bg: #DDF3E6;
+    --glow: #F2B33D; --stone: #DFE4EA;
+    --shadow: 0 1px 0 rgba(21,32,44,.08), 0 2px 6px rgba(21,32,44,.06);
+    --lift: 0 10px 30px rgba(21,32,44,.16);
+    --dw: 400px;
+    --f-body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E141B; --surface: #17202A; --ink: #E4EAF1; --muted: #93A1B1; --line: #2D3947; --line-soft: #222C38;
+      --accent: #6F97FF; --accent-soft: #1C2A44; --on-accent: #0E141B;
+      --fill-owner: #1F2E45; --fill-peers: #2B4A82; --fill-sme: #4C7DF0; --on-sme: #FFFFFF;
+      --amber: #E6A646; --amber-bg: #3A2A12; --red: #F0766C; --red-bg: #3D1C1A; --green: #5CC98E; --green-bg: #12301F;
+      --glow: #F2B33D; --stone: #2B3643;
+      --shadow: 0 1px 0 rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3); --lift: 0 12px 34px rgba(0,0,0,.5);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E141B; --surface: #17202A; --ink: #E4EAF1; --muted: #93A1B1; --line: #2D3947; --line-soft: #222C38;
+    --accent: #6F97FF; --accent-soft: #1C2A44; --on-accent: #0E141B;
+    --fill-owner: #1F2E45; --fill-peers: #2B4A82; --fill-sme: #4C7DF0; --on-sme: #FFFFFF;
+    --amber: #E6A646; --amber-bg: #3A2A12; --red: #F0766C; --red-bg: #3D1C1A; --green: #5CC98E; --green-bg: #12301F;
+    --glow: #F2B33D; --stone: #2B3643;
+    --shadow: 0 1px 0 rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.3); --lift: 0 12px 34px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--f-body); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+  .warn { color: var(--amber); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .grow { flex: 1; }
+  mark { background: color-mix(in srgb, var(--glow) 40%, transparent); color: inherit; padding: 0 2px; border-radius: 2px; }
+
+  /* App frame: bar across, work left, cabinet right */
+  .app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) var(--dw); transition: grid-template-columns .2s ease; }
+  .app.wide { --dw: 580px; }
+  .bar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 9px 20px; border-bottom: 1px solid var(--line); background: var(--bg); }
+  .brand { font-weight: 800; letter-spacing: .04em; }
+  .crumbs { font-size: 13px; color: var(--muted); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .who { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .who select { padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); }
+  .work { overflow: auto; padding: 18px 20px 28px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+  .btn { border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 7px; box-shadow: var(--shadow); white-space: nowrap; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .btn.ghost { background: none; box-shadow: none; border-color: transparent; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .linkbtn { border: 0; background: none; color: var(--accent); padding: 0; font-weight: 500; text-align: left; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: none; padding: 6px 14px; font-size: 13px; }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  textarea, input[type="text"], select.fld { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); resize: vertical; }
+
+  /* Workspace head */
+  .head { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: flex-end; justify-content: space-between; }
+  .head h1 { font-size: 22px; line-height: 1.2; font-weight: 800; letter-spacing: -.01em; }
+  .head .for { color: var(--muted); font-size: 13px; }
+
+  /* Marks */
+  .shape { width: 11px; height: 11px; display: inline-block; border: 1.5px solid currentColor; flex: none; }
+  .shape.observation { border-radius: 1px; }
+  .shape.finding { border-radius: 50%; border-style: dashed; }
+  .shape.insight { transform: rotate(45deg) scale(.85); }
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); background: var(--surface); }
+  .tag.t-needs_check { border-style: dashed; border-color: var(--muted); }
+  .tag.t-needs_changes { color: var(--amber); border-color: var(--amber); background: var(--amber-bg); }
+  .tag.t-disagreement { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+  .tag.t-nothing { color: var(--amber); border-color: var(--amber); background: transparent; }
+  .ai { font-family: var(--f-mono); font-size: 9.5px; border: 1px solid currentColor; border-radius: 3px; padding: 0 3px; opacity: .7; line-height: 1.5; }
+  .sq { width: 12px; height: 8px; border-radius: 2px; border: 1px solid var(--line); display: inline-block; }
+  .s-needs_check { background: transparent; border: 1.5px dashed var(--muted); }
+  .s-checked_by_owner { background: var(--fill-owner); }
+  .s-checked_by_peers { background: var(--fill-peers); }
+  .s-checked_by_sme { background: var(--fill-sme); border-color: var(--fill-sme); }
+  .s-needs_changes { background: var(--amber-bg); border-color: var(--amber); }
+  .s-disagreement { background: var(--red-bg); border-color: var(--red); }
+
+  /* Build: calm lines */
+  .canvas-wrap { overflow: auto; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); position: relative; }
+  .canvas { position: relative; padding: 22px 22px 22px 124px; display: flex; flex-direction: column; gap: 44px; width: max-content; min-width: 100%; }
+  .canvas svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+  .lrow { display: flex; gap: 12px; justify-content: center; position: relative; }
+  .lrow .rl { position: absolute; left: -110px; top: 50%; transform: translateY(-50%); font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); width: 96px; }
+  .brick { width: 132px; border-radius: 7px; padding: 8px 9px; border: 1.5px solid color-mix(in srgb, var(--accent) 30%, var(--line)); font-size: 12px; line-height: 1.3; text-align: left; display: flex; flex-direction: column; gap: 5px; transition: opacity .15s, box-shadow .12s; color: var(--ink); position: relative; }
+  .brick.finding { width: 196px; }
+  .brick.insight { width: 236px; font-weight: 600; font-size: 13px; }
+  .brick.stone { width: 132px; background: var(--stone); border: 1px solid var(--line); font-size: 11.5px; font-weight: 600; }
+  .brick .t { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .brick .m { display: flex; gap: 4px; align-items: center; min-height: 0; }
+  .brick .m:empty { display: none; }
+  .brick.s-checked_by_sme { color: var(--on-sme); }
+  .brick.glow { box-shadow: 0 0 0 2px var(--glow), 0 0 16px color-mix(in srgb, var(--glow) 45%, transparent); }
+  .brick.sel { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .brick.fresh::after { content: ""; position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .canvas.tracing .brick:not(.near) { opacity: .2; }
+  .wire { fill: none; stroke: var(--muted); stroke-width: 1.3; opacity: .28; }
+  .wire.weak { stroke: var(--amber); stroke-dasharray: 4 4; opacity: .55; }
+  .wire.src { stroke-dasharray: 2 3; opacity: .2; }
+  .wire.hot { stroke: var(--accent); stroke-width: 2.2; opacity: 1; stroke-dasharray: none; }
+  .wire.hot.weak { stroke: var(--amber); stroke-dasharray: 4 4; }
+  .canvas.tracing .wire:not(.hot) { opacity: .05; }
+  .canvas.traced-only .wire:not(.hot) { opacity: 0; }
+  .canvas-tools { position: sticky; left: 0; top: 0; z-index: 2; display: flex; justify-content: flex-end; gap: 10px; padding: 8px 12px 0; font-size: 12px; color: var(--muted); align-items: center; }
+  .canvas-tools .linkbtn[aria-pressed="true"] { color: var(--ink); font-weight: 700; }
+  .key { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); align-items: center; }
+
+  /* List */
+  .list { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .lgroup { display: flex; justify-content: space-between; padding: 12px 14px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .lgroup + .lrow2 { border-top: 0; }
+  .lrow2 { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 2px 12px; align-items: start; width: 100%; text-align: left; border: 0; border-top: 1px solid var(--line-soft); background: none; padding: 10px 14px; }
+  .lrow2 .shape { margin-top: 4px; }
+  .lrow2 .s { font-size: 13.5px; }
+  .lrow2 .m { grid-column: 2; font-size: 11.5px; color: var(--muted); }
+  .lrow2 .r { grid-row: 1; grid-column: 3; display: flex; gap: 6px; align-items: center; }
+  .lrow2:hover { background: var(--bg); }
+  .lrow2.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  details.lfold > summary { list-style: none; cursor: pointer; }
+  details.lfold > summary::-webkit-details-marker { display: none; }
+  details.lfold > summary .lgroup::before { content: "▸ "; }
+  details.lfold[open] > summary .lgroup::before { content: "▾ "; }
+
+  /* Break down */
+  .bd { display: flex; flex-direction: column; gap: 12px; max-width: 900px; }
+  .bd textarea.paste { min-height: 160px; font-size: 13px; background: var(--surface); }
+  .summary { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline; font-size: 13.5px; }
+  .summary b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .summary .warn b { color: var(--amber); }
+  .ftabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ftabs button { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 12px; font-size: 12.5px; }
+  .ftabs button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .bdrows { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .bdrow { display: grid; grid-template-columns: 124px minmax(0, 1fr) auto; gap: 6px 12px; padding: 11px 14px; border-top: 1px solid var(--line-soft); align-items: start; }
+  .bdrow:first-child { border-top: 0; }
+  .bdrow.on { background: var(--accent-soft); }
+  .bdrow textarea { padding: 6px 8px; font-size: 13.5px; background: var(--bg); }
+  .bdrow .flags { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); align-items: center; }
+  .bdrow .x { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 6px; }
+  .bdrow.removed { opacity: .45; }
+  .bdrow.removed textarea { text-decoration: line-through; }
+
+  /* The cabinet */
+  .cab { border-left: 1px solid var(--line); background: var(--surface); overflow: auto; display: flex; flex-direction: column; min-width: 0; }
+  .cab-top { position: sticky; top: 0; z-index: 3; background: var(--surface); border-bottom: 1px solid var(--line-soft); padding: 10px 16px; display: flex; align-items: center; gap: 8px; }
+  .trail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; min-width: 0; flex: 1; }
+  .trail button { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 500; }
+  .trail .here { color: var(--ink); font-weight: 700; }
+  .trail .sep { color: var(--muted); }
+  .iconbtn { border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px; padding: 2px 7px; font-size: 13px; line-height: 1.4; }
+  .iconbtn:hover { border-color: var(--line); color: var(--ink); }
+  .cab-body { padding: 16px 16px 28px; display: flex; flex-direction: column; gap: 16px; }
+  .checking { display: flex; align-items: center; gap: 8px; background: var(--ink); color: var(--bg); border-radius: 10px; padding: 8px 10px 8px 12px; font-size: 13px; }
+  .checking .count { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+  .checking button { border: 0; background: none; color: var(--bg); text-decoration: underline; font-size: 12.5px; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 7px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .cab h2 { font-size: 19px; line-height: 1.3; font-weight: 700; }
+  .app.wide .cab h2 { font-size: 22px; }
+  .by { font-size: 12.5px; color: var(--muted); }
+  .sect { display: flex; flex-direction: column; gap: 7px; }
+  .sect > h3, .fold > summary { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .fold > summary { cursor: pointer; list-style: none; }
+  .fold > summary::-webkit-details-marker { display: none; }
+  .fold > summary::before { content: "▸ "; }
+  .fold[open] > summary::before { content: "▾ "; }
+  .fold > .in { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+  .src { border: 1px solid var(--line-soft); border-radius: 9px; padding: 9px 11px; background: var(--bg); display: flex; flex-direction: column; gap: 3px; }
+  .src .body { font-size: 12.5px; white-space: pre-line; }
+  .src .meta { font-size: 11.5px; color: var(--muted); }
+  .uitem { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; text-align: left; border: 1px solid var(--line-soft); background: var(--bg); border-radius: 8px; padding: 7px 9px; width: 100%; }
+  .uitem .shape { margin-top: 4px; }
+  .uitem .s { font-size: 12.5px; }
+  .uitem:hover { border-color: var(--line); }
+  .aibox { border: 1.5px dashed var(--line); border-radius: 10px; padding: 9px 11px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
+  .aibox .lbl { font-weight: 700; }
+  .aibox .lbl.low { color: var(--amber); }
+  .aibox ul { margin: 0; padding-left: 18px; }
+  .aibox .not { color: var(--muted); font-size: 11.5px; }
+  .flag { border: 1px solid var(--amber); background: var(--amber-bg); border-radius: 9px; padding: 8px 10px; font-size: 12.5px; }
+  .flag b { color: var(--amber); }
+  .verdicts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .verdicts button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 8px; padding: 8px 4px; font-weight: 600; font-size: 13px; }
+  .verdicts button[aria-pressed="true"][data-v="looks_right"] { border-color: var(--green); background: var(--green-bg); }
+  .verdicts button[aria-pressed="true"][data-v="needs_changes"] { border-color: var(--amber); background: var(--amber-bg); }
+  .verdicts button[aria-pressed="true"][data-v="disagree"] { border-color: var(--red); background: var(--red-bg); }
+  .hows { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hows button { border: 1px solid var(--line); background: none; border-radius: 999px; padding: 2px 10px; font-size: 12px; }
+  .hows button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .yourcheck { border-top: 1px solid var(--line-soft); padding-top: 14px; }
+  .asks { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
+  .hist { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; }
+  .prompt { font-family: var(--f-mono); font-size: 11.5px; background: var(--bg); border: 1px solid var(--line-soft); border-radius: 8px; padding: 9px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .stat { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+  .pkg { font-weight: 600; font-size: 14px; line-height: 1.3; }
+
+  /* Feedback popover */
+  .fb { position: fixed; right: 16px; top: 52px; width: min(380px, calc(100% - 32px)); max-height: calc(100% - 70px); overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--lift); padding: 14px 16px; z-index: 50; display: flex; flex-direction: column; gap: 12px; }
+  .fb .item { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+  .fb .item b { font-size: 13.5px; }
+  .rate button[data-r="keep"][aria-pressed="true"] { background: var(--green); color: var(--surface); }
+  .rate button[data-r="change"][aria-pressed="true"] { background: var(--amber); color: var(--surface); }
+  .rate button[data-r="drop"][aria-pressed="true"] { background: var(--red); color: var(--surface); }
+  .fb textarea { min-height: 44px; font-size: 12.5px; }
+
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 13px; z-index: 70; max-width: calc(100% - 32px); display: flex; gap: 12px; align-items: center; box-shadow: var(--lift); }
+  .toast button { border: 0; background: none; color: var(--bg); text-decoration: underline; padding: 0; }
+
+  /* Built for desktop. On a narrow screen the cabinet slides over the work. */
+  @media (max-width: 900px) {
+    .app, .app.wide { grid-template-columns: minmax(0, 1fr); }
+    .bar, .work { padding-inline: 16px; }
+    .crumbs { display: none; }
+    .cab { position: fixed; right: 0; top: 0; bottom: 0; width: min(420px, 100%); z-index: 40; box-shadow: var(--lift); padding-top: env(safe-area-inset-top, 0px); }
+    .cab.closed { display: none; }
+    .bdrow { grid-template-columns: minmax(0, 1fr) auto; }
+    .bdrow textarea, .bdrow .flags { grid-column: 1 / -1; }
+    .bdrow .x { grid-row: 1; grid-column: 2; }
+  }
+  @media (prefers-reduced-motion: reduce) { .app, .brick { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="bar">
+    <span class="brand">ANCHOR</span>
+    <span class="crumbs">Workspaces › Mobile checkout</span>
+    <span class="grow"></span>
+    <label class="who" for="me">You are <select id="me"></select></label>
+    <button class="btn ghost" type="button" id="reset">Reset</button>
+    <button class="btn" type="button" id="fb-btn" aria-expanded="false">Feedback</button>
+  </header>
+  <main class="work" id="work"></main>
+  <aside class="cab" id="cab" aria-label="Detail"></aside>
+</div>
+<div class="fb" id="fb" hidden></div>
+
+<script>
+// ---------- Sample workspace (anchor/seed.py, plus five blocks so there is more to check) ----------
+const PEOPLE = {
+  Dana: { role: "Data science lead", sme: true }, Sam: { role: "Researcher", sme: true },
+  Lee: { role: "Research lead", sme: false }, Priya: { role: "Analytics", sme: false }, Jordan: { role: "Product manager", sme: false },
+};
+const WS = { question: "Why do mobile shoppers leave checkout before paying?", decision: "Whether to fund address autofill in Q3",
+  method: "Funnel analysis of 30 days of mobile web sessions, plus 8 remote interviews with recent mobile shoppers." };
+const BASE_SOURCES = {
+  funnel: { kind: "Query", title: "Checkout funnel, last 30 days", by: "Priya", body: "Mobile web, Aug 29 to Sep 27.\nCart 12,000\nStarted address form 10,900\nFinished address form 6,650\nReached payment 5,600\nPaid 5,040 (42%)" },
+  int1: { kind: "Note", title: "Interviews, shoppers 1 to 4", by: "Sam", body: "S1: \"Typing my whole address with my thumbs, no thanks.\"\nS2: \"The keyboard kept covering the zip field.\"\nS3: \"I gave up and finished on my laptop.\"\nS4: \"It is tedious. I only do it if I really want the thing.\"" },
+  int2: { kind: "Note", title: "Interviews, shoppers 5 to 8", by: "Sam", body: "S5: \"Address was fine, I have it saved.\"\nS6: \"The form is long on a phone.\"\nS7: \"I would have used Apple Pay if it was there.\"\nS8: \"Typing it out is a pain. Keyboard jumped around.\"" },
+  split: { kind: "Data", title: "Returning vs new shoppers", by: "Priya", body: "Returning shoppers: 31% of mobile checkouts, 61% pay.\nNew shoppers: 69% of mobile checkouts, 34% pay.\nReturning shoppers with a saved address skip the address step." },
+};
+const ck = (by, verdict = "looks_right", how = null, note = "", extra = {}) => ({ by, verdict, how, note, ...extra });
+const BASE_BLOCKS = [
+  { id: 1, level: "observation", statement: "Mobile checkout conversion is 42 percent", owner: "Priya", ai: false, sources: ["funnel"], marks: ["Paid 5,040"], checks: [ck("Sam", "looks_right", "source_data", "Matches the dashboard")] },
+  { id: 2, level: "observation", statement: "39 percent of shoppers who start the address form leave before finishing it", owner: "Jordan", ai: true, conf: "high", why: "Worked out from the funnel: 10,900 started the form, 6,650 finished it", sources: ["funnel"], marks: ["Started address form", "Finished address form"], checks: [ck("Jordan", "looks_right", null, "Did the math again from the funnel")] },
+  { id: 3, level: "observation", statement: "6 of 8 shoppers said typing an address on a phone is tedious", owner: "Sam", ai: false, sources: ["int1", "int2"], marks: ["S1:", "S2:", "S3:", "S4:", "S6:", "S8:"], checks: [ck("Lee", "looks_right", "evidence", "Listened to the recordings")] },
+  { id: 4, level: "observation", statement: "2 shoppers said the keyboard covered or moved the form fields", owner: "Jordan", ai: true, conf: "medium", why: "S2 and S8 describe it", assumes: ["The keyboard problem happens on most phones, not just theirs"], sources: ["int1", "int2"], marks: ["S2:", "S8:"], checks: [] },
+  { id: 5, level: "observation", statement: "2 shoppers said they would pay with Apple Pay if offered", owner: "Jordan", ai: true, conf: "low", why: "Read from the interview notes", assumes: ["Other shoppers feel the same as the one who said it"], sources: ["int2"], marks: ["S7:"], checks: [ck("Jordan"), ck("Lee", "needs_changes", null, "Only S7 said this. It is 1 shopper, not 2.")] },
+  { id: 6, level: "observation", statement: "Returning shoppers pay 61 percent of the time, new shoppers 34 percent", owner: "Priya", ai: true, conf: "high", why: "Straight from the export", sources: ["split"], marks: ["Returning shoppers: 31%", "New shoppers"], checks: [ck("Priya", "looks_right", null, "Checked against the export"), ck("Dana", "looks_right", "reran", "Rebuilt it from raw events")] },
+  { id: 7, level: "observation", statement: "Returning shoppers with a saved address skip the address step", owner: "Priya", ai: true, conf: "medium", why: "Stated in the export notes", assumes: ["A saved address always skips the step, on every device"], sources: ["split"], marks: ["saved address skip"], checks: [] },
+  { id: 13, level: "observation", statement: "1 shopper gave up on the phone and finished on a laptop", owner: "Jordan", ai: true, conf: "high", why: "S3 says it directly", sources: ["int1"], marks: ["S3:"], checks: [ck("Jordan")] },
+  { id: 14, level: "observation", statement: "Shoppers with a saved address did not mention the form", owner: "Jordan", ai: true, conf: "medium", why: "S5 says the address was fine because it was saved", assumes: ["One shopper speaks for everyone with a saved address"], sources: ["int2"], marks: ["S5:"], checks: [ck("Jordan")] },
+  { id: 16, level: "observation", statement: "The address form loses 4,250 shoppers, the biggest drop in the funnel", owner: "Priya", ai: true, conf: "high", why: "10,900 started the form and 6,650 finished it", sources: ["funnel"], marks: ["Started address form", "Finished address form"], checks: [ck("Priya")] },
+  { id: 8, level: "finding", statement: "Shoppers leave mobile checkout mainly because the address form is hard to fill in on a phone", aiWording: "Shoppers abandon checkout because forms are long", owner: "Jordan", ai: true, conf: "medium", why: "The funnel and the interviews point the same way", assumes: ["The 8 people we interviewed are like most mobile shoppers"], on: [2, 3, 4], checks: [ck("Jordan", "looks_right", null, "Narrowed it to the address form, which is what the evidence shows", { changed: true }), ck("Sam", "looks_right", "evidence", "Funnel and interviews agree")] },
+  { id: 9, level: "finding", statement: "Adding Apple Pay would fix most mobile checkout drop-off", owner: "Jordan", ai: true, conf: "low", why: "One shopper asked for it", assumes: ["What one shopper wants, most shoppers want"], on: [5], checks: [ck("Jordan"), ck("Dana", "disagree", null, "One quote cannot carry this. The funnel says the loss is at the address step.")] },
+  { id: 10, level: "finding", statement: "Not having to type an address roughly doubles the chance a shopper pays", owner: "Priya", ai: false, on: [6, 7], checks: [ck("Lee", "looks_right", "evidence")] },
+  { id: 15, level: "finding", statement: "Shoppers do not trust saving a card on a phone", owner: "Jordan", ai: true, conf: "low", why: "Common in other checkout studies", assumes: ["What other studies found holds for our shoppers"], on: [], checks: [ck("Jordan")] },
+  { id: 11, level: "insight", statement: "Address autofill is likely our biggest mobile checkout win", owner: "Jordan", ai: false, on: [8, 10], checks: [ck("Sam", "looks_right", "judgment", "Strong. Check the two open observations before the pitch.")] },
+  { id: 12, level: "insight", statement: "Test autofill with returning shoppers first, where the gain is easiest to measure", owner: "Priya", ai: true, conf: "medium", why: "Returning shoppers are the group we can measure fastest", assumes: ["Returning shoppers react to autofill the same way new ones would"], on: [10], checks: [] },
+];
+const PACKAGE = [11];
+const SAMPLE_AI_TEXT = `Checkout summary (drafted by an AI assistant)
+
+Mobile checkout conversion is 42 percent, well below desktop.
+Most shoppers leave because the address form is too long.
+Returning shoppers clearly convert better because they trust the brand.
+Adding Apple Pay would likely fix the rest of the drop-off.
+We should prioritize autofill and Apple Pay in Q3.`;
+
+// ---------- Words (docs/GLOSSARY.md) ----------
+const LEVEL = { observation: "Observation", finding: "Finding", insight: "Insight" };
+const STATE = { needs_check: "Needs a check", checked_by_owner: "Checked by owner", checked_by_peers: "Checked by peers", checked_by_sme: "Checked by an SME", needs_changes: "Needs changes", disagreement: "Disagree" };
+const UNCHECKED = new Set(["needs_check", "needs_changes", "disagreement"]);
+const VERDICT = { looks_right: "Looks right", needs_changes: "Needs changes", disagree: "Disagree" };
+const HOW = { evidence: "Read the evidence", source_data: "Checked the source data", reran: "Reran the numbers", judgment: "Used my judgment" };
+const ASKS = {
+  observation: ["Does the source say exactly this, no more and no less?", "If there is a number, does it match the source?"],
+  finding: ["Do the blocks under it really add up to this?", "Would a skeptic read them the same way?"],
+  insight: ["Does it follow from the findings under it?", "Is it clear what to do, and for which decision?"],
+};
+const FEEDBACK = [
+  ["cabinet", "The cabinet on the right", "Does it keep you oriented? Is the trail at the top enough to find your way back?"],
+  ["lines", "Calm lines in Build", "Are faint lines plus a traced line calmer? Do you miss the full picture?"],
+  ["list", "The List view", "Is it the right place to work through many checks?"],
+  ["checking", "Check N blocks", "Does stepping through in the cabinet, with the block lit up on the left, feel right?"],
+  ["breakdown", "Break down", "Is the summary line and per-row fixing worth the extra step before blocks land?"],
+  ["clutter", "Overall clutter", "What is still on screen that you never look at?"],
+];
+
+// ---------- State ----------
+const clone = x => JSON.parse(JSON.stringify(x));
+const S = { me: "Dana", view: "build", sel: null, trail: [], checking: null, lines: "faint", wide: false, hover: null, form: {}, bd: null, bdFilter: "all", bdOn: null, fresh: new Set(), undo: [] };
+let BLOCKS, SOURCES, NEXT_ID;
+function resetData() { BLOCKS = clone(BASE_BLOCKS).map(b => ({ on: [], sources: [], assumes: [], marks: [], ...b })); SOURCES = clone(BASE_SOURCES); NEXT_ID = 17; S.fresh.clear(); S.undo = []; S.bd = null; }
+resetData();
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("anchor-cabinet:" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("anchor-cabinet:" + k, JSON.stringify(v)); } catch {} },
+};
+
+// ---------- Rules (mirror anchor/core.py) ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+const byId = id => BLOCKS.find(b => b.id === id);
+const live = b => b.checks.filter(c => !c.old);
+function latestBy(b) { const m = new Map(); live(b).forEach(c => m.set(c.by, c)); return [...m.values()]; }
+function state(b) {
+  const L = latestBy(b);
+  if (L.some(c => c.verdict === "disagree")) return "disagreement";
+  if (L.some(c => c.verdict === "needs_changes")) return "needs_changes";
+  const ok = L.filter(c => c.verdict === "looks_right");
+  if (ok.some(c => c.by !== b.owner && PEOPLE[c.by]?.sme)) return "checked_by_sme";
+  if (ok.some(c => c.by !== b.owner)) return "checked_by_peers";
+  if (ok.some(c => c.by === b.owner)) return "checked_by_owner";
+  return "needs_check";
+}
+const waitingOnOwner = b => b.ai && !live(b).some(c => c.by === b.owner);
+const restsOnNothing = b => b.level === "observation" ? !b.sources.length : !b.on.length;
+const holdsUp = b => BLOCKS.filter(x => x.on.includes(b.id));
+function weakBelow(b, seen = new Set()) {
+  for (const id of b.on) { if (seen.has(id)) continue; seen.add(id); const u = byId(id); if (!u) continue; if (UNCHECKED.has(state(u)) || weakBelow(u, seen)) return true; }
+  return false;
+}
+const glows = b => b.level === "insight" && latestBy(b).some(c => c.verdict === "looks_right" && c.by !== b.owner) && !UNCHECKED.has(state(b));
+const trouble = b => { const st = state(b); return st !== "needs_check" && UNCHECKED.has(st) ? `<span class="tag t-${st}">${STATE[st]}</span>` : ""; };
+const stateTag = b => { const st = state(b); return UNCHECKED.has(st) ? `<span class="tag t-${st}">${STATE[st]}</span>` : `<span class="muted small">${STATE[st]}</span>`; };
+const shape = l => `<i class="shape ${l}" aria-hidden="true"></i>`;
+function origin(b) {
+  if (!b.ai) return "By " + b.owner;
+  const own = live(b).find(c => c.by === b.owner);
+  return "AI draft for " + b.owner + (own ? ", confirmed" + (own.changed || b.aiWording ? " with wording changed" : "") : ", not confirmed yet");
+}
+const markLines = (body, marks) => body.split("\n").map(l => marks.some(m => l.includes(m)) ? `<mark>${esc(l)}</mark>` : esc(l)).join("\n");
+function canCheck(b, me) {
+  if (b.owner === me) return b.ai && waitingOnOwner(b) ? "owner" : "own";
+  if (waitingOnOwner(b)) return "waiting";
+  if (latestBy(b).some(c => c.by === me)) return "done";
+  return "check";
+}
+// What waits on me: my AI drafts first, then the base up, then what holds up the most.
+function queueFor(me) {
+  const rank = { observation: 0, finding: 1, insight: 2 };
+  return BLOCKS.filter(b => { const c = canCheck(b, me); return c === "owner" || (c === "check" && ["needs_check", "checked_by_owner"].includes(state(b))); })
+    .sort((a, b) => ((canCheck(b, me) === "owner") - (canCheck(a, me) === "owner")) || (rank[a.level] - rank[b.level]) || (holdsUp(b).length - holdsUp(a).length) || a.id - b.id);
+}
+function addCheck(b, by, verdict, how = null, note = "", statement = null) {
+  S.undo.push({ id: b.id, checks: clone(b.checks), statement: b.statement, aiWording: b.aiWording });
+  const changed = statement && statement.trim() && statement.trim() !== b.statement;
+  if (changed) { if (b.ai && !b.aiWording) b.aiWording = b.statement; b.statement = statement.trim(); b.checks.forEach(c => { if (c.verdict === "needs_changes") c.old = true; }); }
+  b.checks.push(ck(by, verdict, how, note, changed ? { changed: true } : {}));
+}
+function undo() { const p = S.undo.pop(); if (!p) return; const b = byId(p.id); b.checks = p.checks; b.statement = p.statement; b.aiWording = p.aiWording; render(); toast("Undone."); }
+
+let toastTimer;
+function toast(msg, action, fn) {
+  document.querySelectorAll(".toast").forEach(x => x.remove()); clearTimeout(toastTimer);
+  const t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status");
+  t.innerHTML = `<span>${esc(msg)}</span>` + (action ? `<button type="button">${esc(action)}</button>` : "");
+  if (action) t.querySelector("button").onclick = () => { t.remove(); fn(); };
+  document.body.appendChild(t); toastTimer = setTimeout(() => t.remove(), 4200);
+}
+function copyText(text, done) {
+  const fallback = () => { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand("copy"); } catch {} ta.remove(); toast(ok ? done : "Copy did not work here. Select the text and copy it."); };
+  try { navigator.clipboard.writeText(text).then(() => toast(done), fallback); } catch { fallback(); }
+}
+
+// ---------- Selection and the trail ----------
+// Picking from the work starts a new trail. Following a link inside the cabinet adds to it.
+function select(key, fromCabinet) {
+  S.form = {};
+  if (key == null) { S.sel = null; S.trail = []; return render(); }
+  if (fromCabinet && S.sel != null) { const i = S.trail.indexOf(key); S.trail = i >= 0 ? S.trail.slice(0, i + 1) : [...S.trail, key]; }
+  else S.trail = [key];
+  S.sel = key; render(); revealSelected();
+}
+const label = key => typeof key === "string" ? SOURCES[key.slice(2)].title : `${LEVEL[byId(key).level]} #${key}`;
+function revealSelected() {
+  requestAnimationFrame(() => document.querySelector(".brick.sel, .lrow2.sel")?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" }));
+}
+
+// ---------- Checking: step through what waits on me ----------
+function startChecking() {
+  const q = queueFor(S.me); if (!q.length) return;
+  S.checking = { ids: q.map(b => b.id), done: 0 }; select(q[0].id);
+}
+function nextInQueue() {
+  const c = S.checking; if (!c) return;
+  const left = c.ids.filter(id => { const b = byId(id); const m = canCheck(b, S.me); return m === "owner" || (m === "check" && ["needs_check", "checked_by_owner"].includes(state(b))); });
+  if (!left.length) { S.checking = null; S.sel = null; S.trail = []; render(); return toast("All done. Nothing else waits on you."); }
+  select(left[0]);
+}
+const checkingPos = () => { const c = S.checking; return c ? { at: c.done + 1, of: c.ids.length } : null; };
+
+// ---------- The work: head ----------
+function renderWork() {
+  const q = queueFor(S.me);
+  const head = `<div class="head"><div style="min-width:0"><h1>${esc(WS.question)}</h1><div class="for">For the decision: ${esc(WS.decision)}</div></div>
+    <div class="row">
+      ${S.view === "breakdown" ? `<button class="btn" type="button" data-view="build">Back to the workspace</button>` : `
+      <button class="btn primary" type="button" id="check-btn" ${q.length && !S.checking ? "" : "disabled"}>${S.checking ? "Checking..." : q.length ? "Check " + plural(q.length, "block") : "Nothing to check"}</button>
+      <button class="btn" type="button" data-view="breakdown">Break down AI text</button>
+      <div class="seg" role="group" aria-label="View"><button type="button" data-view="build" aria-pressed="${S.view === "build"}">Build</button><button type="button" data-view="list" aria-pressed="${S.view === "list"}">List</button></div>`}
+    </div></div>`;
+  $("work").innerHTML = head + ({ build: buildHtml, list: listHtml, breakdown: breakdownHtml })[S.view]();
+  if (S.view === "build") requestAnimationFrame(drawWires);
+  $("check-btn")?.addEventListener("click", startChecking);
+  if (S.view === "breakdown") bindBreakdown();
+}
+
+// ---------- Build: calm lines ----------
+function buildHtml() {
+  const insights = BLOCKS.filter(b => b.level === "insight"), findings = BLOCKS.filter(b => b.level === "finding");
+  const obs = [];
+  findings.forEach(f => f.on.forEach(id => { const o = byId(id); if (o?.level === "observation" && !obs.includes(o)) obs.push(o); }));
+  BLOCKS.filter(b => b.level === "observation" && !obs.includes(b)).forEach(b => obs.push(b));
+  const brick = b => `<button class="brick ${b.level} s-${state(b)} ${glows(b) ? "glow" : ""} ${S.sel === b.id ? "sel" : ""} ${S.fresh.has(b.id) ? "fresh" : ""}" type="button" data-b="${b.id}" aria-label="${esc(LEVEL[b.level] + " " + b.id + ": " + b.statement)}">
+      <span class="t">${esc(b.statement)}</span><span class="m">${trouble(b)}${restsOnNothing(b) ? `<span class="tag t-nothing">Rests on nothing</span>` : ""}${weakBelow(b) ? `<span class="warn" title="Something under it needs a check">⚠</span>` : ""}${b.ai ? `<span class="ai">AI</span>` : ""}</span></button>`;
+  return `<div class="canvas-wrap" id="cwrap">
+    <div class="canvas-tools"><span>Lines</span><button class="linkbtn" type="button" data-lines="faint" aria-pressed="${S.lines === "faint"}">Faint</button><button class="linkbtn" type="button" data-lines="traced" aria-pressed="${S.lines === "traced"}">Traced only</button></div>
+    <div class="canvas ${S.lines === "traced" ? "traced-only" : ""}" id="canvas"><svg id="wires" aria-hidden="true"></svg>
+      <div class="lrow"><span class="rl">Insights</span>${insights.map(brick).join("")}</div>
+      <div class="lrow"><span class="rl">Findings</span>${findings.map(brick).join("")}</div>
+      <div class="lrow"><span class="rl">Observations</span>${obs.map(brick).join("")}</div>
+      <div class="lrow"><span class="rl">Base</span>${Object.keys(SOURCES).map(k => `<button class="brick stone ${S.sel === "s:" + k ? "sel" : ""}" type="button" data-s="${k}"><span class="t">${esc(SOURCES[k].title)}</span></button>`).join("")}</div>
+    </div></div>
+    <div class="key"><span>Fuller means more checked:</span><span><i class="sq s-needs_check"></i> not yet</span><span><i class="sq s-checked_by_owner"></i> owner</span><span><i class="sq s-checked_by_peers"></i> peers</span><span><i class="sq s-checked_by_sme"></i> SME</span><span class="grow"></span><span>Hover to trace a line. Click to open it on the right.</span></div>`;
+}
+function near(id) {
+  const set = new Set([id]);
+  if (typeof id === "string") { BLOCKS.filter(b => b.sources.includes(id.slice(2))).forEach(b => { set.add(b.id); up(b.id); }); return set; }
+  function up(x) { BLOCKS.filter(b => b.on.includes(x)).forEach(b => { set.add(b.id); up(b.id); }); }
+  const down = x => { const b = byId(x); if (!b) return; b.on.forEach(y => { set.add(y); down(y); }); b.sources.forEach(k => set.add("s:" + k)); };
+  down(id); up(id); return set;
+}
+function drawWires() {
+  const cv = $("canvas"); if (!cv) return;
+  const box = cv.getBoundingClientRect();
+  const el = key => cv.querySelector(String(key).startsWith("s:") ? `[data-s="${String(key).slice(2)}"]` : `[data-b="${key}"]`);
+  const focus = S.hover ?? S.sel;
+  const hot = focus != null ? near(focus) : null;
+  const edges = [];
+  BLOCKS.forEach(b => { b.on.forEach(id => edges.push({ from: b.id, to: id, weak: UNCHECKED.has(state(byId(id))) })); b.sources.forEach(k => edges.push({ from: b.id, to: "s:" + k, src: true })); });
+  $("wires").innerHTML = edges.map(e => {
+    const a = el(e.from), z = el(e.to); if (!a || !z) return "";
+    const ra = a.getBoundingClientRect(), rz = z.getBoundingClientRect();
+    const x1 = ra.left + ra.width / 2 - box.left, y1 = ra.bottom - box.top, x2 = rz.left + rz.width / 2 - box.left, y2 = rz.top - box.top, my = (y1 + y2) / 2;
+    const isHot = hot && hot.has(e.from) && hot.has(e.to);
+    return `<path class="wire ${e.src ? "src" : ""} ${e.weak ? "weak" : ""} ${isHot ? "hot" : ""}" d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}"/>`;
+  }).join("");
+  cv.classList.toggle("tracing", !!hot);
+  cv.querySelectorAll("[data-b],[data-s]").forEach(n => { const k = n.dataset.b ? +n.dataset.b : "s:" + n.dataset.s; n.classList.toggle("near", !!hot && hot.has(k)); });
+}
+
+// ---------- List ----------
+function listHtml() {
+  const q = queueFor(S.me);
+  const att = BLOCKS.filter(b => !q.includes(b) && (["needs_changes", "disagreement"].includes(state(b)) || restsOnNothing(b)));
+  const rest = BLOCKS.filter(b => !q.includes(b) && !att.includes(b));
+  const row = b => `<button class="lrow2 ${S.sel === b.id ? "sel" : ""}" type="button" data-b="${b.id}">${shape(b.level)}<span class="s">${esc(b.statement)}</span>
+    <span class="m">${LEVEL[b.level]} #${b.id} · ${esc(b.owner)}${b.ai ? " · AI" : ""}${waitingOnOwner(b) && b.owner !== S.me ? ` · waits on ${esc(b.owner)}` : ""}</span>
+    <span class="r">${trouble(b)}${restsOnNothing(b) ? `<span class="tag t-nothing">Rests on nothing</span>` : ""}${weakBelow(b) ? `<span class="warn">⚠</span>` : ""}</span></button>`;
+  return `<div class="list">
+    <div class="lgroup"><span>Waiting on you</span><span>${q.length}</span></div>${q.map(row).join("") || `<div class="lrow2 muted small" style="cursor:default">Nothing waits on you.</div>`}
+    <div class="lgroup" style="border-top:1px solid var(--line-soft)"><span>Needs attention</span><span>${att.length}</span></div>${att.map(row).join("")}
+    <details class="lfold" style="border-top:1px solid var(--line-soft)"><summary><div class="lgroup"><span>Everything else</span><span>${rest.length}</span></div></summary>${rest.map(row).join("")}</details>
+  </div><div class="key"><span>J and K move through the list. Click a row to open it on the right.</span></div>`;
+}
+
+// ---------- Break down ----------
+const GIVEN = ["most", "clearly", "because", "likely", "always", "never", "everyone", "all", "should", "well below", "obviously"];
+const givenIn = s => GIVEN.filter(w => new RegExp("\\b" + w + "\\b", "i").test(s));
+function breakDown(text) {
+  const lines = text.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  let title = "Pasted AI text";
+  if (lines.length && !/[.!?]$/.test(lines[0])) title = lines.shift();
+  const sents = lines.flatMap(l => l.split(/(?<=[.!?])\s+(?=[A-Z])/)).map(s => s.trim()).filter(Boolean);
+  return { title, text, rows: sents.map((s, i) => ({ i, text: s, removed: false, given: givenIn(s),
+    level: /\b(should|we need|prioriti[sz]e|let'?s)\b/i.test(s) ? "insight" : /\b(because|would|likely|leads? to|fix)\b/i.test(s) ? "finding" : /\d/.test(s) ? "observation" : "finding" })) };
+}
+const bdNothing = r => r.level !== "observation";
+const bdLook = r => bdNothing(r) || r.given.length;
+function breakdownHtml() {
+  const d = S.bd;
+  if (!d) return `<div class="bd"><label class="small muted" for="bd-text">Paste a long AI answer. It is kept as a source, and each claim becomes a draft block for you to check first.</label>
+    <textarea class="paste" id="bd-text">${esc(SAMPLE_AI_TEXT)}</textarea>
+    <div class="row"><button class="btn primary" type="button" id="bd-go">Break it down</button><span class="small muted">Your AI tool can do a smarter job over MCP, with sources and links.</span></div></div>`;
+  const keep = d.rows.filter(r => !r.removed);
+  const shown = d.rows.filter(r => S.bdFilter === "all" || (S.bdFilter === "look" ? bdLook(r) : !bdLook(r)));
+  return `<div class="bd">
+    <div class="summary"><span><b>${keep.length}</b> draft blocks</span><span class="warn"><b>${keep.filter(bdNothing).length}</b> rest on nothing</span><span class="warn"><b>${keep.filter(r => r.given.length).length}</b> take things as given</span><span><b>${keep.filter(r => !bdLook(r)).length}</b> look clean</span></div>
+    <div class="ftabs" role="group" aria-label="Show">${[["all", "All", d.rows.length], ["look", "Needs a look", d.rows.filter(bdLook).length], ["clean", "Clean", d.rows.filter(r => !bdLook(r)).length]].map(([k, l, n]) => `<button type="button" data-bdf="${k}" aria-pressed="${S.bdFilter === k}">${l} ${n}</button>`).join("")}</div>
+    <div class="bdrows">${shown.map(r => `<div class="bdrow ${r.removed ? "removed" : ""} ${S.bdOn === r.i ? "on" : ""}" data-bdrow="${r.i}">
+      <select class="fld" data-bdlevel="${r.i}" aria-label="Level">${Object.entries(LEVEL).map(([k, l]) => `<option value="${k}" ${r.level === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <textarea data-bdtext="${r.i}" rows="2" aria-label="Statement" ${r.removed ? "disabled" : ""}>${esc(r.text)}</textarea>
+      <button class="x" type="button" data-bdx="${r.i}" aria-label="${r.removed ? "Put back" : "Remove"}">${r.removed ? "↺" : "×"}</button>
+      <div class="flags">${bdNothing(r) ? `<span class="tag t-nothing">Rests on nothing</span>` : `<span>From the pasted text</span>`}${r.given.length ? `<span>Takes as given: <b class="warn">${r.given.map(esc).join(", ")}</b></span>` : ""}</div>
+    </div>`).join("") || `<div class="bdrow muted small">Nothing in this filter.</div>`}</div>
+    <div class="row"><button class="btn primary" type="button" id="bd-add" ${keep.length ? "" : "disabled"}>Add ${plural(keep.length, "draft block")}</button><button class="btn ghost" type="button" id="bd-again">Start over</button></div>
+  </div>`;
+}
+function bindBreakdown() {
+  $("bd-go")?.addEventListener("click", () => { const t = $("bd-text").value.trim(); if (!t) return toast("Paste some AI text first."); S.bd = breakDown(t); S.bdFilter = "all"; S.bdOn = 0; render(); });
+  $("bd-again")?.addEventListener("click", () => { S.bd = null; S.bdOn = null; render(); });
+  $("bd-add")?.addEventListener("click", () => {
+    const d = S.bd, key = "ai" + NEXT_ID, keep = d.rows.filter(r => !r.removed);
+    SOURCES[key] = { kind: "AI text", title: d.title, by: S.me, body: d.text };
+    keep.forEach(r => { const id = NEXT_ID++; S.fresh.add(id); BLOCKS.push({ id, level: r.level, statement: r.text, owner: S.me, ai: true, conf: null, why: null, assumes: r.given.map(w => `the word "${w}"`), sources: r.level === "observation" ? [key] : [], marks: r.level === "observation" ? [r.text.slice(0, 30)] : [], on: [], checks: [] }); });
+    S.bd = null; S.bdOn = null; S.view = "build"; S.sel = null; S.trail = []; render(); toast(`Added ${plural(keep.length, "draft")}. They wait on you first.`);
+  });
+}
+
+// ---------- The cabinet ----------
+function renderCab() {
+  const pos = checkingPos();
+  const trail = S.sel == null ? `<span class="here">Workspace</span>` : `<button type="button" data-home>Workspace</button>` + S.trail.map((k, i) => `<span class="sep">›</span>` + (i === S.trail.length - 1 ? `<span class="here">${esc(label(k))}</span>` : `<button type="button" data-trail="${i}">${esc(label(k))}</button>`)).join("");
+  const top = `<div class="cab-top"><nav class="trail" aria-label="Where you are">${trail}</nav>
+    <button class="iconbtn" type="button" id="wide" title="${S.wide ? "Make it narrow" : "Make room to think"}" aria-pressed="${S.wide}">${S.wide ? "→ Narrow" : "← Wider"}</button>
+    ${S.sel != null ? `<button class="iconbtn" type="button" data-home aria-label="Close">✕</button>` : ""}</div>`;
+  let body;
+  if (S.view === "breakdown") body = cabBreakdown();
+  else if (S.sel == null) body = cabWorkspace();
+  else if (typeof S.sel === "string") body = cabSource(S.sel.slice(2));
+  else body = cabBlock(byId(S.sel));
+  const bar = pos && S.view !== "breakdown" ? `<div class="checking"><span>Checking</span><span class="count">${pos.at} of ${pos.of}</span><span class="grow"></span><button type="button" id="skip">Skip</button><button type="button" id="stop">Stop</button></div>` : "";
+  $("cab").innerHTML = top + `<div class="cab-body">${bar}${body}</div>`;
+  $("cab").classList.toggle("closed", S.sel == null && S.view !== "breakdown" && !pos);
+  bindCab();
+}
+function cabWorkspace() {
+  const q = queueFor(S.me);
+  const counts = {}; BLOCKS.forEach(b => counts[state(b)] = (counts[state(b)] || 0) + 1);
+  const att = BLOCKS.filter(b => ["needs_changes", "disagreement"].includes(state(b)) || restsOnNothing(b));
+  return `<div class="sect"><span class="eyebrow">This workspace</span><h2>${esc(WS.question)}</h2><span class="by">For the decision: ${esc(WS.decision)}</span></div>
+    <div class="sect"><h3>Waiting on you</h3>${q.length ? `<div class="stat"><span>${plural(q.length, "block")} to check</span><button class="linkbtn" type="button" id="cab-check">Start</button></div>` : `<span class="small muted">Nothing waits on you.</span>`}</div>
+    ${att.length ? `<div class="sect"><h3>Needs attention</h3>${att.map(uItem).join("")}</div>` : ""}
+    <div class="sect"><h3>Package</h3>${PACKAGE.map(byId).map(b => `<button class="linkbtn pkg" type="button" data-open="${b.id}" style="color:var(--ink)">${esc(b.statement)}</button><span class="small muted">${weakBelow(b) ? `<span class="warn">⚠ Something under it still needs a check.</span>` : "Everything under it is checked."}</span>`).join("")}</div>
+    <details class="fold"><summary>The base (${Object.keys(SOURCES).length} sources)</summary><div class="in">${Object.entries(SOURCES).map(([k, s]) => `<button class="uitem" type="button" data-open="s:${k}"><span></span><span class="s"><b>${esc(s.title)}</b><br><span class="muted">${esc(s.kind)} · ${esc(s.by)}</span></span><span></span></button>`).join("")}<span class="small"><b>Method.</b> ${esc(WS.method)}</span></div></details>
+    <details class="fold"><summary>Pair with your AI tool</summary><div class="in"><span class="small muted">Your AI tool works in this workspace over MCP. It drafts blocks with sources and says how sure it is. You check them here.</span>
+      <div class="prompt" id="pair-prompt">Use the ANCHOR tools. Open workspace "${esc(WS.question)}" with get_workspace. Draft observations from its sources with add_blocks, citing source ids, and say how confident you are, why, and what you assume. Do not mark anything as checked.</div>
+      <button class="btn" type="button" data-copy="pair-prompt">Copy prompt</button></div></details>
+    <div class="small muted">${Object.entries(counts).map(([st, n]) => `<i class="sq s-${st}"></i> ${n} ${STATE[st].toLowerCase()}`).join(" · ")}</div>`;
+}
+function uItem(u) {
+  return `<button class="uitem" type="button" data-open="${u.id}">${shape(u.level)}<span class="s">${esc(u.statement)}</span><span>${UNCHECKED.has(state(u)) ? `<i class="sq s-${state(u)}" title="${STATE[state(u)]}"></i>` : `<i class="sq s-${state(u)}" title="${STATE[state(u)]}"></i>`}</span></button>`;
+}
+function cabSource(k) {
+  const s = SOURCES[k], from = BLOCKS.filter(b => b.sources.includes(k));
+  const marks = from.flatMap(b => b.marks);
+  return `<div class="sect"><span class="eyebrow">Source · ${esc(s.kind)}</span><h2>${esc(s.title)}</h2><span class="by">Added by ${esc(s.by)}</span></div>
+    <div class="src"><div class="body">${markLines(s.body, marks)}</div><span class="meta">Marked lines are used by a block.</span></div>
+    <div class="sect"><h3>Blocks taken from it (${from.length})</h3>${from.map(uItem).join("") || `<span class="small muted">None yet.</span>`}</div>`;
+}
+function cabBlock(b) {
+  const up = holdsUp(b), mode = canCheck(b, S.me);
+  const under = b.level === "observation"
+    ? `<div class="sect"><h3>From</h3>${b.sources.length ? b.sources.map(k => `<div class="src"><button class="linkbtn" type="button" data-open="s:${k}"><b>${esc(SOURCES[k].title)}</b></button><div class="body">${markLines(SOURCES[k].body, b.marks)}</div></div>`).join("") : `<div class="flag"><b>Rests on nothing.</b> No source is linked.</div>`}</div>`
+    : `<div class="sect"><h3>Built on</h3>${b.on.length ? b.on.map(byId).map(uItem).join("") + (weakBelow(b) ? `<span class="small warn">⚠ Something under it still needs a check.</span>` : "") : `<div class="flag"><b>Rests on nothing.</b> No blocks are linked under this claim. Ask what it comes from.</div>`}</div>`;
+  const ai = b.ai && b.conf ? `<div class="aibox"><span><span class="lbl ${b.conf === "low" ? "low" : ""}">AI says: ${b.conf} confidence.</span> ${esc(b.why || "")}</span>${b.assumes.length ? `<span class="muted">It assumes:</span><ul>${b.assumes.map(a => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}<span class="not">The AI's own view. It never counts as a check.</span></div>`
+    : b.ai && b.assumes.length ? `<div class="aibox"><span class="lbl">From pasted AI text.</span><span>Takes as given: ${b.assumes.map(esc).join(", ")}</span><span class="not">Not a check.</span></div>` : "";
+  const hist = b.checks.map(c => `<div><b>${esc(c.by)}</b>: ${VERDICT[c.verdict]}${c.how ? ` · ${HOW[c.how]}` : ""}${c.note ? ` · "${esc(c.note)}"` : ""}${c.old ? ` <span class="muted">(before the rewrite)</span>` : ""}</div>`).join("");
+  const myNote = store.get("note:" + b.id, "");
+  return `<div class="sect"><div class="row" style="gap:6px"><span class="eyebrow">${shape(b.level)} ${LEVEL[b.level]} #${b.id}</span>${stateTag(b)}</div>
+      <h2>${esc(b.statement)}</h2><span class="by">${esc(origin(b))}</span></div>
+    ${under}
+    ${ai}
+    <div class="yourcheck">${checkForm(b, mode)}</div>
+    <details class="fold" ${S.wide ? "open" : ""}><summary>Think it through</summary><div class="in"><ul class="asks">${ASKS[b.level].map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+      <label class="small muted" for="note-${b.id}">Your notes. Only you see these.</label><textarea id="note-${b.id}" data-note="${b.id}" rows="${S.wide ? 5 : 3}">${esc(myNote)}</textarea></div></details>
+    <details class="fold"><summary>Holds up (${up.length})</summary><div class="in">${up.map(uItem).join("") || `<span class="small muted">Nothing is built on this yet.</span>`}</div></details>
+    <details class="fold"><summary>History (${b.checks.length})</summary><div class="in hist">${b.aiWording ? `<div><span class="muted">The AI's first wording:</span> "${esc(b.aiWording)}"</div>` : ""}${hist || `<span class="muted">No checks yet.</span>`}</div></details>
+    <details class="fold"><summary>Ask your AI about it</summary><div class="in"><div class="prompt" id="ask-${b.id}">Use the ANCHOR tools. Look at block #${b.id} ("${esc(b.statement)}") with get_workspace. Read what it is built on and its sources. Tell me if the evidence supports it as worded, and what would make it wrong. Do not check it for me.</div><button class="btn" type="button" data-copy="ask-${b.id}">Copy prompt</button></div></details>`;
+}
+function checkForm(b, mode) {
+  if (mode === "own") { const ask = latestBy(b).find(c => c.verdict === "needs_changes");
+    return `<div class="sect"><h3>Your check</h3><span class="small">This is yours. Someone else checks it.</span>${ask ? `<span class="small">${esc(ask.by)} asked: "${esc(ask.note)}"</span><textarea id="rv-text" rows="3">${esc(b.statement)}</textarea><div class="row"><button class="btn primary" type="button" id="rv-save">Save new version</button></div>` : ""}</div>`; }
+  if (mode === "waiting") return `<div class="sect"><h3>Your check</h3><span class="small">Waiting on <b>${esc(b.owner)}</b> to check their AI draft first.</span></div>`;
+  if (mode === "done") { const c = latestBy(b).find(c => c.by === S.me); return `<div class="sect"><h3>Your check</h3><span class="small">You said <b>${VERDICT[c.verdict]}</b>${c.note ? `: "${esc(c.note)}"` : ""}.</span></div>`; }
+  if (mode === "owner") return `<div class="sect"><h3>Your check</h3><span class="small muted">Your AI draft. Fix the wording if it says more, or less, than the evidence.</span>
+    <textarea id="ow-text" rows="3">${esc(b.statement)}</textarea><input type="text" id="ow-note" placeholder="What did you check or change? (optional)" aria-label="What did you check or change?">
+    <div class="row"><button class="btn primary" type="button" id="ow-ok">Looks right</button></div></div>`;
+  const v = S.form.verdict;
+  return `<div class="sect"><h3>Your check</h3>
+    <div class="verdicts" role="group" aria-label="Verdict">${Object.entries(VERDICT).map(([k, l]) => `<button type="button" data-v="${k}" aria-pressed="${v === k}">${l}</button>`).join("")}</div>
+    ${v === "looks_right" ? `<div class="hows" role="group" aria-label="How you checked">${Object.entries(HOW).map(([k, l]) => `<button type="button" data-how="${k}" aria-pressed="${S.form.how === k}">${l}</button>`).join("")}</div>` : ""}
+    ${v ? `<textarea id="ck-note" rows="2" placeholder="${v === "looks_right" ? "Anything to add? (optional)" : v === "disagree" ? "Why does it not hold?" : "What should change?"}" aria-label="Note">${esc(S.form.note || "")}</textarea>
+      <div class="row"><button class="btn primary" type="button" id="ck-send">Send check</button>${S.checking ? `<span class="small muted">Then the next one opens.</span>` : ""}</div>` : ""}</div>`;
+}
+function cabBreakdown() {
+  const d = S.bd;
+  if (!d) return `<div class="sect"><span class="eyebrow">Break down AI text</span><h2>Turn a long AI answer into blocks you can check</h2>
+    <span class="small muted">The text is kept as a source. Each claim becomes a draft block for you. Claims with nothing under them are flagged, and words that take things as given are listed.</span></div>`;
+  const r = d.rows[S.bdOn ?? 0];
+  const body = esc(d.text).split("\n").map(l => r && l.includes(esc(r.text).slice(0, 20)) ? l.replace(esc(r.text), `<mark>${esc(r.text)}</mark>`) : l).join("\n");
+  return `<div class="sect"><span class="eyebrow">The pasted text · kept as a source</span><h2>${esc(d.title)}</h2></div>
+    <div class="src"><div class="body">${body}</div><span class="meta">The marked sentence is the row you are on.</span></div>
+    ${r ? `<div class="sect"><h3>This row</h3><span class="small">${bdNothing(r) ? "As a " + LEVEL[r.level].toLowerCase() + ", it needs blocks under it. Link them after it lands, or ask your AI tool to find them." : "As an observation, it comes from the pasted text. Check it against the real data before you build on it."}</span></div>` : ""}`;
+}
+function bindCab() {
+  const c = $("cab");
+  c.querySelector("#wide")?.addEventListener("click", () => { S.wide = !S.wide; $("app").classList.toggle("wide", S.wide); renderCab(); setTimeout(drawWires, 220); });
+  c.querySelector("#cab-check")?.addEventListener("click", startChecking);
+  c.querySelector("#skip")?.addEventListener("click", () => { const ch = S.checking; ch.ids = [...ch.ids.filter(x => x !== S.sel), S.sel]; nextInQueue(); });
+  c.querySelector("#stop")?.addEventListener("click", () => { S.checking = null; render(); });
+  c.querySelectorAll(".verdicts [data-v]").forEach(btn => btn.onclick = () => { S.form.note = $("ck-note")?.value ?? S.form.note; S.form.verdict = btn.dataset.v; renderCab(); $("ck-note")?.focus(); });
+  c.querySelectorAll(".hows [data-how]").forEach(btn => btn.onclick = () => { S.form.note = $("ck-note")?.value ?? ""; S.form.how = S.form.how === btn.dataset.how ? null : btn.dataset.how; renderCab(); });
+  const b = typeof S.sel === "number" ? byId(S.sel) : null;
+  c.querySelector("#ck-send")?.addEventListener("click", () => {
+    const v = S.form.verdict, note = $("ck-note").value.trim();
+    if (v !== "looks_right" && !note) { $("ck-note").focus(); return toast("Say why, so the owner knows what to do."); }
+    addCheck(b, S.me, v, S.form.how, note); done(b, VERDICT[v]);
+  });
+  c.querySelector("#ow-ok")?.addEventListener("click", () => { addCheck(b, S.me, "looks_right", null, $("ow-note").value.trim(), $("ow-text").value); done(b, "Confirmed"); });
+  c.querySelector("#rv-save")?.addEventListener("click", () => { const t = $("rv-text").value.trim(); if (t === b.statement) return toast("Change the wording first."); addCheck(b, S.me, "looks_right", null, "Revised after the ask", t); done(b, "New version saved"); });
+}
+function done(b, what) {
+  S.fresh.delete(b.id);
+  toast(`${what}: #${b.id}.`, "Undo", undo);
+  if (S.checking) { S.checking.done++; nextInQueue(); } else { S.form = {}; render(); }
+}
+
+// ---------- Feedback ----------
+function renderFeedback() {
+  const all = store.get("fb", {});
+  $("fb").innerHTML = `<div class="row"><b class="grow">Feedback on this prototype</b><button class="iconbtn" type="button" id="fb-x" aria-label="Close">✕</button></div>
+    ${FEEDBACK.map(([k, l, q]) => `<div class="item"><b>${esc(l)}</b><span class="small muted">${esc(q)}</span>
+      <div class="seg rate" role="group" aria-label="${esc(l)}">${[["keep", "Keep"], ["change", "Change it"], ["drop", "Drop"]].map(([r, t]) => `<button type="button" data-rate="${k}" data-r="${r}" aria-pressed="${all[k]?.r === r}">${t}</button>`).join("")}</div>
+      <textarea data-fbnote="${k}" aria-label="Notes on ${esc(l)}" placeholder="What to change">${esc(all[k]?.note || "")}</textarea></div>`).join("")}
+    <button class="btn primary" type="button" id="fb-copy">Copy my notes</button>`;
+  $("fb-x").onclick = () => toggleFeedback(false);
+  $("fb-copy").onclick = () => {
+    const a = store.get("fb", {}), name = { keep: "Keep", change: "Change it", drop: "Drop" };
+    copyText("Cabinet prototype notes\n" + FEEDBACK.map(([k, l]) => `${l}: ${a[k]?.r ? name[a[k].r] : "no call yet"}${a[k]?.note ? "\n  " + a[k].note.replace(/\n/g, "\n  ") : ""}`).join("\n"), "Notes copied. Paste them back in the chat.");
+  };
+}
+function toggleFeedback(open) { $("fb").hidden = !open; $("fb-btn").setAttribute("aria-expanded", open); if (open) renderFeedback(); }
+
+// ---------- Render and events ----------
+function render() { renderWork(); renderCab(); }
+document.addEventListener("click", e => {
+  const t = e.target.closest("button"); if (!t) return;
+  if (t.dataset.view) { S.view = t.dataset.view; if (S.view === "breakdown") { S.checking = null; } return render(); }
+  if (t.dataset.b) return select(+t.dataset.b);
+  if (t.dataset.s) return select("s:" + t.dataset.s);
+  if (t.dataset.open) return select(t.dataset.open.startsWith("s:") ? t.dataset.open : +t.dataset.open, true);
+  if (t.hasAttribute("data-home")) { S.checking = null; return select(null); }
+  if (t.dataset.trail) { const i = +t.dataset.trail; S.trail = S.trail.slice(0, i + 1); S.sel = S.trail[i]; S.form = {}; render(); return revealSelected(); }
+  if (t.dataset.lines) { S.lines = t.dataset.lines; return render(); }
+  if (t.dataset.bdf) { S.bdFilter = t.dataset.bdf; return render(); }
+  if (t.dataset.bdx) { const r = S.bd.rows[+t.dataset.bdx]; r.removed = !r.removed; return render(); }
+  if (t.dataset.copy) return copyText($(t.dataset.copy).textContent, "Prompt copied.");
+  if (t.dataset.rate) { const a = store.get("fb", {}); a[t.dataset.rate] = { ...(a[t.dataset.rate] || {}), r: t.dataset.r }; store.set("fb", a); t.parentElement.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === t)); }
+});
+document.addEventListener("focusin", e => {
+  const row = e.target.closest("[data-bdrow]"); if (!row || !S.bd) return;
+  const i = +row.dataset.bdrow; if (S.bdOn !== i) { S.bdOn = i; document.querySelectorAll(".bdrow").forEach(r => r.classList.toggle("on", +r.dataset.bdrow === i)); renderCab(); }
+});
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset.note) store.set("note:" + t.dataset.note, t.value);
+  if (t.dataset.fbnote) { const a = store.get("fb", {}); a[t.dataset.fbnote] = { ...(a[t.dataset.fbnote] || {}), note: t.value }; store.set("fb", a); }
+  if (t.dataset.bdtext != null && S.bd) { const r = S.bd.rows[+t.dataset.bdtext]; r.text = t.value; r.given = givenIn(t.value); }
+});
+document.addEventListener("change", e => { const t = e.target; if (t.dataset.bdlevel != null && S.bd) { S.bd.rows[+t.dataset.bdlevel].level = t.value; render(); } });
+document.addEventListener("mouseover", e => {
+  if (S.view !== "build") return;
+  const t = e.target.closest("[data-b],[data-s]"); const k = !t || !t.closest("#canvas") ? null : t.dataset.b ? +t.dataset.b : "s:" + t.dataset.s;
+  if (k !== S.hover) { S.hover = k; drawWires(); }
+});
+document.addEventListener("keydown", e => {
+  if (e.target.closest("textarea, input, select")) return;
+  if (e.key === "Escape") { if (!$("fb").hidden) return toggleFeedback(false); S.checking = null; return select(null); }
+  if ((e.key === "j" || e.key === "k") && S.view !== "breakdown") {
+    const order = S.view === "list" ? [...document.querySelectorAll(".lrow2[data-b]")].map(n => +n.dataset.b) : BLOCKS.map(b => b.id);
+    const i = order.indexOf(S.sel); const n = order[Math.max(0, Math.min(order.length - 1, i < 0 ? 0 : i + (e.key === "j" ? 1 : -1)))];
+    if (n != null) select(n);
+  }
+});
+window.addEventListener("resize", () => { if (S.view === "build") drawWires(); });
+$("me").innerHTML = Object.entries(PEOPLE).map(([n, p]) => `<option value="${n}">${n} (${p.role}${p.sme ? ", SME" : ""})</option>`).join("");
+$("me").value = S.me;
+$("me").onchange = () => { S.me = $("me").value; S.checking = null; S.form = {}; select(null); };
+$("reset").onclick = () => { resetData(); S.checking = null; S.sel = null; S.trail = []; S.view = "build"; render(); toast("Sample reset."); };
+$("fb-btn").onclick = () => toggleFeedback($("fb").hidden);
+render();
+</script>
+</body>
+</html>

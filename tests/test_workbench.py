@@ -158,6 +158,22 @@ def test_break_down_takes_ai_text_apart(ws):
         s.break_down(sid, "Jordan", "Summary:\n# Heading")
 
 
+def test_break_down_preview_then_add_what_was_kept(ws):
+    s, sid = ws
+    before = len(s.get_workspace(sid)["blocks"])
+    text = "Mobile checkout conversion is 42 percent.\nMost shoppers leave because the form is long."
+    pre = s.break_down(sid, "Jordan", text, preview=True)
+    assert [p["level"] for p in pre["pieces"]] == ["observation", "finding"]
+    assert pre["pieces"][1]["rests_on_nothing"] and pre["pieces"][1]["assumes"]
+    assert len(s.get_workspace(sid)["blocks"]) == before  # nothing written
+    kept = [{"statement": "Mobile web checkout conversion is 42 percent.", "level": "observation"}]
+    out = s.break_down(sid, "Jordan", text, blocks=kept)
+    assert [b["statement"] for b in out["blocks"]] == [kept[0]["statement"]] and out["warnings"] == []
+    assert out["blocks"][0]["source_ids"] == [out["source"]["id"]]
+    with pytest.raises(CoreError, match="level must be"):
+        s.break_down(sid, "Jordan", text, blocks=[{"statement": "x is y today", "level": "idea"}])
+
+
 def test_workspace_base_and_package(ws):
     s, sid = ws
     w = s.get_workspace(sid)

@@ -41,7 +41,8 @@
   a { color: var(--accent); }
 
   .app { display: grid; grid-template-columns: minmax(0, 1fr); min-height: 100%; }
-  .app.panel-open { grid-template-columns: minmax(0, 1fr) 390px; }
+  .app.panel-open { grid-template-columns: minmax(0, 1fr) var(--pw, 390px); }
+  .app.wide { --pw: 580px; }
   .col { min-width: 0; display: flex; flex-direction: column; }
 
   /* Top bar */
@@ -82,22 +83,16 @@
   .form { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); padding: 16px; display: grid; gap: 8px; max-width: 640px; }
   .form input, .form textarea { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); }
 
-  /* Package tray */
-  .tray { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 13px; color: var(--muted); }
-  .tray b { color: var(--ink); font-size: 14px; }
-  .tray .pill { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px 6px 3px 10px; color: var(--ink); max-width: 280px; }
-  .tray .pill span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .tray .pill button { border: 0; background: none; color: var(--muted); padding: 0 4px; }
-
   /* Build canvas */
   .canvas-wrap { overflow-x: auto; overflow-y: hidden; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
   .canvas { position: relative; }
   .canvas svg.wires { position: absolute; inset: 0; pointer-events: none; }
-  .wire { fill: none; stroke: var(--muted); stroke-width: 1.4; opacity: .5; transition: opacity .15s; }
-  .wire.weak { stroke-dasharray: 4 4; stroke: var(--amber); opacity: .85; }
-  .wire.src { stroke-dasharray: 2 3; opacity: .35; }
+  .wire { fill: none; stroke: var(--muted); stroke-width: 1.3; opacity: .28; transition: opacity .15s; }
+  .wire.weak { stroke-dasharray: 4 4; stroke: var(--amber); opacity: .55; }
+  .wire.src { stroke-dasharray: 2 3; opacity: .2; }
   .wire.hot { stroke: var(--accent); opacity: 1; stroke-width: 2.2; }
-  .canvas.exploring .wire:not(.hot) { opacity: .08; }
+  .canvas.exploring .wire:not(.hot) { opacity: .05; }
+  .canvas.traced-only .wire:not(.hot) { opacity: 0; }
   .row-label { position: absolute; left: 14px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
 
   .brick { position: absolute; border-radius: 6px; padding: 12px 12px 10px; background: var(--fill-owner); border: 1.5px solid color-mix(in srgb, var(--accent) 35%, var(--line)); display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: transform .12s ease, box-shadow .12s ease, opacity .15s; text-align: left; }
@@ -119,7 +114,7 @@
   .tag.t-needs_changes { color: var(--amber); }
   .tag.t-disagreement { color: var(--red); }
   .tag.t-nothing { color: var(--amber); border: 1px solid var(--amber); background: transparent; }
-  .brick.selected { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .brick.selected, .brick.picked { outline: 3px solid var(--accent); outline-offset: 2px; }
   .canvas.exploring .brick:not(.near) { opacity: .25; }
   .canvas.exploring .stone:not(.near) { opacity: .3; }
   .canvas.connecting .brick { cursor: copy; }
@@ -173,7 +168,8 @@
   .rrow .st { font-size: 13.5px; }
   .rrow .mt { grid-column: 2; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 10px; }
   .rrow .tag { grid-row: 1; grid-column: 3; }
-  .rrow .ok { grid-row: 1; grid-column: 3; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+  .rrow .rt { grid-row: 1; grid-column: 3; display: flex; gap: 6px; align-items: center; }
+  .rrow.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
   .amber { color: var(--amber); }
   .shape { width: 12px; height: 12px; margin-top: 4px; display: block; border: 1.5px solid var(--ink); }
   .shape.observation { border-radius: 1px; }
@@ -216,6 +212,42 @@
   .prompt { font-family: var(--f-mono); font-size: 11.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .pkg-item { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px; }
   .pkg-item .t { font-weight: 600; font-size: 16px; line-height: 1.25; }
+  /* Above the canvas: how lines show, and Connect */
+  .canvas-tools { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: flex-end; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .canvas-tools .linkbtn[aria-pressed="true"] { color: var(--ink); font-weight: 700; }
+  .grow { flex: 1; }
+
+  /* The cabinet: the panel on the right. A trail at the top says where you are. */
+  .cab-top { position: sticky; top: -18px; z-index: 2; margin: -18px -18px 0; padding: 10px 14px 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+  .trail { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; min-width: 0; flex: 1; }
+  .trail button { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 500; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trail .here { color: var(--ink); font-weight: 700; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trail .sep { color: var(--muted); }
+  .iconbtn { border: 1px solid transparent; background: none; color: var(--muted); border-radius: 6px; padding: 2px 8px; font-size: 12.5px; white-space: nowrap; }
+  .iconbtn:hover { border-color: var(--line); color: var(--ink); }
+  .checking { display: flex; align-items: center; gap: 10px; background: var(--ink); color: var(--bg); border-radius: 10px; padding: 8px 10px 8px 12px; font-size: 13px; }
+  .checking .count { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+  .checking button { border: 0; background: none; color: var(--bg); text-decoration: underline; font-size: 12.5px; padding: 0; }
+  .asks { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 3px; }
+  .srctext { font-size: 12.5px; white-space: pre-line; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .srctext mark { background: color-mix(in srgb, var(--glow) 40%, transparent); color: inherit; padding: 0 2px; }
+
+  /* Break down, in the work area */
+  .bd { display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
+  .bd input, .bd textarea { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); }
+  .summary { display: flex; flex-wrap: wrap; gap: 6px 20px; align-items: baseline; font-size: 13.5px; }
+  .summary b { font-size: 18px; font-variant-numeric: tabular-nums; }
+  .bdrows { background: var(--surface); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .bdrow { display: grid; grid-template-columns: 124px minmax(0, 1fr) auto; gap: 6px 12px; padding: 11px 14px; border-top: 1px solid var(--line); align-items: start; }
+  .bdrow:first-child { border-top: 0; }
+  .bdrow.on { background: var(--accent-soft); }
+  .bdrow select { padding: 6px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); }
+  .bdrow textarea { padding: 6px 8px; font-size: 13.5px; background: var(--bg); resize: vertical; }
+  .bdrow .flags { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--muted); align-items: center; }
+  .bdrow .x { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; padding: 4px 6px; }
+  .bdrow.removed { opacity: .45; }
+  .bdrow.removed textarea { text-decoration: line-through; }
+
   .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 50; max-width: calc(100% - 32px); }
   .toast.err { background: var(--red); color: #fff; }
 
@@ -225,6 +257,10 @@
     .nav .later { display: none; }
     h1 { font-size: 22px; }
     .part { font-size: 12px; padding: 8px; }
+    .panel.ws-summary { display: none; }
+    .bdrow { grid-template-columns: minmax(0, 1fr) auto; }
+    .bdrow textarea, .bdrow .flags { grid-column: 1 / -1; }
+    .bdrow .x { grid-row: 1; grid-column: 2; }
     .panel { position: fixed; left: 0; right: 0; bottom: 0; top: auto; max-height: 78vh; border-left: 0; border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.25); z-index: 40; padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
   }
   @media (prefers-reduced-motion: reduce) { .brick, .brick.fresh { transition: none; animation: none; } }
@@ -255,6 +291,12 @@ const UNCHECKED = new Set(["needs_check", "needs_changes", "disagreement"]);
 const VERDICT = { looks_right: "Looks right", needs_changes: "Needs changes", disagree: "Disagree" };
 const REVIEW_SAID = { approve: "Looks right", changes: "Needs changes", disagree: "Disagree" };
 const TAG = { needs_check: "Needs a check", needs_changes: "Needs changes", disagreement: "Disagree" };
+// Questions a checker can ask, by level, in "Think it through".
+const ASKS = {
+  observation: ["Does the source say exactly this, no more and no less?", "If there is a number, does it match the source?"],
+  finding: ["Do the blocks under it really add up to this?", "Would a skeptic read them the same way?"],
+  insight: ["Does it follow from the findings under it?", "Is it clear what to do, and for which decision?"],
+};
 const SAMPLE_AI_TEXT = `Checkout summary (drafted by an AI assistant)
 
 Mobile checkout conversion is 42 percent, well below desktop.
@@ -267,8 +309,8 @@ We should prioritize autofill and Apple Pay in Q3.`;
 const S = {
   me: null, people: [], config: null,
   ws: null, view: "build", selected: new Set(), connecting: false,
-  panel: null, detail: null, verdict: null, how: null, queueMode: false,
-  fresh: new Set(), filter: "all", mine: false,
+  panel: null, detail: null, verdict: null, how: null, trail: [], checking: null, wide: false, lines: "faint",
+  fresh: new Set(), bd: null, bdOn: 0, bdFilter: "all",
 };
 
 // ---------- Helpers ----------
@@ -295,6 +337,10 @@ function toast(msg, err) {
   t.className = "toast" + (err ? " err" : ""); t.textContent = msg; t.setAttribute("role", "status");
   document.body.appendChild(t); setTimeout(() => t.remove(), err ? 4200 : 2400);
 }
+const local = {
+  get(k, d) { try { const v = localStorage.getItem("anchor-" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem("anchor-" + k, JSON.stringify(v)); } catch (e) {} },
+};
 async function run(fn) { try { return await fn(); } catch (e) { toast(e.message, true); } }
 function copy(text, done) {
   const ok = () => toast(done || "Copied.");
@@ -304,8 +350,9 @@ function copy(text, done) {
 // ---------- Routing ----------
 function route() {
   const m = location.hash.match(/^#w\/(\d+)/);
-  closePanel(true);
-  S.selected.clear(); S.connecting = false;
+  hidePanel();
+  S.selected.clear(); S.connecting = false; S.checking = null; S.bd = null;
+  if (S.view === "breakdown") S.view = "build";
   return m ? openWorkspace(+m[1]) : renderHome();
 }
 window.addEventListener("hashchange", route);
@@ -345,44 +392,44 @@ async function renderHome() {
 }
 
 // ---------- Workspace ----------
-async function openWorkspace(id, keepPanel) {
-  if (!S.ws || S.ws.id !== id) $("main").innerHTML = `<div class="loading">Loading...</div>`;
+async function fetchWorkspace(id) {
   const [ws, q] = await Promise.all([api("workspaces/" + id), api(`needs-check?who=${encodeURIComponent(S.me)}&study_id=${id}`)]);
   S.ws = ws; S.queue = q.items;
-  renderWorkspace();
-  if (keepPanel && S.panel) await renderPanel();
 }
-const reload = () => openWorkspace(S.ws.id, true);
+async function openWorkspace(id) {
+  if (!S.ws || S.ws.id !== id) $("main").innerHTML = `<div class="loading">Loading...</div>`;
+  await fetchWorkspace(id);
+  renderWorkspace();
+  await openPanel(WS_PANEL);
+}
+// Fetch again after a change and redraw, keeping what the cabinet shows.
+async function reload() {
+  await fetchWorkspace(S.ws.id);
+  if (S.panel?.type === "block" && !byId(S.panel.id)) S.panel = WS_PANEL;
+  renderWorkspace();
+  if (S.panel) await renderPanel();
+}
 
 function renderWorkspace() {
-  const ws = S.ws;
+  const ws = S.ws, n = S.queue.length;
   $("main").innerHTML = `
     <div class="top">
       <div style="min-width:0"><h1>${esc(ws.question)}</h1><div class="for">For the decision: ${esc(ws.decision || "not set yet")}</div></div>
-      <div class="controls">
-        <button class="btn primary" id="queue-btn" ${S.queue.length ? "" : "disabled"}>${S.queue.length ? "Check " + plural(S.queue.length, "block") : "Nothing to check"}</button>
+      <div class="controls">${S.view === "breakdown" ? `<button class="btn" id="v-back">Back to the workspace</button>` : `
+        <button class="btn primary" id="queue-btn" ${n && !S.checking ? "" : "disabled"}>${S.checking ? "Checking..." : n ? "Check " + plural(n, "block") : "Nothing to check"}</button>
         <button class="btn" id="breakdown-btn">Break down AI text</button>
-        <button class="btn" id="connect-btn" aria-pressed="${S.connecting}" ${S.view === "build" ? "" : "hidden"}>Connect</button>
         <div class="seg" role="group" aria-label="View">
           <button id="v-build" aria-pressed="${S.view === "build"}">Build</button>
-          <button id="v-review" aria-pressed="${S.view === "review"}">Review</button>
-        </div>
+          <button id="v-list" aria-pressed="${S.view === "list"}">List</button>
+        </div>`}
       </div>
     </div>
-    <div class="tray" id="tray"></div>
     <div id="view"></div>
     <div class="connect" id="connect" hidden></div>`;
-  renderTray();
-  S.view === "build" ? renderBuild() : renderReview();
+  renderView();
   renderConnect();
 }
-
-function renderTray() {
-  const items = S.ws.package.map(byId).filter(Boolean);
-  $("tray").innerHTML = `<b>Package</b>` + (items.length
-    ? items.map(b => `<span class="pill"><span title="${esc(b.statement)}">${esc(b.statement)}</span><button data-unpkg="${b.id}" aria-label="Remove from package">×</button></span>`).join("") + `<button class="linkbtn" data-panel="package">Open</button>`
-    : `<span>Add checked insights to share them together.</span>`);
-}
+const renderView = () => ({ build: renderBuild, list: renderList, breakdown: renderBreakdown })[S.view]();
 
 // ---------- Build view ----------
 const W = { observation: 156, finding: 240, insight: 280, stone: 140 };
@@ -424,13 +471,15 @@ function layout() {
 
 function renderBuild() {
   const view = $("view");
-  view.innerHTML = `<div class="canvas-wrap" id="canvas-wrap"><div class="canvas" id="canvas"></div></div>
+  view.innerHTML = `<div class="canvas-tools"><span>Lines</span>${[["faint", "Faint"], ["traced", "Traced only"]].map(([k, l]) => `<button class="linkbtn" data-lines="${k}" aria-pressed="${S.lines === k}">${l}</button>`).join("")}
+      <span>·</span><button class="linkbtn" id="connect-btn" aria-pressed="${S.connecting}">${S.connecting ? "Stop connecting" : "Connect blocks"}</button></div>
+    <div class="canvas-wrap" id="canvas-wrap"><div class="canvas" id="canvas"></div></div>
     <div class="key"><span>Fuller means more checked:</span>
       <span><i class="sw" style="border-style:dashed;background:transparent;border-color:var(--muted)"></i>not yet</span>
       <span><i class="sw" style="background:var(--fill-owner)"></i>owner</span>
       <span><i class="sw" style="background:var(--fill-peers)"></i>peers</span>
       <span><i class="sw" style="background:var(--fill-sme);border-color:var(--fill-sme)"></i>SME</span>
-      <span>· ⚠ built on something unchecked · Hover a block to trace it.</span></div>`;
+      <span>· ⚠ built on something unchecked</span><span class="grow"></span><span>Hover to trace a line. Click to open it on the right.</span></div>`;
   const canvas = $("canvas"), wrap = $("canvas-wrap");
   const { pos, width } = layout();
   const availPx = wrap.clientWidth || 900;
@@ -444,6 +493,7 @@ function renderBuild() {
   canvas.style.width = W_ + "px";
   canvas.style.height = totalH + "px";
   canvas.classList.toggle("connecting", S.connecting);
+  canvas.classList.toggle("traced-only", S.lines === "traced");
   const X = id => pos[id].x + shift;
 
   let html = ROW.map(([k, l]) => `<div class="row-label" style="top:${Y[k] - 22}px">${l}</div>`).join("")
@@ -471,6 +521,7 @@ function renderBuild() {
     if (TAG[st] && b.rests_on_nothing) cls.push("two");
     else if (tags || madeWithAI(b) || b.unchecked_parts) cls.push("foot");
     if (S.selected.has(b.id)) cls.push("selected");
+    if (S.panel?.type === "block" && S.panel.id === b.id) cls.push("picked");
     if (b.level === "insight" && ["checked_by_peers", "checked_by_sme"].includes(st)) cls.push("glow");
     if (S.fresh.has(b.id)) cls.push("fresh");
     const marks = (madeWithAI(b) ? `<span class="ai${b.confidence === "low" ? " low" : ""}" title="Made with AI${b.confidence ? ", " + b.confidence + " confidence" : ""}">AI${b.confidence === "low" ? " · low" : ""}</span>` : "")
@@ -492,6 +543,7 @@ function renderBuild() {
   // Bring new blocks into view, for example after breaking down AI text.
   const fresh = [...S.fresh].filter(id => pos[id]).map(id => X(id));
   if (fresh.length) wrap.scrollLeft = Math.max(0, (Math.min(...fresh) - 40) * scale);
+  else canvas.querySelector(".brick.picked")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   S.fresh.clear();
   highlight();
 }
@@ -512,35 +564,94 @@ function trace(id) {
 }
 function highlight() { if (S.view === "build") trace(S.panel?.type === "block" ? S.panel.id : null); }
 
-// ---------- Review view ----------
-function renderReview() {
-  const list = S.ws.blocks.filter(b => (S.filter === "all" || b.level === S.filter) && (!S.mine || b.owner === S.me));
-  const needs = list.filter(b => b.check.state === "needs_check");
-  const attn = list.filter(b => ["needs_changes", "disagreement"].includes(b.check.state) || (b.rests_on_nothing && b.check.state !== "needs_check"));
-  const ok = list.filter(b => !needs.includes(b) && !attn.includes(b));
+// ---------- List view ----------
+// What waits on you first, then what needs attention. Everything else is folded.
+function renderList() {
+  const why = new Map(S.queue.map(i => [i.id, i.reason]));
+  const waiting = S.queue.map(i => byId(i.id)).filter(Boolean);
+  const attn = S.ws.blocks.filter(b => !why.has(b.id) && (["needs_changes", "disagreement"].includes(b.check.state) || b.rests_on_nothing));
+  const rest = S.ws.blocks.filter(b => !why.has(b.id) && !attn.includes(b));
+  const sel = S.panel?.type === "block" ? S.panel.id : null;
   const row = b => {
     const st = b.check.state;
-    const on = b.level === "observation" ? plural(b.source_ids.length, "source") : plural(b.built_on.length, "block");
-    return `<button class="rrow" data-open="${b.id}">
+    const trouble = (["needs_changes", "disagreement"].includes(st) ? tag(st) : "")
+      + (b.rests_on_nothing ? `<span class="tag t-nothing">Rests on nothing</span>` : "")
+      + (b.unchecked_parts ? `<span class="warn" title="Built on something unchecked">⚠</span>` : "");
+    return `<button class="rrow${b.id === sel ? " sel" : ""}" data-open="${b.id}">
       <i class="shape ${b.level}" title="${LEVEL[b.level]}"></i>
       <span class="st">${esc(b.statement)}</span>
-      ${TAG[st] ? tag(st) : `<span class="ok">✓ ${esc(b.check.label.replace("Checked by ", ""))}</span>`}
-      <span class="mt"><span>${LEVEL[b.level]}</span><span>${originText(b)}</span>
-        ${b.confidence ? `<span class="${b.confidence === "low" ? "amber" : ""}">AI says ${b.confidence}</span>` : ""}
-        ${b.rests_on_nothing ? `<span class="amber">Rests on nothing</span>` : `<span>Built on ${on}${b.unchecked_parts ? ` <span class="amber">⚠ ${b.unchecked_parts} unchecked</span>` : ""}${b.deep_unchecked ? ` · ${b.deep_unchecked} further down` : ""}</span>`}
-        ${b.assumes.length ? `<span>Assumes ${plural(b.assumes.length, "thing")}</span>` : ""}</span>
+      <span class="rt">${trouble}</span>
+      <span class="mt"><span>${LEVEL[b.level]} #${b.id}</span><span>${esc(originText(b))}</span>${why.has(b.id) ? `<span>${esc(why.get(b.id))}</span>` : TAG[st] && st !== "needs_check" ? "" : `<span>${esc(b.check.label)}</span>`}</span>
     </button>`;
   };
   const group = (title, items, open, empty) => `<details class="group"${open ? " open" : ""}><summary>${title} <span class="count">${items.length}</span></summary>${items.length ? items.map(row).join("") : `<div class="empty">${empty}</div>`}</details>`;
-  $("view").innerHTML = `<div class="filters">
-      ${[["all", "All"], ["observation", "Observations"], ["finding", "Findings"], ["insight", "Insights"]].map(([k, l]) => `<button class="chipbtn" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join("")}
-      <button class="chipbtn" data-mine aria-pressed="${S.mine}">Mine</button>
-    </div>
-    <div class="groups">
-      ${group("Needs a check", needs, true, "Nothing waiting.")}
+  $("view").innerHTML = `<div class="groups">
+      ${group("Waiting on you", waiting, true, "Nothing waits on you.")}
       ${group("Needs attention", attn, true, "No changes asked for, no disagreements, and nothing resting on nothing.")}
-      ${group("Checked", ok, false, "Nothing checked yet.")}
+      ${group("Everything else", rest, false, "Nothing else yet.")}
+    </div>
+    <div class="key"><span>J and K move through the list. Click a row to open it on the right.</span></div>`;
+}
+
+// ---------- Break down, in the work area ----------
+// Paste, preview the pieces, fix or drop them, then add what you kept.
+// The core does the splitting both times, so the app and an AI tool agree.
+const bdLook = p => p.rests_on_nothing || p.assumes.length;
+function renderBreakdown() {
+  const d = S.bd;
+  if (!d?.pieces) {
+    $("view").innerHTML = `<div class="bd">
+      <label class="note" for="bd-text">Paste a long AI answer. It is kept as a source, and each claim becomes a draft block for you to check first. Nothing leaves this app.</label>
+      <input type="text" id="bd-title" placeholder="Title, for example: AI summary of the interviews" aria-label="Title" value="${esc(d?.title || "")}">
+      <textarea id="bd-text" rows="10" placeholder="Paste AI text here" aria-label="AI text">${esc(d?.text || "")}</textarea>
+      <div class="row"><button class="btn primary" id="bd-run">Break it down</button><button class="linkbtn" id="bd-sample">Try a sample</button></div>
     </div>`;
+    return;
+  }
+  const keep = d.pieces.filter(p => !p.removed);
+  const inFilter = (p, k) => k === "all" || (k === "look" ? bdLook(p) : !bdLook(p));
+  const shown = d.pieces.map((p, i) => [p, i]).filter(([p]) => inFilter(p, S.bdFilter));
+  $("view").innerHTML = `<div class="bd">
+    <div class="summary"><span><b>${keep.length}</b> draft blocks</span><span class="amber"><b>${keep.filter(p => p.rests_on_nothing).length}</b> rest on nothing</span><span class="amber"><b>${keep.filter(p => p.assumes.length).length}</b> take things as given</span><span><b>${keep.filter(p => !bdLook(p)).length}</b> look clean</span></div>
+    <div class="filters">${[["all", "All"], ["look", "Needs a look"], ["clean", "Clean"]].map(([k, l]) => `<button class="chipbtn" data-bdf="${k}" aria-pressed="${S.bdFilter === k}">${l} ${d.pieces.filter(p => inFilter(p, k)).length}</button>`).join("")}</div>
+    <div class="bdrows">${shown.map(([p, i]) => `<div class="bdrow${p.removed ? " removed" : ""}${S.bdOn === i ? " on" : ""}" data-bdrow="${i}">
+      <select data-bdlevel="${i}" aria-label="Level"${p.removed ? " disabled" : ""}>${Object.entries(LEVEL).map(([k, l]) => `<option value="${k}"${p.level === k ? " selected" : ""}>${l}</option>`).join("")}</select>
+      <textarea data-bdtext="${i}" rows="2" aria-label="Statement"${p.removed ? " disabled" : ""}>${esc(p.statement)}</textarea>
+      <button class="x" data-bdx="${i}" aria-label="${p.removed ? "Put it back" : "Remove"}">${p.removed ? "↺" : "×"}</button>
+      <div class="flags">${p.rests_on_nothing ? `<span class="tag t-nothing">Rests on nothing</span>` : `<span>From the pasted text</span>`}${p.assumes.map(a => `<span class="amber">${esc(a)}</span>`).join("")}</div>
+    </div>`).join("") || `<div class="bdrow note">Nothing in this filter.</div>`}</div>
+    <div class="row"><button class="btn primary" id="bd-add"${keep.length ? "" : " disabled"}>Add ${plural(keep.length, "draft block")}</button><button class="btn ghost" id="bd-again">Start over</button></div>
+  </div>`;
+}
+async function bdPreview(edited) {
+  const d = S.bd;
+  const body = { study_id: S.ws.id, by: S.me, text: d.text, title: d.title || null, preview: true };
+  if (edited) body.blocks = d.pieces.map(p => ({ statement: p.statement, level: p.level }));
+  const out = await run(() => api("break_down", body));
+  if (!out) return;
+  const removed = edited ? d.pieces.map(p => p.removed) : [];
+  d.pieces = out.pieces.map((p, i) => ({ ...p, removed: !!removed[i] }));
+  renderBreakdown();
+}
+async function bdRun() {
+  const text = $("bd-text").value.trim();
+  if (!text) { $("bd-text").focus(); return toast("Paste some AI text first.", true); }
+  S.bd = { text, title: $("bd-title").value.trim() }; S.bdOn = 0; S.bdFilter = "all";
+  await bdPreview(false);
+  if (!S.bd.pieces) S.bd = { text: S.bd.text, title: S.bd.title };
+  await renderPanel();
+}
+async function bdAdd() {
+  const d = S.bd, keep = d.pieces.filter(p => !p.removed);
+  const out = await run(() => api("break_down", { study_id: S.ws.id, by: S.me, text: d.text, title: d.title || null,
+    blocks: keep.map(p => ({ statement: p.statement, level: p.level })) }));
+  if (!out) return;
+  out.ids.forEach(i => S.fresh.add(i));
+  S.bd = null; S.view = "build";
+  await fetchWorkspace(S.ws.id);
+  renderWorkspace();
+  await openPanel(WS_PANEL);
+  toast(`Added ${plural(out.ids.length, "draft")}. They wait on you first.`);
 }
 
 // ---------- Connect ----------
@@ -559,31 +670,79 @@ function renderConnect() {
     <button class="btn ghost" id="connect-cancel">Cancel</button>`;
 }
 
-// ---------- Panel ----------
-async function openPanel(p) {
+// ---------- The cabinet ----------
+// The panel on the right. Beside a workspace it is always open: with nothing
+// picked it shows the workspace. Picking something in the work starts a new
+// trail; following a link inside the cabinet adds a step to it.
+const WS_PANEL = { type: "workspace" };
+const samePanel = (a, b) => a.type === b.type && a.id === b.id;
+async function openPanel(p, inside) {
+  if (p.type === "workspace") S.trail = [];
+  else if (inside && S.panel && S.panel.type !== "workspace") {
+    const i = S.trail.findIndex(x => samePanel(x, p));
+    S.trail = i >= 0 ? S.trail.slice(0, i + 1) : [...S.trail, p];
+  } else S.trail = [p];
   S.panel = p; S.verdict = null; S.how = null;
   $("app").classList.add("panel-open");
   await renderPanel();
-  if (S.view === "build") renderBuild();
+  if (S.view !== "breakdown") renderView();
 }
-function closePanel(quiet) {
-  S.panel = null; S.queueMode = false; S.detail = null;
+function hidePanel() {
+  S.panel = null; S.detail = null; S.trail = [];
   $("panel").hidden = true;
   $("app").classList.remove("panel-open");
-  if (!quiet && S.ws && S.view === "build") renderBuild();
+}
+async function closePanel() {
+  const was = S.checking; S.checking = null;
+  if (was) renderWorkspace();
+  await openPanel(S.view === "breakdown" ? { type: "breakdown" } : WS_PANEL);
 }
 async function renderPanel() {
   const el = $("panel"), p = S.panel;
   if (p.type === "block") S.detail = await api("learnings/" + p.id);
   el.hidden = false;
-  el.innerHTML = p.type === "block" ? panelBlock(S.detail)
+  el.classList.toggle("ws-summary", p.type === "workspace");
+  const body = p.type === "block" ? panelBlock(S.detail)
     : p.type === "part" ? panelPart(p.id)
     : p.type === "source" ? panelSource(srcById(p.id))
     : p.type === "breakdown" ? panelBreakdown()
-    : panelPackage();
+    : p.type === "package" ? panelPackage()
+    : panelWorkspace();
+  el.innerHTML = cabTop() + checkingBar() + body;
   el.scrollTop = 0;
 }
-const head = (eyebrow, title) => `<div class="panel-head"><div><div class="eyebrow">${eyebrow}</div><h2>${esc(title)}</h2></div><button class="x" data-close aria-label="Close">×</button></div>`;
+function trailLabel(p) {
+  if (p.type === "block") { const b = byId(p.id); return b ? `${LEVEL[b.level]} #${b.id}` : "#" + p.id; }
+  if (p.type === "source") return srcById(p.id)?.title || "Source";
+  if (p.type === "part") return S.ws.base.find(x => x.key === p.id)?.label || "Base";
+  return { package: "Package", breakdown: "Break down" }[p.type] || "Workspace";
+}
+function cabTop() {
+  const t = S.trail;
+  const crumbs = !t.length ? `<span class="here">Workspace</span>`
+    : `<button data-trail="-1">Workspace</button>` + t.map((p, i) => `<span class="sep">›</span>` + (i === t.length - 1
+      ? `<span class="here">${esc(trailLabel(p))}</span>` : `<button data-trail="${i}">${esc(trailLabel(p))}</button>`)).join("");
+  return `<div class="cab-top"><nav class="trail" aria-label="Where you are">${crumbs}</nav>
+    <button class="iconbtn" id="wide" aria-pressed="${S.wide}" title="${S.wide ? "Make the cabinet narrower" : "Make room to think"}">${S.wide ? "Narrower" : "Wider"}</button>
+    ${t.length && p0(t) ? `<button class="x" data-close aria-label="Close">×</button>` : ""}</div>`;
+}
+const p0 = t => t[0].type !== "breakdown";
+const checkingBar = () => S.checking && S.panel?.type === "block"
+  ? `<div class="checking"><span>Checking</span><span class="count">${Math.min(S.checking.done + 1, S.checking.total)} of ${S.checking.total}</span><span class="grow"></span><button data-skip>Skip</button><button data-stop>Stop</button></div>` : "";
+
+function panelWorkspace() {
+  const ws = S.ws, n = S.queue.length;
+  const attn = ws.blocks.filter(b => ["needs_changes", "disagreement"].includes(b.check.state) || b.rests_on_nothing);
+  const pkg = ws.package.map(byId).filter(Boolean);
+  const item = b => `<button class="under-item" data-open="${b.id}"><span class="q">${esc(b.statement)}</span><span class="r bad">${LEVEL[b.level]} · ${TAG[b.check.state] && b.check.state !== "needs_check" ? TAG[b.check.state] : "Rests on nothing"}</span></button>`;
+  return `<div><div class="eyebrow">This workspace</div><h2>${esc(ws.question)}</h2><div class="meta">For the decision: ${esc(ws.decision || "not set yet")}</div></div>
+    <div><h3>Waiting on you</h3>${n ? `<div class="row" style="justify-content:space-between"><span>${plural(n, "block")} to check</span><button class="linkbtn" id="queue-start">Start</button></div>` : `<div class="note">Nothing waits on you.</div>`}</div>
+    ${attn.length ? `<div><h3>Needs attention</h3><div class="under">${attn.map(item).join("")}</div></div>` : ""}
+    <div><h3>Package</h3>${pkg.length ? `<div class="under">${pkg.map(b => `<button class="under-item" data-open="${b.id}"><span class="q">${esc(b.statement)}</span><span class="r${b.unchecked_parts || b.deep_unchecked ? " bad" : ""}">${b.unchecked_parts || b.deep_unchecked ? "⚠ Something under it still needs a check" : esc(b.check.label)}</span></button>`).join("")}</div><button class="linkbtn" data-panel="package" style="margin-top:6px">Open the package</button>` : `<div class="note">Add checked insights to share them together.</div>`}</div>
+    <details><summary>The base</summary><div class="under" style="margin-top:8px">${ws.base.map(p => `<button class="under-item" data-part="${p.key}"><span class="q">${esc(p.label)}</span><span class="r${p.ok ? "" : " bad"}">${p.key === "context" ? plural(p.count, "source") : p.ok ? "In place" : "Not filled in"}</span></button>`).join("")}</div></details>
+    <details><summary>Pair with your AI tool</summary><div class="stack" style="margin-top:8px"><div class="note">Your AI tool works in this workspace over MCP. It drafts blocks with sources and says how sure it is. You check them here.</div><div class="row"><button class="btn" id="copy-obs-prompt">Copy prompt for your AI</button></div></div></details>`;
+}
+const head = (eyebrow, title) => `<div class="panel-head"><div><div class="eyebrow">${eyebrow}</div><h2>${esc(title)}</h2></div></div>`;
 
 function quoteFor(body, text) {
   const words = new Set(text.toLowerCase().match(/[a-z]{5,}/g) || []);
@@ -596,7 +755,7 @@ function quoteFor(body, text) {
 function panelBlock(d) {
   const b = byId(d.id) || d;
   const st = d.check.state, mine = d.owner === S.me;
-  let h = head(LEVEL[d.level] + (S.queueMode ? ` · ${S.queue.length} to check` : ""), d.statement);
+  let h = head(`${LEVEL[d.level]} #${d.id}`, d.statement);
   h += `<div class="meta"><span class="status t-${st}">${esc(d.check.label)}</span> · ${originText(d)}</div>`;
 
   // What it rests on
@@ -628,9 +787,9 @@ function panelBlock(d) {
     h += `<div class="note" style="margin-bottom:8px">${intro}</div>
       <textarea id="edit-text" rows="3" aria-label="Wording">${esc(d.statement)}</textarea>
       <input type="text" id="check-note" placeholder="What did you check or change? (optional)" style="margin-top:8px" aria-label="Note">
-      <div class="row" style="margin-top:8px"><button class="btn primary" data-save="owner">${d.stage === "draft" ? "Looks right" : "Save new version"}</button>${S.queueMode ? `<button class="btn ghost" data-skip>Skip</button>` : ""}</div>`;
+      <div class="row" style="margin-top:8px"><button class="btn primary" data-save="owner">${d.stage === "draft" ? "Looks right" : "Save new version"}</button></div>`;
   } else if (d.stage === "draft") {
-    h += `<div class="note">${esc(d.owner)} checks this AI draft first. Then it is open for anyone to check.</div>${S.queueMode ? `<div class="row" style="margin-top:8px"><button class="btn ghost" data-skip>Skip</button></div>` : ""}`;
+    h += `<div class="note">${esc(d.owner)} checks this AI draft first. Then it is open for anyone to check.</div>`;
   } else {
     h += `<div class="verdicts">${Object.entries(VERDICT).map(([k, v]) => `<button class="btn v-${k}" data-verdict="${k}" aria-pressed="${S.verdict === k}">${v}</button>`).join("")}</div>`;
     if (S.verdict) {
@@ -638,9 +797,9 @@ function panelBlock(d) {
       h += `<div class="stack" style="margin-top:12px">
         ${S.verdict === "looks_right" ? `<div class="note">How did you check? (optional)</div><div class="hows">${Object.entries(checks).map(([k, v]) => `<button data-how="${k}" aria-pressed="${S.how === k}">${esc(v)}</button>`).join("")}</div>` : ""}
         <input type="text" id="check-note" placeholder="${S.verdict === "looks_right" ? "Add a note (optional)" : S.verdict === "needs_changes" ? "What should change?" : "Why do you disagree?"}" aria-label="Note">
-        <div class="row"><button class="btn primary" data-save="${S.verdict}">Save check</button>${S.queueMode ? `<button class="btn ghost" data-skip>Skip</button>` : ""}</div>
+        <div class="row"><button class="btn primary" data-save="${S.verdict}">Save check</button>${S.checking ? `<span class="note">Then the next one opens.</span>` : ""}</div>
       </div>`;
-    } else if (S.queueMode) h += `<div class="row" style="margin-top:8px"><button class="btn ghost" data-skip>Skip</button></div>`;
+    }
   }
   h += `</div>`;
 
@@ -649,13 +808,18 @@ function panelBlock(d) {
     h += `<div class="row">${inPkg ? `<button class="btn" data-unpkg="${d.id}">Remove from package</button>` : `<button class="btn" data-pkg="${d.id}">Add to package</button>`}</div>`;
   }
 
+  h += `<details${S.wide ? " open" : ""}><summary>Think it through</summary><div class="stack" style="margin-top:8px">
+    <ul class="asks">${ASKS[d.level].map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+    <label class="note" for="think">Your notes. Only you see these, in this browser.</label>
+    <textarea id="think" data-think="${d.id}" rows="${S.wide ? 6 : 3}">${esc(local.get("think-" + d.id, ""))}</textarea></div></details>`;
   const ups = S.ws.blocks.filter(x => x.built_on.includes(d.id));
   if (ups.length) h += `<details><summary>Holds up ${ups.length}</summary><div class="under" style="margin-top:8px">${ups.map(u => `<button class="under-item" data-open="${u.id}"><span class="q">${esc(u.statement)}</span><span class="r">${LEVEL[u.level]}</span></button>`).join("")}</div></details>`;
   const history = [];
   if (d.confirmed) history.push(`<div><b>Checked by owner</b> · ${esc(d.confirmed.by)}${d.confirmed.edited ? ` · changed the AI's wording<br><span class="meta">AI wrote: "${esc(d.confirmed.before)}"</span>` : ""}${d.confirmed.note ? `<br><span class="meta">${esc(d.confirmed.note)}</span>` : ""}</div>`);
   d.reviews.forEach(r => history.push(`<div><b class="${r.verdict === "changes" ? "amber" : ""}" style="${r.verdict === "disagree" ? "color:var(--red)" : ""}">${r.current ? "" : "<s>"}${REVIEW_SAID[r.verdict]}${r.current ? "" : "</s>"}</b> · ${esc(r.by)}${r.sme ? " (SME)" : ""}${r.how ? " · " + esc((S.config?.checks || {})[r.how] || r.how).toLowerCase() : ""}${r.note ? `<br><span class="meta">${esc(r.note)}</span>` : ""}</div>`));
   if (d.revises) history.push(`<div><b>New version</b> of <button class="linkbtn" data-open-any="${d.revises.id}">an earlier wording</button><br><span class="meta">"${esc(d.revises.statement)}"</span></div>`);
-  if (history.length) h += `<details${S.queueMode ? "" : ""}><summary>History ${history.length}</summary><div class="checks">${history.join("")}</div></details>`;
+  if (history.length) h += `<details><summary>History ${history.length}</summary><div class="checks">${history.join("")}</div></details>`;
+  h += `<details><summary>Ask your AI about it</summary><div class="stack" style="margin-top:8px"><div class="note">Your AI tool reads this block, what it rests on, and its sources, and tells you if the evidence supports it as worded. It does not check it for you.</div><div class="row"><button class="btn" data-ask="${d.id}">Copy prompt for your AI</button></div></div></details>`;
   return h;
 }
 
@@ -695,15 +859,17 @@ function panelSource(s) {
 }
 
 function panelBreakdown() {
-  let h = head("Break down AI text", "Take a long AI answer apart");
-  h += `<div class="note">Long AI text can hide assumptions. Paste it here and ANCHOR splits it into one draft block per claim. Claims with nothing under them show up, and words like "most" or "clearly" are listed as assumptions. Nothing leaves this app.</div>
-    <input type="text" id="bd-title" placeholder="Title, for example: AI summary of the interviews" aria-label="Title">
-    <textarea id="bd-text" rows="9" placeholder="Paste AI text here" aria-label="AI text"></textarea>
-    <div class="row"><button class="btn primary" id="bd-run">Split into blocks</button><button class="linkbtn" id="bd-sample">Try a sample</button></div>
-    <div id="bd-result"></div>
+  const d = S.bd;
+  if (!d?.pieces) return `${head("Break down AI text", "Turn a long AI answer into blocks you can check")}
+    <div class="note">The text is kept as a source. Each claim becomes a draft block for you. You see the pieces first, and can fix a level or the wording, or drop a piece, before anything is added. Claims with nothing under them are flagged, and words that take things as given are listed.</div>
     <div><h3>Or let your AI tool do it</h3><div class="note" style="margin-bottom:8px">It does a smarter split over MCP: each block cites a source, is built on the right parts, and says how sure the AI is and why.</div>
     <button class="btn" id="bd-prompt">Copy prompt for your AI</button></div>`;
-  return h;
+  const r = d.pieces[S.bdOn];
+  const at = r ? d.text.indexOf(r.statement.replace(/[.!?]$/, "")) : -1;
+  const body = at < 0 ? esc(d.text) : esc(d.text.slice(0, at)) + `<mark>${esc(d.text.slice(at, at + r.statement.replace(/[.!?]$/, "").length))}</mark>` + esc(d.text.slice(at + r.statement.replace(/[.!?]$/, "").length));
+  return `${head("The pasted text · kept as a source", d.title || "Pasted AI text")}
+    <div class="srctext">${body}</div><div class="note">The marked part is the row you are on.</div>
+    ${r ? `<div><h3>This row</h3><div class="note">${r.level === "observation" ? "As an observation, it comes from the pasted text. Check it against the real data before you build on it." : `As ${r.level === "insight" ? "an insight" : "a finding"}, it needs blocks under it. Link them after it lands, or ask your AI tool to find them.`}</div></div>` : ""}`;
 }
 
 function panelPackage() {
@@ -732,6 +898,7 @@ function panelPackage() {
 // ---------- Prompts for the person's own AI tool ----------
 const obsPrompt = () => `Use the ANCHOR prompt "break_down_text", or: call get_workspace(study_id=${S.ws.id}) and read every source. Write observations: only what was seen or measured, one claim each, citing the source id. Then findings built on them, then insights built on findings. Give every block confidence (low, medium, high), why in one line, and what it assumes. Add them with add_blocks as drafts for me to check.`;
 const breakdownPrompt = text => `Take this AI text apart into building blocks in ANCHOR workspace ${S.ws.id}. Call add_source with it (kind "ai_text"), then add_blocks: one claim per block, observations citing sources, findings and insights built on the blocks that show them. Give every block confidence (low, medium, high), why, and what it assumes. Tell me which claims rest on nothing.\n\n${text || "<paste the text here>"}`;
+const askPrompt = id => `In ANCHOR workspace ${S.ws.id}, read block #${id} with get, then what it is built on and its sources. Tell me if the evidence supports it as worded, what it takes as given, and what would make it wrong. Do not check it for me.`;
 const connectPrompt = (ids, target) => `In ANCHOR workspace ${S.ws.id}, read blocks ${ids.map(i => "#" + i).join(", ")} with get. Write one ${target} they add up to, as one sentence. Add it with add(level="${target}", evidence=[${ids.join(", ")}], study_id=${S.ws.id}, origin="person_with_ai") and give confidence, why, and what it assumes.`;
 
 // ---------- Actions ----------
@@ -751,11 +918,28 @@ async function saveCheck(verdict) {
   const out = await run(() => api("check", body));
   if (!out) return;
   toast(out.learning.check.label + ".");
-  const queueMode = S.queueMode;
-  await openWorkspace(S.ws.id);
-  if (queueMode && S.queue.length) { S.queueMode = true; await openPanel({ type: "block", id: S.queue.find(i => i.id !== d.id)?.id || S.queue[0].id }); }
-  else if (queueMode) { toast("All checked."); closePanel(); }
-  else await openPanel({ type: "block", id: out.learning.id });
+  await fetchWorkspace(S.ws.id);
+  if (S.checking) { S.checking.done++; renderWorkspace(); return nextCheck(d.id); }
+  // A new version has a new id: put it in place of the old one in the trail.
+  const p = { type: "block", id: out.learning.id };
+  S.trail[S.trail.length - 1] = p; S.panel = p; S.verdict = null; S.how = null;
+  renderWorkspace(); await renderPanel();
+}
+
+// ---------- Check N blocks: step through what waits on you, in the cabinet ----------
+async function startChecking() {
+  if (!S.queue.length) return;
+  S.checking = { total: S.queue.length, done: 0, skipped: [] };
+  renderWorkspace();
+  await openPanel({ type: "block", id: S.queue[0].id });
+}
+async function nextCheck(leaving) {
+  const c = S.checking;
+  let left = S.queue.filter(i => i.id !== leaving && !c.skipped.includes(i.id));
+  if (!left.length) { c.skipped = []; left = S.queue.filter(i => i.id !== leaving); }
+  if (!left.length) { S.checking = null; renderWorkspace(); await openPanel(WS_PANEL); return toast("That is everything waiting on you."); }
+  c.total = Math.max(c.total, c.done + left.length);
+  await openPanel({ type: "block", id: left[0].id });
 }
 
 async function setPackage(ids) {
@@ -774,28 +958,17 @@ async function connect() {
   const out = await run(() => api("add", { statement: text, level: target, owner: S.me, evidence: sel, study_id: S.ws.id }));
   if (!out) return;
   S.selected.clear(); S.connecting = false; S.fresh.add(out.learning.id);
-  await openWorkspace(S.ws.id);
+  await fetchWorkspace(S.ws.id);
+  renderWorkspace();
   await openPanel({ type: "block", id: out.learning.id });
 }
 
-async function breakDown() {
-  const text = $("bd-text").value.trim();
-  if (!text) { $("bd-text").focus(); return toast("Paste some AI text first.", true); }
-  const out = await run(() => api("break_down", { study_id: S.ws.id, by: S.me, text, title: $("bd-title").value.trim() || null }));
-  if (!out) return;
-  out.ids.forEach(i => S.fresh.add(i));
-  const nothing = out.blocks.filter(b => b.rests_on_nothing).length;
-  const assumed = out.blocks.filter(b => b.assumes.length).length;
-  await openWorkspace(S.ws.id, true);
-  $("bd-result").innerHTML = `<div class="stack"><div><b>Made ${plural(out.blocks.length, "draft block")}.</b> ${nothing ? `<span class="amber">${nothing} rest on nothing in the text.</span>` : ""} ${assumed ? `${assumed} take something as given.` : ""}</div>
-    <div class="under">${out.blocks.map(b => `<button class="under-item" data-open="${b.id}"><span class="q">${esc(b.statement)}</span><span class="r${b.rests_on_nothing ? " bad" : ""}">${LEVEL[b.level]}${b.rests_on_nothing ? " · rests on nothing" : ""}${b.assumes.length ? " · assumes " + plural(b.assumes.length, "thing") : ""}</span></button>`).join("")}</div>
-    <div class="note">They are drafts owned by you. Check each one: fix the level or wording, and connect findings to what shows them.</div></div>`;
-}
-
-function setView(v) {
+async function setView(v) {
   S.view = v;
   if (v !== "build") { S.connecting = false; S.selected.clear(); }
+  if (v === "breakdown") { S.checking = null; renderWorkspace(); return openPanel({ type: "breakdown" }); }
   renderWorkspace();
+  if (S.panel?.type === "breakdown") await openPanel(WS_PANEL);
 }
 
 // ---------- Events ----------
@@ -818,37 +991,47 @@ document.addEventListener("click", async e => {
     }
     return openPanel({ type: "block", id });
   }
-  const d = t.dataset;
-  if (d.src) return openPanel({ type: "source", id: +d.src });
-  if (d.part) return openPanel({ type: "part", id: d.part });
-  if (d.open) return openPanel({ type: "block", id: +d.open });
-  if (d.openAny) return openPanel({ type: "block", id: +d.openAny });
-  if (d.openSrc) return openPanel({ type: "source", id: +d.openSrc });
-  if (d.panel) return openPanel({ type: d.panel });
+  const d = t.dataset, inside = !!t.closest("#panel");
+  if (d.src) return openPanel({ type: "source", id: +d.src }, inside);
+  if (d.part) return openPanel({ type: "part", id: d.part }, inside);
+  if (d.open) return openPanel({ type: "block", id: +d.open }, inside);
+  if (d.openAny) return openPanel({ type: "block", id: +d.openAny }, inside);
+  if (d.openSrc) return openPanel({ type: "source", id: +d.openSrc }, inside);
+  if (d.panel) return openPanel({ type: d.panel }, inside);
   if (t.hasAttribute("data-close")) return closePanel();
+  if (d.trail) {
+    const i = +d.trail;
+    if (i < 0) return closePanel();
+    S.trail = S.trail.slice(0, i + 1); S.panel = S.trail[i]; S.verdict = null; S.how = null;
+    await renderPanel(); return renderView();
+  }
+  if (d.lines) { S.lines = d.lines; local.set("lines", S.lines); return renderBuild(); }
+  if (d.ask) return copy(askPrompt(+d.ask), "Prompt copied. Paste it into your AI tool.");
+  if (d.bdf) { S.bdFilter = d.bdf; return renderBreakdown(); }
+  if (d.bdx) { const p = S.bd.pieces[+d.bdx]; p.removed = !p.removed; return renderBreakdown(); }
+  if (t.hasAttribute("data-stop")) { S.checking = null; renderWorkspace(); return renderPanel(); }
   if (d.verdict) { S.verdict = d.verdict; S.how = null; await renderPanel(); $("check-note")?.focus(); return; }
   if (d.save) return saveCheck(d.save);
   if (d.how) { S.how = S.how === d.how ? null : d.how; document.querySelectorAll("[data-how]").forEach(b => b.setAttribute("aria-pressed", b.dataset.how === S.how)); return; }
-  if (t.hasAttribute("data-skip")) {
-    const i = S.queue.findIndex(x => x.id === S.panel.id);
-    const next = S.queue[(i + 1) % S.queue.length];
-    S.queueMode = true; return openPanel({ type: "block", id: next.id });
-  }
+  if (t.hasAttribute("data-skip")) { S.checking.skipped.push(S.panel.id); return nextCheck(S.panel.id); }
   if (d.pkg) { await setPackage([...S.ws.package, +d.pkg]); return S.panel && renderPanel(); }
   if (d.unpkg) { await setPackage(S.ws.package.filter(x => x !== +d.unpkg)); return S.panel && renderPanel(); }
-  if (d.filter) { S.filter = d.filter; return renderReview(); }
-  if (t.hasAttribute("data-mine")) { S.mine = !S.mine; return renderReview(); }
   switch (t.id) {
-    case "queue-btn": if (S.queue.length) { S.queueMode = true; await openPanel({ type: "block", id: S.queue[0].id }); } return;
-    case "v-build": return setView("build");
-    case "v-review": return setView("review");
-    case "breakdown-btn": return openPanel({ type: "breakdown" });
-    case "connect-btn": S.connecting = !S.connecting; S.selected.clear(); if (S.connecting && S.panel) closePanel(true); renderConnect(); renderBuild(); return;
+    case "queue-btn": case "queue-start": return startChecking();
+    case "v-build": case "v-back": return setView("build");
+    case "v-list": return setView("list");
+    case "breakdown-btn": return setView("breakdown");
+    case "wide":
+      S.wide = !S.wide; local.set("wide", S.wide); $("app").classList.toggle("wide", S.wide);
+      await renderPanel(); if (S.view === "build") setTimeout(renderBuild, 230); return;
+    case "connect-btn": S.connecting = !S.connecting; S.selected.clear(); renderConnect(); renderBuild(); return;
     case "connect-cancel": S.selected.clear(); S.connecting = false; renderConnect(); renderBuild(); return;
     case "connect-add": return connect();
     case "connect-prompt": return copy(connectPrompt([...S.selected], $("connect-add").dataset.target), "Prompt copied. Paste it into your AI tool.");
-    case "bd-run": return breakDown();
+    case "bd-run": return bdRun();
     case "bd-sample": $("bd-text").value = SAMPLE_AI_TEXT; $("bd-title").value = "AI summary of checkout research"; return;
+    case "bd-add": return bdAdd();
+    case "bd-again": S.bd = { text: S.bd.text, title: S.bd.title }; renderBreakdown(); return renderPanel();
     case "bd-prompt": return copy(breakdownPrompt($("bd-text").value.trim()), "Prompt copied. Paste it into your AI tool.");
     case "copy-obs-prompt": return copy(obsPrompt(), "Prompt copied. Paste it into your AI tool.");
     case "save-part": {
@@ -876,15 +1059,43 @@ document.addEventListener("mouseout", e => {
   const b = e.target.closest?.(".brick");
   if (b && !b.contains(e.relatedTarget)) highlight();
 });
+document.addEventListener("input", e => {
+  const t = e.target;
+  if (t.dataset.think) local.set("think-" + t.dataset.think, t.value);
+  if (t.dataset.bdtext != null && S.bd?.pieces) S.bd.pieces[+t.dataset.bdtext].statement = t.value;
+});
+// After a level or wording change, ask the core again, so the flags stay true.
+document.addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.bdlevel != null && S.bd?.pieces) { S.bd.pieces[+t.dataset.bdlevel].level = t.value; bdPreview(true); }
+  if (t.dataset.bdtext != null && S.bd?.pieces) bdPreview(true);
+});
+document.addEventListener("focusin", e => {
+  const row = e.target.closest?.("[data-bdrow]");
+  if (!row || !S.bd?.pieces || S.bdOn === +row.dataset.bdrow) return;
+  S.bdOn = +row.dataset.bdrow;
+  document.querySelectorAll(".bdrow").forEach(r => r.classList.toggle("on", +r.dataset.bdrow === S.bdOn));
+  renderPanel();
+});
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape") { if (S.panel) closePanel(); else if (S.connecting) { S.connecting = false; S.selected.clear(); renderConnect(); renderBuild(); } }
+  const typing = e.target.closest?.("input, textarea, select");
+  if (e.key === "Escape") {
+    if (S.connecting) { S.connecting = false; S.selected.clear(); renderConnect(); return renderBuild(); }
+    if (S.panel && S.panel.type !== "workspace" && S.panel.type !== "breakdown") return closePanel();
+  }
+  if (!typing && S.ws && (e.key === "j" || e.key === "k") && S.view !== "breakdown") {
+    const order = S.view === "list" ? [...document.querySelectorAll("#view .rrow")].filter(n => n.offsetParent).map(n => +n.dataset.open) : S.ws.blocks.map(b => b.id);
+    const at = order.indexOf(S.panel?.type === "block" ? S.panel.id : null);
+    const next = order[at < 0 ? 0 : Math.max(0, Math.min(order.length - 1, at + (e.key === "j" ? 1 : -1)))];
+    if (next != null) openPanel({ type: "block", id: next });
+  }
   if ((e.key === "Enter" || e.key === " ") && e.target.classList?.contains("brick")) { e.preventDefault(); e.target.click(); }
   if (e.key === "Enter" && e.target.id === "connect-text") connect();
 });
 $("me").addEventListener("change", async e => {
   S.me = e.target.value;
   try { localStorage.setItem("anchor-me", S.me); } catch (err) {}
-  if (S.ws) { const p = S.panel; await openWorkspace(S.ws.id); if (p) await openPanel(p); } else renderHome();
+  if (S.ws) { const p = S.panel; S.checking = null; await openWorkspace(S.ws.id); if (p && p.type !== "workspace") await openPanel(p); } else renderHome();
 });
 let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => S.ws && S.view === "build" && renderBuild(), 120); });
 
@@ -892,6 +1103,8 @@ let rz; window.addEventListener("resize", () => { clearTimeout(rz); rz = setTime
 (async () => {
   try {
     [S.people, S.config] = await Promise.all([api("people"), api("config")]);
+    S.wide = local.get("wide", false); S.lines = local.get("lines", "faint");
+    $("app").classList.toggle("wide", S.wide);
     let saved = null;
     try { saved = localStorage.getItem("anchor-me"); } catch (e) {}
     S.me = S.people.find(p => p.name === saved)?.name || S.people.find(p => p.sme)?.name || S.people[0]?.name || "You";

@@ -1814,7 +1814,8 @@ class Store:
             warnings += [f"#{out['learning']['id']}: {w}" for w in out["warnings"] if "is a draft until" not in w]
         return {"ids": made, "refs": refs, "warnings": warnings}
 
-    def break_down(self, study_id: int, by: str, text: str, title: str | None = None) -> dict[str, Any]:
+    def break_down(self, study_id: int, by: str, text: str, title: str | None = None,
+                   preview: bool = False, blocks: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         """Take a long piece of AI text apart into blocks, so each claim can be
         checked on its own. A simple built-in splitter, with no AI and nothing
         sent anywhere: the text is kept as a source, each sentence becomes a
@@ -1822,24 +1823,45 @@ class Store:
         the text. Findings and insights are left built on nothing, which is the
         point: it shows which claims the text never supported. Hedges and
         sweeping words are listed as what the block assumes. Your AI tool can
-        do a better job with add_blocks."""
+        do a better job with add_blocks.
+
+        With preview, nothing is written: you get the pieces, so a person can
+        fix a level or the wording, or drop a piece, first. Pass the pieces they
+        keep back as blocks (each a statement and a level) to add exactly those."""
         text = self._require(text, "text")
-        pieces = _split_claims(text)
+        if blocks is None:
+            pieces = [{"statement": p, "level": _guess_level(p)} for p in _split_claims(text)]
+        else:
+            pieces = []
+            for i, b in enumerate(blocks):
+                if not isinstance(b, dict):
+                    raise CoreError(f"block {i + 1} must be an object")
+                level = b.get("level")
+                if level not in LEVELS:
+                    raise CoreError(f"block {i + 1}: level must be one of {LEVELS}")
+                pieces.append({"statement": self._require(b.get("statement"), f"block {i + 1} statement"), "level": level})
         if not pieces:
             raise CoreError("found no claims to take apart; paste sentences, not just headings")
+        for p in pieces:
+            p["assumes"] = _assumptions(p["statement"])
+            p["rests_on_nothing"] = p["level"] != "observation"
+        nothing = sum(p["rests_on_nothing"] for p in pieces)
+        warnings = [f"{nothing} of {len(pieces)} claims rest on nothing in the text"] if nothing else []
+        if preview:
+            with self._conn() as conn:
+                self._person(conn, by, "by")
+                self._study_row(conn, study_id)
+            return {"pieces": pieces, "warnings": warnings}
         src = self.add_source(study_id, by, title or "Pasted AI text", text, "ai_text")["source"]
         made = []
-        for piece in pieces:
-            level = _guess_level(piece)
-            out = self.add(piece, level, by, None, study_id, "ai_agent",
-                           [src["id"]] if level == "observation" else None, None,
-                           "Split from pasted AI text. The AI did not say how sure it was.", _assumptions(piece))
+        for p in pieces:
+            out = self.add(p["statement"], p["level"], by, None, study_id, "ai_agent",
+                           [src["id"]] if p["level"] == "observation" else None, None,
+                           "Split from pasted AI text. The AI did not say how sure it was.", p["assumes"])
             made.append(out["learning"]["id"])
         with self._conn() as conn:
-            blocks = [self._block(conn, self._row(conn, i)) for i in made]
-        nothing = sum(b["rests_on_nothing"] for b in blocks)
-        warnings = [f"{nothing} of {len(blocks)} claims rest on nothing in the text"] if nothing else []
-        return {"source": src, "ids": made, "blocks": blocks, "warnings": warnings}
+            made_blocks = [self._block(conn, self._row(conn, i)) for i in made]
+        return {"source": src, "ids": made, "blocks": made_blocks, "warnings": warnings}
 
     def set_package(self, study_id: int, by: str, learning_ids: list[int]) -> dict[str, Any]:
         """Choose the insights a workspace shares together, in order. Only

@@ -22,7 +22,7 @@ The core of ANCHOR is one place to do analysis, built up like building blocks:
 6. **Break down AI text**: paste a long AI answer and ANCHOR splits it into draft blocks, one per claim, flags the claims that rest on nothing, and lists the words that take things as given. Your own AI tool can do a smarter job over MCP.
 7. **Package**: the checked insights a workspace shares together, each traceable down to its sources.
 
-Two views: **Build** shows the blocks stacked on the base, with lines to what each is built on (hover a block to trace its line). **Review** lists them by what needs a check. Decisions, narratives, and research requests come later; the core already has decisions and requests.
+Two views: **Build** shows the blocks stacked on the base, with faint lines to what each is built on (hover a block to trace its line). **List** shows them by what waits on you. A cabinet on the right holds the detail and the check, with a trail so you always know where you are. Break down AI text opens in the same place, and shows the pieces before anything is added. Decisions, narratives, and research requests come later; the core already has decisions and requests.
 
 The same actions work the same way from an AI tool (MCP) or the web app, because both call the same core functions. A team shapes it with one plain config file, `anchor.toml`.
 
@@ -36,7 +36,7 @@ anchor/
   seed.py         a sample workspace mid-way through (used by scripts/seed.py and the demo)
   mcp_server.py   MCP tools and guided prompts, a thin wrapper on core
   web.py          small JSON API + static page, also a thin wrapper on core
-  static/index.html   the web app: the workbench (Build and Review views, the check panel)
+  static/index.html   the web app: the workbench (Build and List views, the cabinet)
 anchor.example.toml   every team choice, explained
 docs/SETUP.md     setup guide for a research lead
 docs/GLOSSARY.md  the words ANCHOR uses, and what each means
@@ -139,7 +139,7 @@ In MCP, the person's name is set once per session with `set_identity` (or the `A
 | Workbench | `get_workspace(study_id)` | `get_workspace` | `GET /api/workspaces/{id}` |
 | Workbench | `add_source(study_id, by, title, body, kind, url)` | `add_source` | `POST /api/add_source` |
 | Workbench | `add_blocks(study_id, by, blocks, origin)` | `add_blocks` | `POST /api/add_blocks` |
-| Workbench | `break_down(study_id, by, text, title)` | `break_down` | `POST /api/break_down` |
+| Workbench | `break_down(study_id, by, text, title, preview, blocks)` | `break_down` | `POST /api/break_down` |
 | Workbench | `check(learning_id, by, verdict, how, note, statement)` | `check` | `POST /api/check` |
 | Workbench | `needs_check(who, study_id)` | `needs_check` | `GET /api/needs-check?who=&study_id=` |
 | Workbench | `set_package(study_id, by, learning_ids)` | `set_package` | `POST /api/set_package` |
@@ -174,7 +174,7 @@ Open by default. Roles inform, they never block, unless a team turns on a rule t
 - Building on unchecked blocks is allowed. The block built on them reports `unchecked_parts` (directly under it) and `deep_unchecked` (further down) until they are checked.
 - An observation with no source, or a finding or insight built on no blocks, reports `rests_on_nothing`.
 - AI confidence, why, and assumes are stored as the AI gave them. A block made with AI that leaves them out gets a warning. They never change the check state.
-- `break_down` is a plain text splitter with no AI: one draft block per sentence, a level guessed from cue words, and hedges or sweeping words listed as assumptions.
+- `break_down` is a plain text splitter with no AI: one draft block per sentence, a level guessed from cue words, and hedges or sweeping words listed as assumptions. With `preview` it writes nothing and returns the pieces; pass the ones to keep back as `blocks` (statement and level) to add exactly those.
 
 - A learning a person writes starts as Shared and Not reviewed. One made with AI starts as a Draft that only its owner can confirm. A draft cannot be reviewed, asked about, or promoted.
 - Trust is one state, first match wins: Contested (a confirmed conflict, or a current review disagrees), Needs changes, Checked by an SME, Checked by peers, Not reviewed.
