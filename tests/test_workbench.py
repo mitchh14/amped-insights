@@ -155,7 +155,7 @@ def test_break_down_takes_ai_text_apart(ws):
     assert "decision" in " ".join(blocks[3]["assumes"])
     said = " ".join(blocks[1]["assumes"])
     assert '"most" without a number' in said and '"clearly"' in said and "cause" in said
-    assert "2 of 3 claims rest on nothing" in out["warnings"][0]
+    assert "3 of 4 claims rest on nothing" in out["warnings"][0]
     with pytest.raises(CoreError, match="no claims"):
         s.break_down(sid, "Jordan", "Summary:\n# Heading")
 
