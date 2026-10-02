@@ -77,7 +77,7 @@ label = "Stakeholder"
 #
 # What your team calls each level. The meaning stays the same: an observation
 # is what we saw, a finding is what we think it means (not yet an insight), and
-# an insight is what it means for us and what to do about it.
+# an insight is what it means for us. What to do about it goes in a decision.
 # ---------------------------------------------------------------------------
 
 [levels]

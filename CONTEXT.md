@@ -6,6 +6,8 @@ See [PRINCIPLES.md](PRINCIPLES.md) for why this exists and the values behind it.
 
 ## The problem
 
+The full statement, with causes and symptoms for each audience, is in [docs/PROBLEM.md](docs/PROBLEM.md). In short:
+
 As AI makes it fast for anyone to generate an analysis or a claim about users, the risk is not slow research. It is ungrounded research. What teams learn lives in decks, docs, and chat threads with no shared place to check what the organization already knows. People re-research questions that already have answers, contradictions pile up quietly, and nobody can tell what is still true, what was a one-time guess, or what has been checked at all.
 
 The fix is not a better search tool. It is a shared, checkable layer of learnings, at different levels, that any person or AI agent can query before generating something new, and that stays honest about who said what, whether an AI drafted it, and how sure anyone should be.
@@ -31,6 +33,7 @@ Researcher roles are shifting from executing every study personally to orchestra
 7. Data stays where the org already trusts it, self-hosted by default, no required outbound calls, storage that stays boring and inspectable so the data always stays yours. See PRINCIPLES.md for the full reasoning.
 8. Everyone generates insights, by design. Review is open to everyone, with varied trust: the most trusted reviews come from the SMEs the team names, from any team. Roles inform, they never block.
 9. Fit the team, not the other way around. Teams trust different roles differently and work in their own ways. Setup bends ANCHOR to the team. Defaults are open, and the people implementing it decide how much structure to add.
+10. Slow and steady. Speed is good, but taking time to check each part and understand how it fits the whole is what gets to the right outcome. Slow can be fast: checking a small block now is quicker than unwinding a decision later. See [PRINCIPLES.md](PRINCIPLES.md).
 
 ## The user types
 
@@ -48,7 +51,7 @@ See [docs/FLOW.md](docs/FLOW.md) for how these people move through the work mode
 
 1. Observation: what we saw or measured, with no reading into it (example: mobile checkout conversion is 42 percent). Can be checked on accuracy alone.
 2. Finding: a pattern or reading across observations. Not yet an insight. This level needs the most guardrails since it is the easiest thing to generate quickly and the easiest to mistake for something solid.
-3. Insight: what a finding means for us, and what to do about it.
+3. Insight: what a finding means for us, and why it matters to our goal. It does not say what to do. That call is a decision, made by the people who own it, and it relies on insights.
 
 Level says how far a learning goes, not how far to trust it. Anyone can add at any level, and one nobody has reviewed says so. A hypothesis is what a study sets out to test, not a level.
 

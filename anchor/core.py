@@ -409,8 +409,10 @@ def contradiction_signals(a: str, b: str) -> list[str]:
 
 _BULLET_RE = re.compile(r"^\s*(?:[-*\u2022]|\d+[.)])\s+")
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[\"'(\[]?[A-Z0-9])")
-_INSIGHT_RE = re.compile(r"\b(should|recommend\w*|we need to|must|prioriti[sz]\w*|opportunit\w+|invest\w*|"
-                         r"focus on|next step|biggest win|worth doing)\b", re.I)
+_INSIGHT_RE = re.compile(r"\b(for us|our|matters?|biggest|opportunit\w+|risk|top priority|key (?:driver|issue))\b", re.I)
+# Words that tell someone what to do. That is a decision, not an insight.
+_ACTION_RE = re.compile(r"\b(should|recommend\w*|we need to|must|prioriti[sz]\w*|invest\w*|focus on|next step|"
+                        r"worth doing)\b", re.I)
 _FINDING_RE = re.compile(r"\b(because|suggest\w*|indicat\w*|likely|drive[sn]?|driven|due to|means|therefore|"
                          r"leads? to|mainly|main reason|pattern|explains?|caus\w+|so that)\b", re.I)
 _OBSERVED_RE = re.compile(r"\d|\b(percent|said|told us|reported|measured|saw|observed)\b", re.I)
@@ -421,6 +423,7 @@ _ASSUMES = (
     (re.compile(r"\b(always|never|all|every|everyone|nobody|none)\b", re.I), 'Uses "{w}", which allows no exceptions',
      None),
     (re.compile(r"\b(likely|probably|may|might|could|seems?)\b", re.I), 'Hedges with "{w}" without saying why', None),
+    (_ACTION_RE, 'Says what to do ("{w}"). Put the call in a decision, not in the block', None),
     (re.compile(r"\b(clearly|obviously|of course|undoubtedly|certainly)\b", re.I),
      'Says "{w}" as if it needs no support', None),
     (re.compile(r"\b(because|due to|drives?|causes?|leads? to)\b", re.I), 'Claims a cause ("{w}") the text does not show',
@@ -450,7 +453,7 @@ def _split_claims(text: str) -> list[str]:
 def _guess_level(text: str) -> str:
     if _INSIGHT_RE.search(text):
         return "insight"
-    if _FINDING_RE.search(text):
+    if _FINDING_RE.search(text) or _ACTION_RE.search(text):
         return "finding"
     return "observation"
 
