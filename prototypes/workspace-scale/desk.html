@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Check Desk</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* Check Desk: you do not go looking through the web. The desk starts from the
+     decision, shows how solid the ground is under each insight it relies on,
+     and hands you the work in rounds, one block at a time, from the bottom up.
+     Each check shows what it cleared above it. Anything you need to think
+     about longer goes on the Thinking pile with a note. */
+  .app { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  .home { overflow: auto; padding: 16px 16px 40px; }
+  .home-in { max-width: 1080px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 20px 28px; align-items: start; }
+  @media (max-width: 899px) { .home-in { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .eyebrow2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+  .dec h1 { font-size: 22px; line-height: 1.2; font-weight: 800; letter-spacing: -.01em; }
+  .dec .q { font-size: 13px; color: var(--muted); }
+  .ground { display: flex; flex-direction: column; gap: 10px; }
+  .gi { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; text-align: left; border: 0; background: none; padding: 8px 0; border-top: 1px solid var(--line-soft); color: var(--ink); width: 100%; }
+  .gi:first-child { border-top: 0; }
+  .gi .t { font-size: 13.5px; line-height: 1.3; font-weight: 600; }
+  .gi .pct { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .gi .meter { grid-column: 2 / -1; display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line-soft); }
+  .gi .meter i { height: 100%; }
+  .gi .sub { grid-column: 2 / -1; font-size: 11.5px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+  .gi .sub .w { color: var(--accent); font-weight: 600; }
+  .dec .btn.primary { align-self: flex-start; white-space: normal; text-align: left; padding: 9px 14px; }
+  .gi.solid .t::after { content: " ✓"; color: var(--green); }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line-soft); }
+  .tabs button { border: 0; background: none; padding: 8px 12px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--ink); }
+  .tabs .n { font-weight: 500; font-variant-numeric: tabular-nums; margin-left: 3px; }
+
+  .round { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; align-items: center; text-align: left; border: 1px solid var(--line-soft); background: var(--bg); border-radius: 12px; padding: 12px 14px; color: var(--ink); width: 100%; }
+  .round:hover { border-color: var(--line); }
+  .round .t { font-weight: 700; font-size: 14px; line-height: 1.3; }
+  .round .s { grid-column: 1; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .round .go { grid-row: 1 / 3; grid-column: 2; background: var(--ink); color: var(--bg); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .round.talk { border-color: color-mix(in srgb, var(--red) 40%, var(--line-soft)); }
+  .round.done { opacity: .55; }
+  .round.done .go { background: var(--green-bg); color: var(--green); }
+  .stack { display: flex; gap: 2px; flex-wrap: wrap; }
+  .stack i { width: 8px; height: 8px; border-radius: 2px; display: block; border: 1px solid var(--line); }
+  .stack i.observation { border-radius: 2px; } .stack i.finding { border-radius: 50%; } .stack i.insight { transform: rotate(45deg) scale(.8); }
+  .stack i.done { background: var(--green); border-color: var(--green); }
+  .stack i.parked { background: var(--glow); border-color: var(--glow); }
+
+  /* Outline */
+  .ol { display: flex; flex-direction: column; }
+  .ol-q { font-weight: 700; font-size: 13px; padding: 12px 0 4px; display: flex; justify-content: space-between; gap: 8px; border: 0; background: none; text-align: left; color: var(--ink); width: 100%; }
+  .ol-q .c { font-weight: 500; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .node { display: grid; grid-template-columns: 18px 14px minmax(0, 1fr) auto; gap: 2px 6px; align-items: start; padding: 6px 4px; border-radius: 8px; border: 0; background: none; text-align: left; color: var(--ink); width: 100%; }
+  .node:hover { background: var(--bg); }
+  .node .tw { color: var(--muted); font-size: 11px; padding-top: 2px; text-align: center; }
+  .node .shape { margin-top: 4px; }
+  .node .s { font-size: 13px; line-height: 1.35; }
+  .node .r { display: flex; gap: 5px; align-items: center; padding-top: 2px; }
+  .node .cnt { font-size: 11px; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  .node.d1 { padding-left: 20px; } .node.d2 { padding-left: 40px; }
+
+  /* Focus: one block at a time */
+  .focus { position: fixed; inset: 0; z-index: 30; background: var(--bg); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: 300px minmax(0, 1fr) 360px; }
+  .f-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px; border-bottom: 1px solid var(--line); background: var(--surface); min-width: 0; }
+  .f-top .ttl { font-weight: 700; font-size: 14px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .f-top .prog { font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+  .pbar { position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--line-soft); }
+  .pbar i { display: block; height: 100%; background: var(--green); transition: width .3s; }
+  .f-top { position: relative; }
+  .queue { grid-row: 2 / 4; overflow: auto; border-right: 1px solid var(--line); padding: 10px; display: flex; flex-direction: column; gap: 4px; background: var(--bg); }
+  .qi { display: grid; grid-template-columns: 14px minmax(0, 1fr) 16px; gap: 6px; align-items: start; text-align: left; padding: 7px 8px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--ink); font-size: 12.5px; line-height: 1.3; width: 100%; }
+  .qi .shape { margin-top: 3px; }
+  .qi.cur { background: var(--surface); border-color: var(--accent); box-shadow: var(--shadow); }
+  .qi.done { color: var(--muted); }
+  .qi .mk { font-size: 12px; text-align: center; }
+  .qi.done .mk { color: var(--green); }
+  .qi.parked .mk { color: var(--amber); }
+  .qlvl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; padding: 8px 8px 2px; }
+  .main { grid-row: 2; overflow: auto; padding: 22px 28px 30px; }
+  .main-in { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .ctx { grid-row: 2 / 4; grid-column: 3; overflow: auto; border-left: 1px solid var(--line); padding: 16px; background: var(--surface); display: flex; flex-direction: column; gap: 14px; }
+  .acts { grid-row: 3; grid-column: 2; border-top: 1px solid var(--line); background: var(--surface); padding: 12px 28px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .acts-in { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+  .acts .verdicts button { padding: 12px 4px; font-size: 14px; }
+  .acts .row2 { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .acts textarea { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); resize: vertical; }
+  @media (max-width: 899px) {
+    .focus { grid-template-columns: minmax(0, 1fr); }
+    .queue, .ctx { display: none; }
+    .main, .acts { grid-column: 1; }
+    .main { padding: 16px 16px 24px; }
+    .acts { padding-inline: 16px; }
+  }
+
+  .chain { display: flex; align-items: center; gap: 4px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .chain::-webkit-scrollbar { display: none; }
+  .chain .c { flex: none; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 3px 10px; font-size: 12px; display: inline-flex; gap: 6px; align-items: center; color: var(--ink); }
+  .chain .c.me { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 700; }
+  .chain .c.weak { border-style: dashed; border-color: var(--amber); }
+  .chain .ar { color: var(--muted); flex: none; }
+  .claim { font-size: 24px; line-height: 1.25; font-weight: 750; letter-spacing: -.01em; text-wrap: pretty; }
+  @media (max-width: 899px) { .claim { font-size: 21px; } }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .evi { display: flex; flex-direction: column; gap: 6px; }
+  .evi h3, .ctx h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+  .srcx { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 10px; padding: 10px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+  .srcx .ln { font-family: var(--f-mono); font-size: 12px; white-space: pre-wrap; padding: 1px 4px; border-radius: 3px; overflow-wrap: anywhere; }
+  .srcx .ln.hit { background: color-mix(in srgb, var(--glow) 35%, transparent); }
+  .srcx .st { font-weight: 600; font-size: 12.5px; margin-bottom: 4px; }
+  .think { border: 1px solid var(--line-soft); background: var(--surface); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .think textarea { width: 100%; min-height: 60px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-soft); background: var(--bg); resize: vertical; font-size: 13px; }
+  .talkthread { display: flex; flex-direction: column; gap: 8px; }
+  .msg { border-radius: 12px; padding: 9px 12px; font-size: 13px; background: var(--surface); border: 1px solid var(--line-soft); }
+  .msg.bad { border-color: var(--red); background: var(--red-bg); }
+  .msg.chg { border-color: var(--amber); background: var(--amber-bg); }
+  .msg b { display: block; font-size: 12px; }
+  .ripple { border-radius: 12px; padding: 10px 12px; background: var(--green-bg); border: 1px solid var(--green); color: var(--ink); font-size: 13px; display: flex; flex-direction: column; gap: 4px; animation: rip .5s ease; }
+  .ripple b { color: var(--green); }
+  @keyframes rip { from { transform: scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+  .park { border: 0; background: none; color: var(--muted); text-decoration: underline; padding: 4px 0; font-size: 13px; }
+  .summary { text-align: left; display: flex; flex-direction: column; gap: 12px; }
+  .summary h2 { font-size: 22px; }
+  .bignum { display: flex; gap: 22px; flex-wrap: wrap; }
+  .bignum div { display: flex; flex-direction: column; }
+  .bignum b { font-size: 26px; font-variant-numeric: tabular-nums; }
+  .bignum span { font-size: 12px; color: var(--muted); }
+  .sheetwrap { position: fixed; inset: 0; z-index: 50; background: color-mix(in srgb, var(--ink) 30%, transparent); display: flex; justify-content: flex-end; }
+  .sheetwrap .panel { position: relative; width: min(440px, 100%); height: 100%; transform: none; border-radius: 0; }
+  @media (max-width: 899px) { .sheetwrap { align-items: flex-end; } .sheetwrap .panel { position: relative; height: 82%; width: 100%; border-radius: 16px 16px 0 0; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <span class="brand"><a href="index.html">ANCHOR</a></span>
+    <span class="wsname">Why do mobile shoppers leave checkout?</span>
+    <nav class="protos" aria-label="Prototypes"><a href="map.html">Map</a><a href="flow.html">Flow</a><a href="desk.html" aria-current="page">Desk</a></nav>
+  </header>
+  <main class="home" id="home"></main>
+</div>
+<div class="focus" id="focus" hidden></div>
+<div class="sheetwrap" id="peek" hidden></div>
+<script src="data.js"></script>
+<script>
+"use strict";
+const A = window.ANCHOR, ws = A.build("big"), esc = A.esc;
+const $ = id => document.getElementById(id);
+const S = { tab: "rounds", rounds: [], round: null, idx: 0, pend: {}, done: new Map(), parked: new Map(), ripple: null, olOpen: new Set(), peekTrail: [], peekPend: {} };
+const ORDER = { observation: 0, finding: 1, insight: 2 };
+const MIN = { observation: 1, finding: 2, insight: 3 };
+
+// Everything under an insight (not sources), all the way down.
+function below(id, set = new Set()) { ws.get(id).on.forEach(x => { if (!set.has(x)) { set.add(x); below(x, set); } }); return set; }
+function ground(ins) {
+  const all = [ins.id, ...below(ins.id)].map(id => ws.get(id));
+  const c = { sme: 0, peers: 0, owner: 0, none: 0, bad: 0 };
+  all.forEach(b => { const s = ws.state(b); if (s === "checked_by_sme") c.sme++; else if (s === "checked_by_peers") c.peers++; else if (s === "checked_by_owner") c.owner++; else if (s === "needs_check") c.none++; else c.bad++; });
+  return { all, c, checked: all.filter(b => !ws.unchecked(b)).length, waits: all.filter(b => ws.waits(b)).length };
+}
+function meter(c, n) {
+  const seg = (k, col) => c[k] ? `<i style="width:${(c[k] / n * 100).toFixed(1)}%;background:${col}"></i>` : "";
+  return `<div class="meter">${seg("sme", "var(--fill-sme)")}${seg("peers", "var(--fill-peers)")}${seg("owner", "var(--fill-owner)")}${seg("bad", "var(--red)")}</div>`;
+}
+const bottomUp = (a, b) => ORDER[a.level] - ORDER[b.level] || ws.unlocks(b) - ws.unlocks(a) || a.n - b.n;
+
+// Rounds: one per insight the decision relies on, one to talk through trouble, one for the rest.
+function buildRounds() {
+  const seen = new Set(), rounds = [];
+  ws.decision.on.forEach(id => {
+    const ins = ws.get(id);
+    const items = [ins, ...[...below(id)].map(x => ws.get(x))].filter(b => ws.waits(b) && !seen.has(b.id)).sort(bottomUp);
+    items.forEach(b => seen.add(b.id));
+    if (items.length) rounds.push({ id: "r" + id, kind: "ground", title: `Ground under: ${ins.text}`, short: ins.text, insight: id, items: items.map(b => b.id) });
+  });
+  const talk = ws.blocks.filter(b => (ws.state(b) === "disagreement" || ws.state(b) === "needs_changes") && b.level !== "observation").sort(bottomUp);
+  if (talk.length) rounds.unshift({ id: "rtalk", kind: "talk", title: "Talk it through", short: "Disagreements and changes asked on findings and insights", items: talk.map(b => b.id) });
+  const rest = ws.blocks.filter(b => ws.waits(b) && !seen.has(b.id)).sort(bottomUp);
+  if (rest.length) rounds.push({ id: "rrest", kind: "rest", title: "Everything else waiting on you", short: "Not under any insight the decision relies on yet", items: rest.map(b => b.id) });
+  S.rounds = rounds;
+}
+
+// ---------- Home ----------
+function renderHome() {
+  const dec = ws.decision, ins = dec.on.map(id => ws.get(id));
+  const solid = ins.filter(b => !ws.unchecked(b) && !ws.weakBelow(b).length).length;
+  const left = S.rounds.reduce((a, r) => a + r.items.filter(id => !S.done.has(id)).length, 0);
+  const tabs = [["rounds", "Rounds", S.rounds.length], ["outline", "Outline", ws.blocks.length], ["parked", "Thinking", S.parked.size]];
+  $("home").innerHTML = `<div class="home-in">
+    <section class="card dec">
+      <span class="eyebrow2">The decision</span>
+      <h1>${esc(dec.text)}</h1>
+      <span class="q">From: ${esc(ws.question)}</span>
+      <div class="row small"><b>${solid} of ${ins.length} insights stand on checked ground.</b><span class="muted">${left} blocks wait on you.</span></div>
+      ${(() => { const nx = S.rounds.find(r => r.items.some(id => !S.done.has(id) && !S.parked.has(id))); return nx ? `<button type="button" class="btn primary" data-round="${nx.id}">Start the next round: ${esc(nx.kind === "ground" ? "ground under " + ws.get(nx.insight).text.slice(0, 28) + "…" : nx.title)}</button>` : ""; })()}
+      <div class="ground">${ins.map(b => {
+        const g = ground(b), ok = !ws.unchecked(b) && !ws.weakBelow(b).length;
+        const rd = S.rounds.find(r => r.insight === b.id && r.items.some(id => !S.done.has(id)));
+        return `<button type="button" class="gi${ok ? " solid" : ""}" ${rd ? `data-round="${rd.id}"` : `data-peek="${b.id}"`}>${A.shape("insight")}<span class="t">${esc(b.text)}</span><span class="pct">${g.checked}/${g.all.length}</span>${meter(g.c, g.all.length)}
+          <span class="sub"><span>${g.all.length} blocks under it</span>${g.waits ? `<span class="w">${g.waits} wait on you</span>` : ""}${g.c.bad ? `<span class="warn">${g.c.bad} trouble</span>` : ""}</span></button>`;
+      }).join("")}</div>
+    </section>
+    <section class="card">
+      <div class="tabs" role="tablist">${tabs.map(([k, l, n]) => `<button type="button" role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${l}<span class="n">${n}</span></button>`).join("")}</div>
+      ${S.tab === "rounds" ? roundsHtml() : S.tab === "outline" ? outlineHtml() : parkedHtml()}
+    </section>
+  </div>`;
+}
+function roundsHtml() {
+  return `<p class="small muted" style="margin:0">Each round is a small batch, from the bottom up, so what you check first holds up what comes next.</p>` + S.rounds.map(r => {
+    const left = r.items.filter(id => !S.done.has(id));
+    const mins = left.reduce((a, id) => a + MIN[ws.get(id).level], 0);
+    const unlock = r.kind === "ground" ? ground(ws.get(r.insight)) : null;
+    return `<button type="button" class="round ${r.kind}${left.length ? "" : " done"}" data-round="${r.id}">
+      <span class="t">${r.kind === "ground" ? `<span class="muted" style="font-weight:600">Ground under</span> ${esc(r.short)}` : esc(r.title)}</span>
+      <span class="go">${left.length ? (left.length < r.items.length ? "Carry on" : "Start") : "Done"}</span>
+      <span class="s"><span>${left.length} of ${r.items.length} left</span>${left.length ? `<span>about ${mins} min</span>` : ""}${r.kind === "talk" ? `<span class="warn">needs your judgment</span>` : ""}${unlock ? `<span>${unlock.checked}/${unlock.all.length} checked under it</span>` : ""}</span>
+      <span class="s stack">${r.items.map(id => `<i class="${ws.get(id).level}${S.done.has(id) ? " done" : S.parked.has(id) ? " parked" : ""}"></i>`).join("")}</span>
+    </button>`;
+  }).join("");
+}
+function outlineHtml() {
+  let h = `<p class="small muted" style="margin:0">Every block, as a tree under each sub-question. The count says how many under it still need a check.</p><div class="ol">`;
+  const node = (b, d) => {
+    const kids = (b.on || []).map(id => ws.get(id));
+    const open = S.olOpen.has(b.id), weak = ws.weakBelow(b).length;
+    let s = `<button type="button" class="node d${d}" data-node="${b.id}"><span class="tw">${kids.length ? (open ? "▾" : "▸") : ""}</span>${A.shape(b.level)}<span class="s">${esc(b.text)}</span><span class="r">${!open && weak ? `<span class="cnt">${weak}⚠</span>` : ""}<span class="sq s-${ws.state(b)}"></span>${A.troubleTags(ws, b, true)}</span></button>`;
+    if (open) s += kids.map(k => node(k, Math.min(2, d + 1))).join("");
+    return s;
+  };
+  ws.questions.forEach(q => {
+    const list = ws.blocks.filter(b => b.q === q.id), c = ws.counts(list);
+    h += `<div class="ol-q"><span>Q${q.n}. ${esc(q.text)}</span><span class="c">${c.unchecked} to check</span></div>`;
+    h += list.filter(b => b.level === "insight").map(b => node(b, 0)).join("");
+    const used = new Set(); list.filter(b => b.level === "insight").forEach(b => below(b.id, used));
+    const loose = list.filter(b => b.level === "finding" && !used.has(b.id));
+    if (loose.length) h += `<div class="qlvl">Not under an insight yet</div>` + loose.map(b => node(b, 0)).join("");
+  });
+  return h + `</div>`;
+}
+function parkedHtml() {
+  if (!S.parked.size) return `<p class="small muted" style="margin:0">Nothing here yet. In a round, tap <b>Not sure yet</b> to put a block here with a note, so you can come back to it with a clear head.</p>`;
+  return [...S.parked].map(([id, note]) => { const b = ws.get(id); return `<button type="button" class="round" data-peek="${id}"><span class="t">${A.shape(b.level)} ${esc(b.text)}</span><span class="go">Pick up</span><span class="s">${note ? `Your note: ${esc(note)}` : "No note"}</span></button>`; }).join("");
+}
+
+// ---------- Focus: one block at a time ----------
+function startRound(rid) {
+  S.round = S.rounds.find(r => r.id === rid);
+  const firstLeft = S.round.items.findIndex(id => !S.done.has(id) && !S.parked.has(id));
+  S.idx = firstLeft < 0 ? S.round.items.length : firstLeft;
+  S.pend = {}; S.ripple = null;
+  $("focus").hidden = false;
+  renderFocus();
+}
+function chainHtml(b) {
+  // Where this sits: what it is built on, then what it holds up, up to the decision.
+  const down = b.level === "observation" ? b.src.map(id => ws.get(id)) : b.on.map(id => ws.get(id));
+  const ups = []; let layer = ws.over(b.id).map(id => ws.get(id));
+  while (layer.length) { ups.push(layer); layer = [...new Set(layer.flatMap(x => ws.over(x.id)))].map(id => ws.get(id)); }
+  const chip = (list, lvl) => {
+    if (!list.length) return "";
+    const name = lvl === "source" ? "source" : lvl === "decision" ? "Decision" : A.LEVEL[lvl].toLowerCase();
+    const weak = list.some(x => x.level !== "source" && x.level !== "decision" && ws.unchecked(x));
+    const txt = list.length === 1 ? (lvl === "decision" ? "Decision" : lvl === "source" ? esc(list[0].title) : `${A.LEVEL[lvl]} #${list[0].n}`) : `${list.length} ${name}s`;
+    return `<button type="button" class="c${weak ? " weak" : ""}" data-peek="${list[0].id}">${lvl === "source" ? `<span class="shape source"></span>` : lvl === "decision" ? "" : A.shape(lvl)}${txt}</button>`;
+  };
+  const lvlOf = l => l[0].level;
+  return `<div class="chain">${chip(down, down[0] ? lvlOf(down) : "")}${down.length ? `<span class="ar">›</span>` : ""}<span class="c me">${A.shape(b.level)}This ${A.LEVEL[b.level].toLowerCase()}</span>${ups.map(l => `<span class="ar">›</span>${chip(l, lvlOf(l))}`).join("")}</div>`;
+}
+function sourceHtml(b) {
+  const nums = (b.text.match(/\d[\d,.]*/g) || []).map(n => n.replace(/,/g, ""));
+  const words = b.text.toLowerCase().split(/\W+/).filter(w => w.length > 4);
+  return b.src.map(id => {
+    const s = ws.get(id);
+    const lines = s.body.split("\n").map(l => {
+      const ll = l.toLowerCase(), flat = l.replace(/,/g, "");
+      const hit = nums.some(n => flat.includes(n)) || words.filter(w => ll.includes(w)).length >= 2;
+      return `<span class="ln${hit ? " hit" : ""}">${esc(l)}</span>`;
+    }).join("");
+    return `<div class="srcx"><span class="st">${esc(s.title)} <span class="muted" style="font-weight:400">· ${esc(s.kind)}, added by ${esc(s.by)}</span></span>${lines}</div>`;
+  }).join("");
+}
+function focusMain(b) {
+  const q = ws.questions.find(x => x.id === b.q);
+  const s = ws.state(b), waits = ws.waits(b);
+  const talk = S.round.kind === "talk";
+  const hist = ws.latest(b);
+  let evidence = "";
+  if (b.level === "observation") evidence = `<div class="evi"><h3>From the source</h3>${sourceHtml(b)}</div>`;
+  else evidence = `<div class="evi"><h3>Built on (${b.on.length})</h3>${b.on.map(id => A.item(ws, ws.get(id))).join("") || `<div class="flag"><b>Rests on nothing.</b> Nothing is under this ${b.level}.</div>`}</div>`;
+  return `
+    ${S.ripple ? `<div class="ripple">${S.ripple}</div>` : ""}
+    ${chainHtml(b)}
+    <div class="meta">${A.shape(b.level)} ${A.LEVEL[b.level]} #${b.n}${b.ai ? " " + A.aiTag(b) : ""} · Q${q.n} · by ${esc(b.owner)} ${A.stateTag(ws, b)}${A.troubleTags(ws, b, true)}</div>
+    <div class="claim">${esc(b.text)}</div>
+    ${waits ? `<div class="waits">Waiting on you: ${esc(waits)}</div>` : ""}
+    ${talk ? `<div class="evi"><h3>What people said</h3><div class="talkthread">${hist.map(c => `<div class="msg ${c.verdict === "disagree" ? "bad" : c.verdict === "needs_changes" ? "chg" : ""}"><b>${esc(c.by)} · ${A.VERDICT[c.verdict]}</b>${esc(c.note || (c.by === b.owner ? "Checked it as the owner." : "No note."))}</div>`).join("")}</div></div>` : ""}
+    ${evidence}
+    ${b.ai ? `<div class="aibox"><div><b class="${b.conf === "low" ? "warn" : ""}">AI says: ${b.conf} confidence.</b> ${esc(b.why)}</div>${b.assumes.length ? `<div>Assumes: ${b.assumes.map(esc).join("; ")}</div>` : ""}<div class="muted small">This is the AI's own view. It never counts as a check.</div></div>` : ""}
+    <div class="think"><h3 class="eyebrow2">Think it through</h3><ul class="asks">${(({ observation: ["Does the source say exactly this, no more and no less?", "If there is a number, does it match the source?"], finding: ["Do the blocks under it really add up to this?", "Would a skeptic read them the same way?", "Is anything under it still unchecked?"], insight: ["Does it follow from the findings under it?", "Does it say why this matters to our goal?", "What would make it wrong?"] })[b.level]).map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+      <textarea id="mynote" placeholder="Your thinking. Only you see this until you save a check with it.">${esc(S.parked.get(b.id) || "")}</textarea></div>`;
+}
+function actsHtml(b) {
+  const me = ws.you, mineDraft = b.owner === me && b.ai && !ws.latest(b).some(c => c.by === me);
+  if (b.owner === me && !mineDraft) return `<div class="row2"><span class="small muted">You made this. Change the wording to answer the note, then others check it again.</span><span class="grow"></span><button type="button" class="btn" data-skip>Next ›</button></div>`;
+  const vs = mineDraft ? [["looks_right", "Looks right"]] : Object.entries(A.VERDICT);
+  return `<div class="verdicts${mineDraft ? " one" : ""}">${vs.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.pend.v === v}">${l}</button>`).join("")}</div>
+    ${S.pend.v === "looks_right" && !mineDraft ? `<div class="hows">${Object.entries(A.HOW).map(([k, l]) => `<button type="button" data-how="${k}" aria-pressed="${S.pend.how === k}">${l}</button>`).join("")}</div>` : ""}
+    ${S.pend.v && S.pend.v !== "looks_right" ? `<textarea id="why" rows="2" placeholder="${S.pend.v === "disagree" ? "Why do you disagree?" : "What should change?"}"></textarea>` : ""}
+    <div class="row2"><button type="button" class="park" data-park>Not sure yet</button><span class="grow"></span><button type="button" class="btn" data-skip>Skip</button><button type="button" class="btn primary" data-save ${S.pend.v ? "" : "disabled"}>Save and next</button></div>`;
+}
+function renderFocus() {
+  const r = S.round, f = $("focus");
+  const doneN = r.items.filter(id => S.done.has(id)).length;
+  const top = `<div class="f-top"><button type="button" class="iconbtn" data-close aria-label="Back to the desk">←</button><span class="ttl">${r.kind === "ground" ? "Ground under: " + esc(r.short) : esc(r.title)}</span><span class="grow"></span><span class="prog">${Math.min(S.idx + 1, r.items.length)} of ${r.items.length}</span><span class="pbar"><i style="width:${doneN / r.items.length * 100}%"></i></span></div>`;
+  const queue = `<nav class="queue" aria-label="This round">${["observation", "finding", "insight"].map(l => {
+    const its = r.items.map((id, i) => [ws.get(id), i]).filter(([b]) => b.level === l);
+    return its.length ? `<div class="qlvl">${A.LEVEL[l]}s</div>` + its.map(([b, i]) => `<button type="button" class="qi${i === S.idx ? " cur" : ""}${S.done.has(b.id) ? " done" : ""}${S.parked.has(b.id) ? " parked" : ""}" data-jump="${i}">${A.shape(b.level)}<span>${esc(b.text)}</span><span class="mk">${S.done.has(b.id) ? "✓" : S.parked.has(b.id) ? "…" : ""}</span></button>`).join("") : "";
+  }).join("")}</nav>`;
+  if (S.idx >= r.items.length) {
+    const parked = r.items.filter(id => S.parked.has(id)).length;
+    const ins = r.insight ? ws.get(r.insight) : null, g = ins ? ground(ins) : null;
+    f.innerHTML = top + queue + `<div class="main"><div class="main-in summary">${S.ripple ? `<div class="ripple">${S.ripple}</div>` : ""}
+      <span class="eyebrow2">Round done</span><h2>${r.kind === "ground" ? esc(r.short) : esc(r.title)}</h2>
+      <div class="bignum"><div><b>${doneN}</b><span>checked</span></div><div><b>${parked}</b><span>on the Thinking pile</span></div>${g ? `<div><b>${g.checked}/${g.all.length}</b><span>checked under this insight</span></div>` : ""}</div>
+      ${g && !ws.weakBelow(ins).length && !ws.unchecked(ins) ? `<div class="ripple"><b>This insight now stands on checked ground, all the way down.</b></div>` : g ? `<p class="small muted">${ws.weakBelow(ins).length} blocks under it still need a check by someone. Some wait on their owners first.</p>` : ""}
+      <div class="row"><button type="button" class="btn primary" data-nextround>Next round</button><button type="button" class="btn" data-close>Back to the desk</button></div></div></div>
+      <div class="ctx"><h3>Where you are</h3><p class="small muted">Rounds go from the bottom up. What you checked first now holds up the rest.</p></div>`;
+    return;
+  }
+  const b = ws.get(r.items[S.idx]);
+  const over = ws.over(b.id).map(id => ws.get(id));
+  f.innerHTML = top + queue +
+    `<div class="main" id="fmain"><div class="main-in">${focusMain(b)}</div></div>
+     <div class="acts"><div class="acts-in">${actsHtml(b)}</div></div>
+     <aside class="ctx"><h3>Holds up (${over.length})</h3>${over.map(x => A.item(ws, x)).join("") || `<p class="small muted">Nothing is built on it yet.</p>`}
+       <h3>If you check it</h3><p class="small">${(() => { const n = ws.unlocks(b); return n ? `Clears ⚠ on ${n} block${n > 1 ? "s" : ""} above it.` : "Nothing above it clears yet. Other blocks under them still need a check."; })()}</p>
+       <h3>History</h3>${ws.latest(b).map(c => `<div class="small"><b>${esc(c.by)}</b>: ${A.VERDICT[c.verdict]}${c.note ? ` · ${esc(c.note)}` : ""}</div>`).join("") || `<p class="small muted">No checks yet.</p>`}</aside>`;
+}
+function weakAbove(b) {
+  const out = new Set();
+  const up = id => ws.over(id).forEach(x => { if (!out.has(x)) { out.add(x); up(x); } });
+  up(b.id);
+  return [...out].map(id => ws.get(id)).filter(x => x.level !== "decision" && ws.weakBelow(x).length);
+}
+function save() {
+  const b = ws.get(S.round.items[S.idx]);
+  const why = ($("why") || {}).value || "", mine = ($("mynote") || {}).value || "";
+  if (S.pend.v !== "looks_right" && !why.trim()) { const t = $("why"); if (t) { t.focus(); t.placeholder = "Say a few words so the owner knows what to fix."; } return; }
+  const before = weakAbove(b);
+  ws.check(b, ws.you, S.pend.v, S.pend.how || null, (why || mine).trim());
+  const cleared = before.filter(x => !ws.weakBelow(x).length);
+  S.done.set(b.id, S.pend.v); S.parked.delete(b.id);
+  S.ripple = `<b>${A.VERDICT[S.pend.v]} · ${A.LEVEL[b.level]} #${b.n}.</b>` + (cleared.length ? `<span>That cleared ⚠ on ${cleared.map(x => `${A.LEVEL[x.level]} #${x.n}`).join(", ")}.</span>` : "");
+  advance();
+}
+function advance() {
+  S.pend = {};
+  const r = S.round;
+  let i = S.idx + 1;
+  while (i < r.items.length && (S.done.has(r.items[i]) || S.parked.has(r.items[i]))) i++;
+  S.idx = i;
+  renderFocus(); renderHome();
+  const m = $("fmain"); if (m) m.scrollTop = 0;
+}
+$("focus").addEventListener("click", e => {
+  const t = e.target;
+  if (t.closest("[data-close]")) { $("focus").hidden = true; renderHome(); return; }
+  if (t.closest("[data-nextround]")) { const i = S.rounds.indexOf(S.round); const nx = S.rounds.slice(i + 1).concat(S.rounds.slice(0, i)).find(r => r.items.some(id => !S.done.has(id))); if (nx) startRound(nx.id); else { $("focus").hidden = true; renderHome(); } return; }
+  const j = t.closest("[data-jump]"); if (j) { S.idx = +j.dataset.jump; S.pend = {}; S.ripple = null; renderFocus(); return; }
+  const v = t.closest("[data-v]"); if (v) { S.pend = { v: v.dataset.v }; keepNote(); renderFocus(); return; }
+  const h = t.closest("[data-how]"); if (h) { S.pend.how = h.dataset.how; keepNote(); renderFocus(); return; }
+  if (t.closest("[data-save]")) { save(); return; }
+  if (t.closest("[data-skip]")) { S.ripple = null; advance(); return; }
+  if (t.closest("[data-park]")) { const b = ws.get(S.round.items[S.idx]); S.parked.set(b.id, (($("mynote") || {}).value || "").trim()); S.ripple = `<b>On the Thinking pile.</b><span>Come back to ${A.LEVEL[b.level].toLowerCase()} #${b.n} from the desk when you are ready.</span>`; advance(); return; }
+  const p = t.closest("[data-peek]"); if (p) { peek(p.dataset.peek); return; }
+  const g = t.closest("[data-go]"); if (g) peek(g.dataset.go);
+});
+function keepNote() { const n = $("mynote"); if (n && n.value.trim()) S.parked.set(S.round.items[S.idx], n.value.trim()); }
+
+// ---------- Peek: any block, without leaving the round ----------
+function peek(id, follow) {
+  if (!follow) S.peekTrail = [];
+  S.peekTrail.push(id); S.peekPend = {};
+  renderPeek();
+}
+function renderPeek() {
+  const id = S.peekTrail[S.peekTrail.length - 1], w = $("peek");
+  w.hidden = false;
+  const lbl = x => x.level === "decision" ? "Decision" : x.level === "source" ? "Source" : `${A.LEVEL[x.level]} #${x.n}`;
+  w.innerHTML = `<aside class="panel"><div class="panel-top"><div class="trail">${S.peekTrail.map((x, i) => i === S.peekTrail.length - 1 ? `<span class="here">${lbl(ws.get(x))}</span>` : `<button type="button" data-ptrail="${i}">${lbl(ws.get(x))}</button>`).join(`<span class="sep">›</span>`)}</div><button type="button" class="iconbtn" data-pclose aria-label="Close">×</button></div><div class="panel-body" id="pbody">${A.detail(ws, id, { pending: S.peekPend, openAbove: true })}</div></aside>`;
+}
+$("peek").addEventListener("click", e => {
+  if (e.target === $("peek") || e.target.closest("[data-pclose]")) { $("peek").hidden = true; return; }
+  const t = e.target.closest("[data-ptrail]"); if (t) { S.peekTrail = S.peekTrail.slice(0, +t.dataset.ptrail + 1); renderPeek(); return; }
+  const g = e.target.closest("[data-go]"); if (g) { peek(g.dataset.go, true); return; }
+  const v = e.target.closest("[data-v]"); if (v) { S.peekPend = { v: v.dataset.v }; renderPeek(); return; }
+  const h = e.target.closest("[data-how]"); if (h) { S.peekPend.how = h.dataset.how; renderPeek(); return; }
+  const s = e.target.closest("[data-save]");
+  if (s) {
+    const b = ws.get(s.dataset.save), note = (($("peek").querySelector("#ck-note")) || {}).value || "";
+    if (S.peekPend.v !== "looks_right" && !note.trim()) return;
+    ws.check(b, ws.you, S.peekPend.v, S.peekPend.how || null, note.trim());
+    S.done.set(b.id, S.peekPend.v); S.parked.delete(b.id); S.peekPend = {};
+    A.toast(`Checked ${A.LEVEL[b.level].toLowerCase()} #${b.n}.`);
+    renderPeek(); renderHome(); if (!$("focus").hidden) renderFocus();
+  }
+});
+
+$("home").addEventListener("click", e => {
+  const t = e.target;
+  const tab = t.closest("[data-tab]"); if (tab) { S.tab = tab.dataset.tab; renderHome(); return; }
+  const r = t.closest("[data-round]"); if (r) { startRound(r.dataset.round); return; }
+  const n = t.closest("[data-node]");
+  if (n) {
+    const id = n.dataset.node, b = ws.get(id);
+    if (b.on.length && !S.olOpen.has(id)) { S.olOpen.add(id); renderHome(); return; }
+    if (S.olOpen.has(id) && e.target.closest(".tw")) { S.olOpen.delete(id); renderHome(); return; }
+    peek(id); return;
+  }
+  const p = t.closest("[data-peek]"); if (p) peek(p.dataset.peek);
+});
+document.addEventListener("keydown", e => {
+  if (e.target.closest("textarea, input")) return;
+  if (e.key === "Escape") { if (!$("peek").hidden) $("peek").hidden = true; else if (!$("focus").hidden) { $("focus").hidden = true; renderHome(); } }
+  if ($("focus").hidden || !$("peek").hidden) return;
+  if (e.key === "1") { S.pend = { v: "looks_right" }; renderFocus(); }
+  if (e.key === "2") { S.pend = { v: "needs_changes" }; renderFocus(); }
+  if (e.key === "3") { S.pend = { v: "disagree" }; renderFocus(); }
+  if (e.key === "j") advance();
+});
+
+buildRounds(); renderHome();
+const h = location.hash.slice(1);
+if (h === "round") startRound(S.rounds.find(r => r.kind === "ground").id);
+if (h === "talk") startRound("rtalk");
+if (h === "ripple") { const r = S.rounds.find(r => r.kind === "ground"); startRound(r.id); S.pend = { v: "looks_right", how: "evidence" }; save(); }
+if (h === "outline") { S.tab = "outline"; ws.decision.on.slice(0, 1).forEach(id => { S.olOpen.add(id); ws.get(id).on.slice(0, 1).forEach(x => S.olOpen.add(x)); }); renderHome(); }
+</script>
+</body>
+</html>

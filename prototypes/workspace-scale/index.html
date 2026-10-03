@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Workspace at Scale</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* Front page for the three workspace-scale prototypes: the problem, then one
+     section per idea with phone shots, what it is good at, and a link to try it. */
+  body { overflow-y: auto; }
+  .page { max-width: 1040px; margin: 0 auto; padding-inline: 16px; padding-block: 18px 60px; display: flex; flex-direction: column; gap: 28px; }
+  .intro { display: flex; flex-direction: column; gap: 10px; max-width: 68ch; }
+  .intro h1 { font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -.02em; }
+  .intro p { margin: 0; font-size: 15px; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--muted); }
+  .facts b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .idea { background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); padding: 18px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 18px 26px; }
+  @media (max-width: 860px) { .idea { grid-template-columns: minmax(0, 1fr); } }
+  .idea .txt { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .idea .num { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+  .idea h2 { font-size: 22px; line-height: 1.2; }
+  .idea p { margin: 0; }
+  .idea ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+  .idea h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+  .try { align-self: flex-start; text-decoration: none; display: inline-block; }
+  .shots { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; min-width: 0; }
+  .shots figure { margin: 0; flex: none; scroll-snap-align: start; display: flex; flex-direction: column; gap: 4px; }
+  .shots img { display: block; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); }
+  .shots .ph img { width: 170px; height: auto; }
+  .shots .dk img { width: 440px; max-width: 78vw; height: auto; }
+  .shots figcaption { font-size: 11.5px; color: var(--muted); max-width: 170px; }
+  .shots .dk figcaption { max-width: 440px; }
+  .cmp { overflow-x: auto; background: var(--surface); border-radius: 16px; box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 14px; border-top: 1px solid var(--line-soft); vertical-align: top; }
+  thead th { border-top: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  tbody th { font-weight: 600; width: 22%; }
+  .note { font-size: 13px; color: var(--muted); max-width: 68ch; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <span class="brand">ANCHOR</span>
+  <span class="wsname">Prototypes for big workspaces</span>
+  <nav class="protos" aria-label="Prototypes"><a href="map.html">Map</a><a href="flow.html">Flow</a><a href="desk.html">Desk</a></nav>
+</header>
+<main class="page">
+  <section class="intro">
+    <h1>Workspace at Scale</h1>
+    <p>When a workspace grows past a few dozen blocks, the Build view turns into a wall of boxes and lines. It gets hard to see where the data flows, which findings rest on what, and what to check next. These are three different ways to handle that, all on the same big sample workspace.</p>
+    <div class="facts"><span><b>253</b> blocks</span><span><b>17</b> sources</span><span><b>6</b> sub-questions</span><span><b>1</b> decision</span><span>You are <b>Sam</b>, an SME</span></div>
+    <p class="note">Each one is clickable and works on a phone. Checks you make stay until you reload. Nothing talks to the real core.</p>
+  </section>
+
+  <section class="idea" aria-labelledby="i1">
+    <div class="txt">
+      <span class="num">Idea 1</span>
+      <h2 id="i1">Zoom Map</h2>
+      <p>The whole workspace is one map you pinch and pan. Far out you see the plan: one district per sub-question, with how far it is checked and how much waits on you. Zoom in and blocks become tiles, then readable cards. Tap a block to light its whole line, from source to decision.</p>
+      <h3>Good at</h3>
+      <ul><li>Scanning. You see the whole shape and where the trouble is at a glance.</li><li>Seeing the web. Lines across sub-questions are visible.</li><li>"Waiting on you" walks you block to block, flying the map to each one.</li></ul>
+      <h3>Weak spot</h3>
+      <ul><li>Pinch and pan is work on a small screen. Reading needs a lot of zooming.</li></ul>
+      <a class="btn primary try" href="map.html">Try the Zoom Map</a>
+    </div>
+    <div class="shots">
+      <figure class="ph"><img src="shots/phone-map-plan.jpg" alt="Zoom Map on a phone, zoomed out: six sub-question cards with check bars" loading="lazy"><figcaption>Far out: the plan</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-map-read.jpg" alt="Zoom Map on a phone, zoomed in: readable block cards" loading="lazy"><figcaption>Close in: read the blocks</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-map-trace.jpg" alt="Zoom Map on a phone tracing one insight's line" loading="lazy"><figcaption>Tap: light the line</figcaption></figure>
+      <figure class="dk"><img src="shots/desktop-map-trace.jpg" alt="Zoom Map on a desktop tracing an insight's line, detail on the right" loading="lazy"><figcaption>Desktop: the line and the detail side by side</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="idea" aria-labelledby="i2">
+    <div class="txt">
+      <span class="num">Idea 2</span>
+      <h2 id="i2">Flow Columns</h2>
+      <p>The data flows left to right: sources, observations, findings, insights, the decision. Pick anything and every column pulls what is linked to it to the top, with the rest folded away. The path bar says what you picked at each level. On a phone the columns are pages you swipe between.</p>
+      <h3>Good at</h3>
+      <ul><li>Following the data. Source to decision in a few taps.</li><li>Answering "what is this built on" and "what does this hold up" without a map.</li><li>Search works across all 253 blocks.</li></ul>
+      <h3>Weak spot</h3>
+      <ul><li>You see one chain at a time, not the whole shape.</li></ul>
+      <a class="btn primary try" href="flow.html">Try Flow Columns</a>
+    </div>
+    <div class="shots">
+      <figure class="ph"><img src="shots/phone-flow-pick.jpg" alt="Flow Columns on a phone with one finding picked" loading="lazy"><figcaption>Pick a finding, see what links</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-flow-open.jpg" alt="Flow Columns on a phone with the detail sheet open" loading="lazy"><figcaption>Tap again to check it</figcaption></figure>
+      <figure class="dk"><img src="shots/desktop-flow-pick.jpg" alt="Flow Columns on a desktop with lines between linked blocks" loading="lazy"><figcaption>Desktop: all five columns, linked blocks joined by lines</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="idea" aria-labelledby="i3">
+    <div class="txt">
+      <span class="num">Idea 3</span>
+      <h2 id="i3">Check Desk</h2>
+      <p>You do not go looking through the web. The desk starts from the decision and shows how solid the ground is under each insight it relies on. Then it hands you the work in small rounds, one block at a time, from the bottom up. Each check shows what it cleared above it. Anything you need to think about longer goes on the Thinking pile with a note.</p>
+      <h3>Good at</h3>
+      <ul><li>Thought heavy work. One claim, its evidence, and space to think.</li><li>Knowing why a check matters: it ties each block to the decision.</li><li>"Talk it through" puts disagreements side by side.</li></ul>
+      <h3>Weak spot</h3>
+      <ul><li>Less sense of the whole web. The Outline tab helps, but it is a list.</li></ul>
+      <a class="btn primary try" href="desk.html">Try the Check Desk</a>
+    </div>
+    <div class="shots">
+      <figure class="ph"><img src="shots/phone-desk-home.jpg" alt="Check Desk on a phone: the decision and ground under each insight" loading="lazy"><figcaption>Ground under the decision</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-desk-round.jpg" alt="Check Desk on a phone: one observation with its source lines" loading="lazy"><figcaption>One block at a time</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-desk-talk.jpg" alt="Check Desk on a phone: a disagreement to talk through" loading="lazy"><figcaption>Talk it through</figcaption></figure>
+      <figure class="dk"><img src="shots/desktop-desk-round.jpg" alt="Check Desk on a desktop: round list, the block, and what it holds up" loading="lazy"><figcaption>Desktop: the round, the block, and what it holds up</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="cmp" aria-label="Side by side">
+    <table>
+      <thead><tr><th></th><th>Zoom Map</th><th>Flow Columns</th><th>Check Desk</th></tr></thead>
+      <tbody>
+        <tr><th>How you move</th><td>Pinch, pan, fly to the next one</td><td>Pick, swipe to the next level</td><td>Next, next, next</td></tr>
+        <tr><th>Best question</th><td>Where is the trouble?</td><td>What is this built on?</td><td>What should I check, and why?</td></tr>
+        <tr><th>On a phone</th><td>Works, takes some zooming</td><td>Natural, one column per page</td><td>Most natural, one card at a time</td></tr>
+        <tr><th>Sees the whole web</th><td>Yes</td><td>One chain at a time</td><td>Through the decision</td></tr>
+        <tr><th>Room to think</th><td>Detail panel</td><td>Detail panel</td><td>Built in, with a Thinking pile</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <p class="note">They can mix. One way would be the Desk as the place you start, with Flow when you want to follow a chain and the Map when you want to see the whole thing.</p>
+</main>
+</body>
+</html>

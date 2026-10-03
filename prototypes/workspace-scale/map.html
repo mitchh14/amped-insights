@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zoom Map</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* Zoom Map: the whole workspace is one map you pinch and pan. Far away you
+     read the plan: one district per sub-question, with how checked it is and
+     where the trouble is. Closer in, blocks become tiles, then readable cards.
+     Tap a block to light its line from source to decision. */
+  .app { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) var(--panel); }
+  .bar { grid-column: 1 / -1; }
+  .tools { grid-column: 1; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+  .tools .chips { flex: 1; min-width: 0; }
+  .stage { grid-column: 1; position: relative; overflow: hidden; touch-action: none; background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 40px 40px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 40px 40px, var(--bg); cursor: grab; }
+  .stage.dragging { cursor: grabbing; }
+  .panel { grid-column: 2; grid-row: 2 / 4; }
+  @media (max-width: 899px) {
+    .app { grid-template-columns: minmax(0, 1fr); }
+    .panel { height: 56%; }
+  }
+
+  .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+  .world svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+
+  /* Districts, one per sub-question */
+  .district { position: absolute; border-radius: 28px; background: color-mix(in srgb, var(--surface) 55%, transparent); border: 2px solid var(--line-soft); }
+  .district h3 { position: absolute; left: 28px; top: 22px; right: 28px; font-size: 26px; line-height: 1.2; font-weight: 800; letter-spacing: -.01em; }
+  .district h3 .qn { font-family: var(--f-mono); font-weight: 600; color: var(--muted); margin-right: 10px; }
+  .district .lvl-lbl { position: absolute; left: 28px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  /* The far label: drawn at screen size whatever the zoom */
+  .far-lbl { position: absolute; left: 30px; right: 30px; top: 30px; z-index: 3; font-size: calc(13px * var(--iz)); line-height: 1.3; background: var(--surface); border: calc(1px * var(--iz)) solid var(--line); border-radius: calc(10px * var(--iz)); padding: calc(8px * var(--iz)) calc(9px * var(--iz)); box-shadow: var(--shadow); display: none; flex-direction: column; gap: calc(5px * var(--iz)); text-align: left; color: var(--ink); pointer-events: auto; }
+  .world.far .district h3, .world.far .lvl-lbl { visibility: hidden; }
+  .world.far .far-lbl { display: flex; }
+  .far-lbl b { font-size: 1em; line-height: 1.25; }
+  .far-lbl .bars { height: calc(6px * var(--iz)); border-radius: calc(3px * var(--iz)); }
+  .far-lbl .st { font-size: .78em; }
+  .far-lbl .meta { display: flex; flex-wrap: wrap; gap: .2em .8em; font-size: .88em; color: var(--muted); }
+  .far-lbl .meta .t { color: var(--amber); font-weight: 600; }
+  .far-lbl .meta .w { color: var(--accent); font-weight: 600; }
+  .bars { display: flex; height: 7px; border-radius: 4px; overflow: hidden; background: var(--line-soft); }
+  .bars i { display: block; height: 100%; }
+  .st { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+  .st.Answered { color: var(--green); }
+  .st.Open { color: var(--muted); }
+  .st.In { color: var(--accent); }
+
+  /* Cards */
+  .card { position: absolute; border-radius: 10px; padding: 9px 10px; border: 1.5px solid color-mix(in srgb, var(--accent) 30%, var(--line)); background: var(--surface); color: var(--ink); text-align: left; font-size: 13px; line-height: 1.3; display: flex; flex-direction: column; gap: 6px; overflow: hidden; transition: opacity .15s; }
+  .card .t { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .m { display: flex; gap: 5px; align-items: center; margin-top: auto; font-size: 11px; color: var(--muted); }
+  .card.insight { font-weight: 650; font-size: 14.5px; border-radius: 12px; }
+  .card.source { background: var(--stone); border: 1px solid var(--line); font-size: 12px; font-weight: 600; border-radius: 6px; }
+  .card.decision { background: var(--ink); color: var(--bg); border: 0; font-size: 22px; font-weight: 800; padding: 16px 20px; border-radius: 16px; justify-content: center; }
+  .card.decision .m { color: var(--bg); opacity: .8; font-size: 13px; }
+  .card.s-needs_check { border: 2px dashed var(--muted); }
+  .card.s-checked_by_owner { background: var(--fill-owner); }
+  .card.s-checked_by_peers { background: var(--fill-peers); }
+  .card.s-checked_by_sme { background: var(--fill-sme); color: var(--on-sme); border-color: var(--fill-sme); }
+  .card.s-checked_by_sme .m { color: var(--on-sme); opacity: .85; }
+  .card.s-needs_changes { border: 3px solid var(--amber); background: var(--amber-bg); }
+  .card.s-disagreement { border: 3px solid var(--red); background: var(--red-bg); }
+  .card.nothing { border: 3px dashed var(--amber); }
+  .card.glow { box-shadow: 0 0 0 3px var(--glow), 0 0 22px color-mix(in srgb, var(--glow) 50%, transparent); }
+  .card.sel { outline: 4px solid var(--accent); outline-offset: 3px; }
+  .world.mid .card:not(.decision) .t, .world.mid .card:not(.decision) .m, .world.far .card:not(.decision) .t, .world.far .card:not(.decision) .m { visibility: hidden; }
+  .world.far .card:not(.decision) { opacity: .5; }
+  .world.far .card.decision { transform: scale(calc(var(--iz) * .3)); transform-origin: 50% 100%; }
+  /* Pins: trouble and what waits on you, readable from far away */
+  .pin { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; display: none; place-items: center; font-size: 11px; font-weight: 800; transform: scale(var(--iz)); transform-origin: 100% 0; color: var(--on-sme); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .pin.trouble { background: var(--red); }
+  .pin.waits { background: var(--accent); color: var(--on-accent); }
+  .world.mid .pin { display: grid; transform: scale(calc(var(--iz) * .6)); }
+
+  /* Filtering and tracing */
+  .world.filtering .card:not(.match):not(.decision) { opacity: .13; }
+  .world.filtering .card:not(.match) .pin { display: none; }
+  .world.tracing .card:not(.near) { opacity: .12; }
+  .world.tracing .far-lbl { display: none; }
+  .world.far.tracing .card.near { opacity: 1; }
+  .world.tracing .card:not(.near) .pin { display: none; }
+  .wire { fill: none; stroke: var(--muted); stroke-width: 1.6; opacity: .22; }
+  .wire.src { stroke-dasharray: 3 4; opacity: .16; }
+  .wire.weak { stroke: var(--amber); stroke-dasharray: 6 5; opacity: .45; }
+  .world.far .wire { opacity: .08; }
+  .world.far .wire.weak { opacity: .2; }
+  .world.tracing .wire { opacity: .03; }
+  .world.tracing .wire.hot { opacity: 1; stroke: var(--accent); stroke-width: calc(2.6px * var(--iz-wire)); stroke-dasharray: none; }
+  .world.tracing .wire.hot.weak { stroke: var(--amber); stroke-dasharray: 8 6; }
+
+  /* Floating controls */
+  .zoomctl { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 5; }
+  .zoomctl button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); font-size: 18px; font-weight: 600; }
+  .mini { position: absolute; left: 12px; bottom: 12px; z-index: 5; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 4px; }
+  .mini canvas { display: block; width: 132px; height: 120px; }
+  .zoomlvl { position: absolute; left: 12px; top: 10px; z-index: 5; font-size: 11.5px; color: var(--muted); background: color-mix(in srgb, var(--surface) 85%, transparent); border: 1px solid var(--line-soft); border-radius: 999px; padding: 3px 10px; display: flex; gap: 8px; align-items: center; }
+  .zoomlvl i { font-style: normal; color: var(--ink); font-weight: 600; }
+  .walk { position: absolute; left: 50%; transform: translateX(-50%); top: 10px; z-index: 6; display: flex; align-items: center; gap: 2px; background: var(--ink); color: var(--bg); border-radius: 999px; padding: 3px; box-shadow: var(--lift); font-size: 13px; }
+  .walk button { border: 0; background: none; color: var(--bg); padding: 6px 12px; border-radius: 999px; font-weight: 600; }
+  .walk button:hover { background: color-mix(in srgb, var(--bg) 15%, transparent); }
+  .walk .c { font-variant-numeric: tabular-nums; padding: 0 6px; opacity: .85; white-space: nowrap; }
+  @media (max-width: 899px) {
+    .zoomlvl { display: none; }
+    .mini canvas { width: 96px; height: 88px; }
+    body.sheet-open .zoomctl, body.sheet-open .mini, body.far .mini { display: none; }
+  }
+
+  /* Overview in the panel */
+  .ov { display: flex; flex-direction: column; gap: 14px; }
+  .ov h1 { font-size: 18px; line-height: 1.3; }
+  .qrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; text-align: left; border: 1px solid var(--line-soft); background: var(--bg); border-radius: 10px; padding: 9px 11px; width: 100%; color: var(--ink); }
+  .qrow .bars { grid-column: 1 / -1; }
+  .qrow .meta { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+  .key { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); align-items: center; }
+  .key span { display: inline-flex; gap: 5px; align-items: center; }
+  .hint { font-size: 12.5px; color: var(--muted); border: 1px dashed var(--line); border-radius: 10px; padding: 9px 11px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <span class="brand"><a href="index.html">ANCHOR</a></span>
+    <span class="wsname">Why do mobile shoppers leave checkout?</span>
+    <nav class="protos" aria-label="Prototypes"><a href="map.html" aria-current="page">Map</a><a href="flow.html">Flow</a><a href="desk.html">Desk</a></nav>
+  </header>
+  <div class="tools">
+    <div class="chips" id="lenses" role="group" aria-label="Show"></div>
+  </div>
+  <main class="stage" id="stage" aria-label="Workspace map">
+    <div class="world" id="world"></div>
+    <div class="walk" id="walk" hidden></div>
+    <div class="zoomlvl" id="zoomlvl"></div>
+    <div class="mini"><canvas id="mini" width="264" height="240" aria-label="Where you are on the map"></canvas></div>
+    <div class="zoomctl">
+      <button type="button" id="zin" aria-label="Zoom in">+</button>
+      <button type="button" id="zout" aria-label="Zoom out">−</button>
+      <button type="button" id="zfit" aria-label="See everything" title="See everything">⤢</button>
+    </div>
+  </main>
+  <aside class="panel" id="panel" aria-label="Detail">
+    <div class="panel-top"><button type="button" class="handle" id="handle" aria-label="Make bigger or smaller"></button><div class="trail" id="trail"></div><button type="button" class="iconbtn" id="fitline" title="Fit this line on screen" hidden>⤢ Line</button><button type="button" class="iconbtn" id="close" aria-label="Close">×</button></div>
+    <div class="panel-body" id="pbody"></div>
+  </aside>
+</div>
+<script src="data.js"></script>
+<script>
+"use strict";
+const A = window.ANCHOR, ws = A.build("big"), esc = A.esc;
+const $ = id => document.getElementById(id);
+const S = { z: 1, x: 0, y: 0, sel: null, trail: [], lens: "all", walkIdx: -1, pending: {} };
+const FAR = 0.26, NEAR = 0.55;
+const mobile = () => matchMedia("(max-width: 899px)").matches;
+
+// ---------- Layout: districts in a grid, rows inside each from insights down to sources ----------
+const SIZE = { insight: [250, 104], finding: [210, 92], observation: [168, 84], source: [168, 46] };
+const PER = { insight: 4, finding: 4, observation: 5, source: 5 };
+const GAP = 16, ROWGAP = 64, PAD = 36, HEAD = 92, DW = 5 * (168 + GAP) - GAP + PAD * 2;
+const pos = new Map();      // id -> {x, y, w, h}
+const districts = [];
+function layout() {
+  const r0 = $("stage").getBoundingClientRect();
+  const cols = r0.width > r0.height * 1.15 ? 3 : 2, colGap = 160, rowGap = 160;
+  const top = 340;
+  const heights = [];
+  ws.questions.forEach((q, i) => {
+    const items = { insight: [], finding: [], observation: [], source: [] };
+    ws.blocks.filter(b => b.q === q.id).forEach(b => items[b.level].push(b));
+    items.source = ws.sources.filter(s => s.q === q.id);
+    let y = HEAD; const local = [];
+    const labels = [];
+    ["insight", "finding", "observation", "source"].forEach(lvl => {
+      const list = items[lvl], [w, h] = SIZE[lvl], per = PER[lvl];
+      labels.push([lvl, y]);
+      y += 24;
+      for (let r = 0; r * per < list.length; r++) {
+        const row = list.slice(r * per, r * per + per);
+        const rowW = row.length * (w + GAP) - GAP;
+        row.forEach((b, k) => local.push([b.id, PAD + (DW - PAD * 2 - rowW) / 2 + k * (w + GAP), y, w, h]));
+        y += h + GAP;
+      }
+      y += ROWGAP - GAP;
+    });
+    heights.push(y);
+    districts.push({ q, local, labels, h: y + 6 });
+  });
+  const rowH = [];
+  districts.forEach((d, i) => { const r = Math.floor(i / cols); rowH[r] = Math.max(rowH[r] || 0, d.h); });
+  districts.forEach((d, i) => {
+    const r = Math.floor(i / cols), c = i % cols;
+    d.x = c * (DW + colGap); d.y = top + rowH.slice(0, r).reduce((a, b) => a + b + rowGap, 0); d.w = DW;
+    d.h = rowH[r];
+    d.local.forEach(([id, x, y, w, h]) => pos.set(id, { x: d.x + x, y: d.y + y, w, h }));
+  });
+  const worldW = cols * DW + (cols - 1) * colGap;
+  pos.set("D", { x: worldW / 2 - 300, y: 60, w: 600, h: 140 });
+  S.worldW = worldW; S.worldH = Math.max(...districts.map(d => d.y + d.h)) + 40;
+}
+
+// ---------- Draw ----------
+function mkCard(b) {
+  const p = pos.get(b.id), el = document.createElement("button");
+  el.type = "button"; el.className = "card"; el.dataset.id = b.id;
+  Object.assign(el.style, { left: p.x + "px", top: p.y + "px", width: p.w + "px", height: p.h + "px" });
+  return el;
+}
+function paintCard(el) {
+  const b = ws.get(el.dataset.id);
+  if (b.level === "source") {
+    el.className = "card source";
+    el.innerHTML = `<span class="t">${esc(b.title)}</span>`;
+    return;
+  }
+  if (b.level === "decision") {
+    const ready = b.on.filter(id => { const x = ws.get(id); return !ws.unchecked(x) && !ws.weakBelow(x).length; }).length;
+    el.className = "card decision";
+    el.innerHTML = `<span class="m">DECISION</span><span>${esc(b.text)}</span><span class="m">${ready} of ${b.on.length} insights stand on checked ground</span>`;
+    return;
+  }
+  const s = ws.state(b);
+  el.className = `card ${b.level} s-${s}${ws.glow(b) ? " glow" : ""}${ws.restsOnNothing(b) ? " nothing" : ""}`;
+  const pin = ws.trouble(b) ? `<span class="pin trouble">!</span>` : ws.waits(b) ? `<span class="pin waits">•</span>` : "";
+  el.innerHTML = `${pin}<span class="t">${esc(b.text)}</span><span class="m">${A.shape(b.level)}#${b.n}${b.ai ? " " + A.aiTag(b) : ""}<span class="grow"></span>${A.troubleTags(ws, b)}</span>`;
+}
+function stats(list) {
+  const c = { sme: 0, peers: 0, owner: 0, none: 0, bad: 0 };
+  list.forEach(b => { const s = ws.state(b); if (s === "checked_by_sme") c.sme++; else if (s === "checked_by_peers") c.peers++; else if (s === "checked_by_owner") c.owner++; else if (s === "needs_check") c.none++; else c.bad++; });
+  return c;
+}
+function barsHtml(list) {
+  const c = stats(list), t = list.length || 1;
+  const seg = (n, color) => n ? `<i style="width:${(n / t * 100).toFixed(1)}%;background:${color}"></i>` : "";
+  return `<div class="bars" title="How far checked">${seg(c.sme, "var(--fill-sme)")}${seg(c.peers, "var(--fill-peers)")}${seg(c.owner, "var(--fill-owner)")}${seg(c.bad, "var(--red)")}</div>`;
+}
+function farLabel(d) {
+  const list = ws.blocks.filter(b => b.q === d.q.id), c = ws.counts(list), st = ws.questionState(d.q.id);
+  return `<span class="st ${st.split(" ")[0]}">${st}</span><b>Q${d.q.n}. ${esc(d.q.text)}</b>${barsHtml(list)}
+    <span class="meta"><span>${list.length} blocks</span>${c.waits ? `<span class="w">${c.waits} wait on you</span>` : ""}${c.trouble ? `<span class="t">${c.trouble} trouble</span>` : ""}</span>`;
+}
+let svg;
+function draw() {
+  const world = $("world");
+  world.innerHTML = "";
+  world.style.width = S.worldW + "px"; world.style.height = S.worldH + "px";
+  districts.forEach(d => {
+    const el = document.createElement("div");
+    el.className = "district";
+    Object.assign(el.style, { left: d.x + "px", top: d.y + "px", width: d.w + "px", height: d.h + "px" });
+    el.innerHTML = `<h3><span class="qn">Q${d.q.n}</span>${esc(d.q.text)}</h3>` +
+      d.labels.map(([l, y]) => `<span class="lvl-lbl" style="top:${y}px">${l === "source" ? "Sources" : A.LEVEL[l] + "s"}</span>`).join("") +
+      `<button type="button" class="far-lbl" data-q="${d.q.id}"></button>`;
+    world.appendChild(el);
+  });
+  svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", S.worldW); svg.setAttribute("height", S.worldH);
+  world.appendChild(svg);
+  [ws.decision, ...ws.blocks, ...ws.sources].forEach(b => world.appendChild(mkCard(b)));
+  repaint();
+}
+function wires() {
+  let h = "";
+  [ws.decision, ...ws.blocks].forEach(b => {
+    const to = pos.get(b.id);
+    [...(b.on || []), ...(b.src || [])].forEach(id => {
+      const from = pos.get(id), c = ws.get(id);
+      const x1 = from.x + from.w / 2, y1 = from.y, x2 = to.x + to.w / 2, y2 = to.y + to.h;
+      const my = (y1 + y2) / 2;
+      const cls = c.level === "source" ? "src" : ws.unchecked(c) ? "weak" : "";
+      h += `<path class="wire ${cls}" data-a="${id}" data-b="${b.id}" d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}"/>`;
+    });
+  });
+  svg.innerHTML = h;
+}
+function repaint() {
+  document.querySelectorAll(".card").forEach(paintCard);
+  districts.forEach(d => { const el = document.querySelector(`.far-lbl[data-q="${d.q.id}"]`); el.innerHTML = farLabel(d); });
+  wires();
+  applyLens(); applyTrace();
+}
+
+// ---------- Lenses: what to show ----------
+const LENSES = [
+  ["all", "Everything", () => true],
+  ["waits", "Waiting on you", b => !!ws.waits(b)],
+  ["trouble", "Trouble", b => ws.trouble(b)],
+  ["unchecked", "Needs a check", b => ws.unchecked(b)],
+  ["ai", "Made with AI", b => b.ai],
+];
+function lensFn() { return LENSES.find(l => l[0] === S.lens)[2]; }
+function matches() {
+  const f = lensFn();
+  const order = ["insight", "finding", "observation"];
+  return ws.blocks.filter(f).sort((a, b) => a.q.localeCompare(b.q) || order.indexOf(a.level) - order.indexOf(b.level) || a.n - b.n);
+}
+function renderLenses() {
+  $("lenses").innerHTML = LENSES.map(([k, l, f]) => `<button type="button" data-lens="${k}" aria-pressed="${S.lens === k}">${l}${k === "all" ? "" : `<span class="n">${ws.blocks.filter(f).length}</span>`}</button>`).join("");
+}
+function applyLens() {
+  const world = $("world"), f = lensFn();
+  world.classList.toggle("filtering", S.lens !== "all");
+  document.querySelectorAll(".card").forEach(el => { const b = ws.get(el.dataset.id); el.classList.toggle("match", b.level !== "source" && b.level !== "decision" && f(b)); });
+  const list = matches();
+  const walk = $("walk");
+  walk.hidden = S.lens === "all" || !list.length;
+  if (!walk.hidden) {
+    const i = list.findIndex(b => b.id === S.sel);
+    walk.innerHTML = `<button type="button" id="wprev" aria-label="Previous">‹</button><span class="c">${i >= 0 ? `${i + 1} of ${list.length}` : `${list.length} to look at`}</span><button type="button" id="wnext">${i >= 0 ? "Next ›" : "Start ›"}</button>`;
+  }
+}
+function walkTo(dir) {
+  const list = matches(); if (!list.length) return;
+  let i = list.findIndex(b => b.id === S.sel);
+  i = i < 0 ? 0 : (i + dir + list.length) % list.length;
+  select(list[i].id, { fly: true, fresh: true });
+}
+
+// ---------- Tracing a line ----------
+function applyTrace() {
+  const world = $("world");
+  world.classList.toggle("tracing", !!S.sel);
+  document.querySelectorAll(".card.sel").forEach(el => el.classList.remove("sel"));
+  if (!S.sel) return;
+  const line = ws.lineage(S.sel);
+  document.querySelectorAll(".card").forEach(el => el.classList.toggle("near", line.has(el.dataset.id)));
+  const el = document.querySelector(`.card[data-id="${S.sel}"]`); if (el) el.classList.add("sel");
+  svg.querySelectorAll(".wire").forEach(w => w.classList.toggle("hot", line.has(w.dataset.a) && line.has(w.dataset.b)));
+}
+
+// ---------- Camera ----------
+function setCam(z, x, y) {
+  S.z = Math.min(2.2, Math.max(minZ(), z)); S.x = x; S.y = y;
+  const world = $("world");
+  world.style.transform = `translate(${S.x}px, ${S.y}px) scale(${S.z})`;
+  world.style.setProperty("--iz", 1 / S.z);
+  world.style.setProperty("--iz-wire", Math.max(1, 1 / S.z * .5));
+  world.classList.toggle("far", S.z < FAR);
+  document.body.classList.toggle("far", S.z < FAR);
+  world.classList.toggle("mid", S.z >= FAR && S.z < NEAR);
+  $("zoomlvl").innerHTML = S.z < FAR ? `<i>The plan</i> zoom in to see blocks` : S.z < NEAR ? `<i>Blocks</i> zoom in to read` : `<i>Reading</i> zoom out for the plan`;
+  drawMini();
+}
+function view() {
+  const r = $("stage").getBoundingClientRect();
+  // On a phone the sheet covers the bottom of the map.
+  const cover = mobile() && !$("panel").classList.contains("closed") ? $("panel").getBoundingClientRect().height - (innerHeight - r.bottom) : 0;
+  return { w: r.width, h: Math.max(120, r.height - Math.max(0, cover)), left: r.left, top: r.top };
+}
+function minZ() { const v = view(); return Math.min(0.12, Math.min(v.w / S.worldW, v.h / S.worldH) * 0.9); }
+function fitBox(x, y, w, h, pad = 40, maxZ = 1.1) {
+  const v = view();
+  const z = Math.min(maxZ, (v.w - pad * 2) / w, (v.h - pad * 2) / h);
+  return [z, v.w / 2 - (x + w / 2) * z, v.h / 2 - (y + h / 2) * z];
+}
+let anim;
+function fly(target, ms = 420) {
+  cancelAnimationFrame(anim);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setCam(...target); return; }
+  const from = [S.z, S.x, S.y], t0 = performance.now();
+  const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const step = now => {
+    const t = Math.min(1, (now - t0) / ms), e = ease(t);
+    // zoom in log space so it feels even
+    const z = Math.exp(Math.log(from[0]) + (Math.log(target[0]) - Math.log(from[0])) * e);
+    const k = (z - from[0]) / ((target[0] - from[0]) || 1);
+    const ke = Math.abs(target[0] - from[0]) < 1e-4 ? e : k;
+    setCam(z, from[1] + (target[1] - from[1]) * ke, from[2] + (target[2] - from[2]) * ke);
+    if (t < 1) anim = requestAnimationFrame(step);
+  };
+  anim = requestAnimationFrame(step);
+}
+function fitAll(animate = true) { const t = fitBox(0, 0, S.worldW, S.worldH, 16, 1); animate ? fly(t) : setCam(...t); }
+function flyToBlock(id) { const p = pos.get(id); fly(fitBox(p.x - 200, p.y - 160, p.w + 400, p.h + 320, 20, 1)); }
+function flyToLine(id) {
+  const line = [...ws.lineage(id)].map(x => pos.get(x)).filter(Boolean);
+  const x0 = Math.min(...line.map(p => p.x)), y0 = Math.min(...line.map(p => p.y));
+  const x1 = Math.max(...line.map(p => p.x + p.w)), y1 = Math.max(...line.map(p => p.y + p.h));
+  fly(fitBox(x0, y0, x1 - x0, y1 - y0, 24, 1));
+}
+function zoomAt(f, cx, cy) {
+  const z = Math.min(2.2, Math.max(minZ(), S.z * f));
+  const k = z / S.z;
+  setCam(z, cx - (cx - S.x) * k, cy - (cy - S.y) * k);
+}
+
+// ---------- Minimap ----------
+function drawMini() {
+  const c = $("mini"), g = c.getContext("2d"), W = c.width, H = c.height;
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue(n).trim();
+  const k = Math.min(W / S.worldW, H / S.worldH), ox = (W - S.worldW * k) / 2, oy = (H - S.worldH * k) / 2;
+  g.clearRect(0, 0, W, H);
+  districts.forEach(d => {
+    g.fillStyle = col("--line-soft"); g.fillRect(ox + d.x * k, oy + d.y * k, d.w * k, d.h * k);
+  });
+  ws.blocks.forEach(b => {
+    const p = pos.get(b.id), s = ws.state(b);
+    g.fillStyle = ws.trouble(b) ? col("--red") : s === "needs_check" ? col("--muted") : s === "checked_by_sme" ? col("--fill-sme") : col("--fill-peers");
+    if (S.lens !== "all" && !lensFn()(b)) g.globalAlpha = .15;
+    g.fillRect(ox + p.x * k, oy + p.y * k, Math.max(2, p.w * k), Math.max(2, p.h * k));
+    g.globalAlpha = 1;
+  });
+  const v = view();
+  g.strokeStyle = col("--accent"); g.lineWidth = 3;
+  g.strokeRect(ox + (-S.x / S.z) * k, oy + (-S.y / S.z) * k, (v.w / S.z) * k, (v.h / S.z) * k);
+  drawMini.map = { k, ox, oy };
+}
+$("mini").addEventListener("click", e => {
+  const r = $("mini").getBoundingClientRect(), m = drawMini.map;
+  const wx = ((e.clientX - r.left) * ($("mini").width / r.width) - m.ox) / m.k;
+  const wy = ((e.clientY - r.top) * ($("mini").height / r.height) - m.oy) / m.k;
+  const v = view(), z = Math.max(S.z, NEAR);
+  fly([z, v.w / 2 - wx * z, v.h / 2 - wy * z]);
+});
+
+// ---------- Panel ----------
+function select(id, { fly: doFly = false, fresh = false, line = false } = {}) {
+  if (fresh || !S.sel) S.trail = [];
+  if (id && S.trail[S.trail.length - 1] !== id) S.trail.push(id);
+  S.sel = id; S.pending = {};
+  openPanel(!!id);
+  renderPanel(); applyTrace(); applyLens();
+  if (id && doFly) line ? flyToLine(id) : flyToBlock(id);
+}
+function openPanel(open) {
+  $("panel").classList.toggle("closed", mobile() && !open);
+  document.body.classList.toggle("sheet-open", mobile() && open);
+  if (!open) $("panel").classList.remove("full");
+}
+function renderPanel() {
+  $("fitline").hidden = !S.sel;
+  $("close").hidden = !S.sel && !mobile();
+  if (!S.sel) {
+    $("trail").innerHTML = `<span class="here">Workspace</span>`;
+    $("pbody").innerHTML = overview();
+    return;
+  }
+  $("trail").innerHTML = [`<button type="button" data-trail="-1">Workspace</button>`, ...S.trail.map((id, i) => {
+    const b = ws.get(id), lbl = b.level === "decision" ? "Decision" : b.level === "source" ? "Source" : `${A.LEVEL[b.level]} #${b.n}`;
+    return i === S.trail.length - 1 ? `<span class="here">${lbl}</span>` : `<button type="button" data-trail="${i}">${lbl}</button>`;
+  })].join(`<span class="sep">›</span>`);
+  $("pbody").innerHTML = A.detail(ws, S.sel, { pending: S.pending });
+}
+function overview() {
+  const c = ws.counts();
+  return `<div class="ov">
+    <div class="eyebrow">Workspace</div>
+    <h1>${esc(ws.question)}</h1>
+    <div class="small muted">For the decision: ${esc(ws.decisionText)}</div>
+    <div class="hint">Pinch or scroll to zoom. Far out you see the plan, one district per sub-question. Closer in you can read every block. Tap a block to light its line from source to decision.</div>
+    <div class="row small"><b>${c.total} blocks</b><span class="muted">${c.waits} wait on you · ${c.trouble} trouble · ${c.unchecked} need a check</span></div>
+    <div class="sect"><h3>The plan</h3>${districts.map(d => {
+      const list = ws.blocks.filter(b => b.q === d.q.id), cc = ws.counts(list), st = ws.questionState(d.q.id);
+      return `<button type="button" class="qrow" data-q="${d.q.id}"><span><b>Q${d.q.n}.</b> ${esc(d.q.text)}</span><span class="st ${st.split(" ")[0]}">${st}</span>${barsHtml(list)}<span class="meta"><span>${list.length} blocks</span>${cc.waits ? `<span>${cc.waits} wait on you</span>` : ""}${cc.trouble ? `<span class="warn">${cc.trouble} trouble</span>` : ""}</span></button>`;
+    }).join("")}</div>
+    <div class="sect"><h3>How to read it</h3><div class="key">
+      <span><span class="sq s-needs_check"></span>Needs a check</span><span><span class="sq s-checked_by_owner"></span>Owner</span><span><span class="sq s-checked_by_peers"></span>Peers</span><span><span class="sq s-checked_by_sme"></span>SME</span>
+      <span><span class="sq s-needs_changes"></span>Needs changes</span><span><span class="sq s-disagreement"></span>Disagree</span>
+      <span><span class="pin-k" style="width:12px;height:12px;border-radius:50%;background:var(--red);display:inline-block"></span>Trouble</span>
+      <span><span style="width:12px;height:12px;border-radius:50%;background:var(--accent);display:inline-block"></span>Waits on you</span>
+    </div></div>
+  </div>`;
+}
+A.wireDetail($("pbody"), ws, () => S.sel,
+  pend => { S.pending = pend; renderPanel(); },
+  id => { S.pending = {}; select(id, { fly: true }); },
+  b => { A.toast(`Checked ${A.LEVEL[b.level].toLowerCase()} #${b.n}.`); repaint(); renderLenses(); renderPanel(); });
+$("pbody").addEventListener("click", e => {
+  const q = e.target.closest(".qrow[data-q]");
+  if (q) { const d = districts.find(x => x.q.id === q.dataset.q); fly(fitBox(d.x, d.y, d.w, d.h, 12, 1)); }
+});
+$("trail").addEventListener("click", e => {
+  const t = e.target.closest("[data-trail]"); if (!t) return;
+  const i = +t.dataset.trail;
+  if (i < 0) { S.trail = []; select(null); return; }
+  S.trail = S.trail.slice(0, i + 1); S.sel = S.trail[i]; S.pending = {};
+  renderPanel(); applyTrace(); applyLens(); flyToBlock(S.sel);
+});
+$("close").addEventListener("click", () => { S.trail = []; select(null); });
+$("fitline").addEventListener("click", () => S.sel && flyToLine(S.sel));
+$("handle").addEventListener("click", () => $("panel").classList.toggle("full"));
+
+// ---------- Gestures: drag to pan, pinch or wheel to zoom, tap to pick ----------
+const pts = new Map(); let gesture = null, moved = 0, downAt = null;
+const stage = $("stage");
+stage.addEventListener("pointerdown", e => {
+  if (e.target.closest(".zoomctl, .mini, .walk")) return;
+  stage.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  moved = 0; downAt = e.target;
+  gesture = { cam: [S.z, S.x, S.y], pts: new Map([...pts].map(([k, v]) => [k, [...v]])) };
+  cancelAnimationFrame(anim);
+});
+stage.addEventListener("pointermove", e => {
+  if (!pts.has(e.pointerId)) return;
+  const prev = pts.get(e.pointerId);
+  moved += Math.abs(e.clientX - prev[0]) + Math.abs(e.clientY - prev[1]);
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  const v = view();
+  if (pts.size === 1) {
+    if (moved > 6) stage.classList.add("dragging");
+    const [[sx, sy]] = [...gesture.pts.values()], [cx, cy] = [e.clientX, e.clientY];
+    setCam(gesture.cam[0], gesture.cam[1] + cx - sx, gesture.cam[2] + cy - sy);
+  } else if (pts.size === 2) {
+    const [a, b] = [...pts.values()], [a0, b0] = [...gesture.pts.values()];
+    if (!b0) return;
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]), d0 = Math.hypot(a0[0] - b0[0], a0[1] - b0[1]) || 1;
+    const mx = (a[0] + b[0]) / 2 - v.left, my = (a[1] + b[1]) / 2 - v.top;
+    const mx0 = (a0[0] + b0[0]) / 2 - v.left, my0 = (a0[1] + b0[1]) / 2 - v.top;
+    const z = Math.min(2.2, Math.max(minZ(), gesture.cam[0] * d / d0)), k = z / gesture.cam[0];
+    setCam(z, mx - (mx0 - gesture.cam[1]) * k, my - (my0 - gesture.cam[2]) * k);
+  }
+});
+function endPointer(e) {
+  if (!pts.has(e.pointerId)) return;
+  pts.delete(e.pointerId);
+  stage.classList.remove("dragging");
+  if (pts.size === 0 && moved < 8 && downAt) tap(downAt, e);
+  if (pts.size) { gesture = { cam: [S.z, S.x, S.y], pts: new Map([...pts].map(([k, v]) => [k, [...v]])) }; moved = 99; }
+}
+stage.addEventListener("pointerup", endPointer);
+stage.addEventListener("pointercancel", e => { pts.delete(e.pointerId); stage.classList.remove("dragging"); });
+let lastTap = 0;
+function tap(target, e) {
+  const far = target.closest(".far-lbl");
+  if (far) { const d = districts.find(x => x.q.id === far.dataset.q); fly(fitBox(d.x, d.y, d.w, d.h, 12, 1)); return; }
+  const card = target.closest(".card");
+  if (card) {
+    select(card.dataset.id, { fresh: true, fly: S.z < NEAR });
+    return;
+  }
+  const now = performance.now();
+  const v = view();
+  if (now - lastTap < 320) { zoomAt(2, e.clientX - v.left, e.clientY - v.top); lastTap = 0; return; }
+  lastTap = now;
+  if (S.sel) { S.trail = []; select(null); }
+}
+stage.addEventListener("wheel", e => {
+  e.preventDefault();
+  const v = view();
+  if (e.ctrlKey || Math.abs(e.deltaY) > Math.abs(e.deltaX) && !e.shiftKey && e.deltaMode === 0 && Math.abs(e.deltaY) >= 40 || e.deltaMode !== 0) {
+    zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0022)), e.clientX - v.left, e.clientY - v.top);
+  } else {
+    setCam(S.z, S.x - e.deltaX, S.y - e.deltaY);
+  }
+}, { passive: false });
+$("zin").addEventListener("click", () => { const v = view(); zoomAt(1.6, v.w / 2, v.h / 2); });
+$("zout").addEventListener("click", () => { const v = view(); zoomAt(1 / 1.6, v.w / 2, v.h / 2); });
+$("zfit").addEventListener("click", () => fitAll());
+$("lenses").addEventListener("click", e => {
+  const b = e.target.closest("[data-lens]"); if (!b) return;
+  S.lens = b.dataset.lens; renderLenses(); applyLens(); drawMini();
+});
+$("walk").addEventListener("click", e => {
+  if (e.target.closest("#wnext")) walkTo(1);
+  if (e.target.closest("#wprev")) walkTo(-1);
+});
+document.addEventListener("keydown", e => {
+  if (e.target.closest("textarea, input")) return;
+  if (e.key === "Escape") { S.trail = []; select(null); }
+  if (e.key === "j" || e.key === "ArrowRight" && S.lens !== "all") walkTo(1);
+  if (e.key === "k" || e.key === "ArrowLeft" && S.lens !== "all") walkTo(-1);
+  if (e.key === "0") fitAll();
+});
+addEventListener("resize", () => { openPanel(!!S.sel); drawMini(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", drawMini);
+
+layout(); renderLenses(); draw(); openPanel(false); renderPanel();
+requestAnimationFrame(() => fitAll(false));
+// Deep links for screenshots: #waits, #trace, #read
+const h = location.hash.slice(1);
+if (h === "waits" || h === "trouble") { S.lens = h; renderLenses(); applyLens(); setTimeout(() => walkTo(1), 50); }
+if (h === "trace") setTimeout(() => { const b = ws.blocks.find(x => x.key === "q1.i0"); select(b.id, { fly: true, line: true }); }, 50);
+if (h === "read") setTimeout(() => { const d = districts[0]; setCam(...fitBox(d.x, d.y + 300, d.w * .62, 520, 0, 1)); }, 50);
+</script>
+</body>
+</html>

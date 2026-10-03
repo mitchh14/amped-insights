@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flow Columns</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* Flow Columns: the data flows left to right, from sources to the decision,
+     one column per level. Pick anything and every column pulls what is linked
+     to it to the top, with the rest folded away. On a phone the columns are
+     pages you swipe between, and the path bar says what you picked in each. */
+  .app { height: 100%; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) var(--panel); }
+  .bar { grid-column: 1 / -1; }
+  .tools, .path, .cols { grid-column: 1; }
+  .panel { grid-column: 2; grid-row: 2 / 5; }
+  @media (max-width: 899px) { .app { grid-template-columns: minmax(0, 1fr); } }
+
+  .tools { display: flex; gap: 8px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+  .tools .chips { flex: 1; min-width: 0; }
+  .find { width: 200px; max-width: 40%; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12.5px; }
+  @media (max-width: 899px) { .tools { flex-wrap: wrap; } .find { width: 100%; max-width: none; order: -1; } }
+
+  /* The path: what is picked at each level */
+  .path { display: flex; align-items: stretch; gap: 0; padding: 8px 16px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line-soft); background: var(--surface); }
+  .path::-webkit-scrollbar { display: none; }
+  .step { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 0; border: 0; background: none; text-align: left; padding: 3px 10px 3px 0; color: var(--ink); position: relative; }
+  .step + .step { padding-left: 14px; }
+  .step + .step::before { content: "›"; position: absolute; left: 0; top: 50%; transform: translateY(-50%); color: var(--muted); }
+  .step .l { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; display: flex; gap: 5px; align-items: center; }
+  .step .v { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22ch; }
+  .step .v.none { color: var(--muted); }
+  .step .v.many { color: var(--accent); font-weight: 600; }
+  .step.on .v { font-weight: 700; }
+  .step.here .l { color: var(--accent); }
+  @media (max-width: 899px) { .step { flex: 0 0 auto; } .step .v { max-width: 15ch; } }
+
+  /* Columns */
+  .cols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(150px, .7fr); min-height: 0; position: relative; overflow: hidden; }
+  .col { display: flex; flex-direction: column; min-height: 0; min-width: 0; border-right: 1px solid var(--line-soft); }
+  .col:last-child { border-right: 0; }
+  .col-h { padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 5px; border-bottom: 1px solid var(--line-soft); background: var(--bg); }
+  .col-h .t { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 13px; }
+  .col-h .t .n { font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .col-h .flow { font-size: 11px; color: var(--muted); }
+  .bars { display: flex; height: 5px; border-radius: 3px; overflow: hidden; background: var(--line-soft); }
+  .bars i { display: block; height: 100%; }
+  .col-b { overflow-y: auto; padding: 8px 8px 40px; display: flex; flex-direction: column; gap: 5px; min-height: 0; overscroll-behavior: contain; }
+  .grp { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; padding: 8px 4px 2px; border: 0; background: none; width: 100%; text-align: left; }
+  .grp .q { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 11.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grp.linked { color: var(--accent); }
+  .grp .caret { font-size: 10px; }
+
+  .it { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 3px 8px; text-align: left; width: 100%; border: 1.5px solid transparent; background: var(--surface); border-radius: 8px; padding: 7px 9px; color: var(--ink); box-shadow: var(--shadow); position: relative; }
+  .it .shape { margin-top: 3px; }
+  .it .s { font-size: 12.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .it .m { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: 11px; color: var(--muted); }
+  .it .links { margin-left: auto; display: inline-flex; gap: 2px; }
+  .it .links span { font-variant-numeric: tabular-nums; border: 1px solid var(--line-soft); border-radius: 4px; padding: 0 4px; }
+  .it.s-needs_check { border: 1.5px dashed var(--muted); box-shadow: none; }
+  .it.s-needs_changes { border-color: var(--amber); }
+  .it.s-disagreement { border-color: var(--red); }
+  .it.glow { box-shadow: 0 0 0 2px var(--glow); }
+  .it.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: var(--accent-soft); }
+  .it.lin { background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface)); }
+  .it.waits::after { content: ""; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  .it.src { background: var(--stone); box-shadow: none; }
+  .it.dec { background: var(--ink); color: var(--bg); }
+  .it.dec .m { color: var(--bg); opacity: .8; }
+  .it .fill { width: 4px; position: absolute; left: 0; top: 6px; bottom: 6px; border-radius: 0 3px 3px 0; }
+  .more { border: 1px dashed var(--line); background: none; border-radius: 8px; padding: 7px; font-size: 12px; color: var(--muted); }
+  .empty { font-size: 12px; color: var(--muted); padding: 8px 4px; }
+  .next-col { display: none; }
+  .open-hint { display: none; }
+  @media (max-width: 899px) { .it.sel .open-hint { display: block; grid-column: 2; font-size: 12px; font-weight: 600; color: var(--accent); } }
+
+  /* Connector lines between linked items in neighboring columns (desktop) */
+  .links-svg { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+  .lk { fill: none; stroke: var(--accent); stroke-width: 1.5; opacity: .55; }
+  .lk.weak { stroke: var(--amber); stroke-dasharray: 4 4; opacity: .8; }
+
+  /* On a phone the columns are pages you swipe between */
+  @media (max-width: 899px) {
+    .cols { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+    .cols::-webkit-scrollbar { display: none; }
+    .col { flex: 0 0 86%; scroll-snap-align: start; border-right: 1px solid var(--line); }
+    .col:last-child { flex-basis: 100%; }
+    .links-svg { display: none; }
+    .it .s { font-size: 14px; -webkit-line-clamp: 4; }
+    .it { padding: 10px 11px; }
+    .col-b { padding: 10px 10px 120px; }
+    .next-col { display: flex; position: sticky; bottom: 0; margin-top: auto; justify-content: flex-end; padding: 8px 0 0; }
+    .next-col button { border: 0; background: var(--ink); color: var(--bg); border-radius: 999px; padding: 8px 14px; font-weight: 600; box-shadow: var(--lift); }
+  }
+  .dots { display: none; }
+  @media (max-width: 899px) {
+    .dots { display: flex; gap: 6px; justify-content: center; padding: 6px 0 2px; grid-column: 1; }
+    .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+    .dots i.on { background: var(--ink); width: 18px; border-radius: 3px; }
+  }
+  .ov { display: flex; flex-direction: column; gap: 12px; }
+  .ov h1 { font-size: 18px; line-height: 1.3; }
+  .hint { font-size: 12.5px; color: var(--muted); border: 1px dashed var(--line); border-radius: 10px; padding: 9px 11px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <span class="brand"><a href="index.html">ANCHOR</a></span>
+    <span class="wsname">Why do mobile shoppers leave checkout?</span>
+    <nav class="protos" aria-label="Prototypes"><a href="map.html">Map</a><a href="flow.html" aria-current="page">Flow</a><a href="desk.html">Desk</a></nav>
+  </header>
+  <div class="tools">
+    <input class="find" id="find" type="search" placeholder="Find a block" aria-label="Find a block">
+    <div class="chips" id="lenses" role="group" aria-label="Show"></div>
+  </div>
+  <nav class="path" id="path" aria-label="What you picked"></nav>
+  <main class="cols" id="cols"></main>
+  <aside class="panel" id="panel" aria-label="Detail">
+    <div class="panel-top"><button type="button" class="handle" id="handle" aria-label="Make bigger or smaller"></button><div class="trail" id="trail"></div><button type="button" class="iconbtn" id="close" aria-label="Close">×</button></div>
+    <div class="panel-body" id="pbody"></div>
+  </aside>
+</div>
+<script src="data.js"></script>
+<script>
+"use strict";
+const A = window.ANCHOR, ws = A.build("big"), esc = A.esc;
+const $ = id => document.getElementById(id);
+const mobile = () => matchMedia("(max-width: 899px)").matches;
+const S = { sel: null, open: null, trail: [], lens: "all", find: "", unfold: new Set(), fold: new Set(), pending: {} };
+
+const COLS = [
+  { level: "source", name: "Sources", flow: "where the data comes from" },
+  { level: "observation", name: "Observations", flow: "what we saw" },
+  { level: "finding", name: "Findings", flow: "what it means" },
+  { level: "insight", name: "Insights", flow: "what it means for us" },
+  { level: "decision", name: "Decision", flow: "what we decide" },
+];
+const LENSES = [
+  ["all", "Everything", () => true],
+  ["waits", "Waiting on you", b => !!ws.waits(b)],
+  ["trouble", "Trouble", b => ws.trouble(b)],
+  ["unchecked", "Needs a check", b => ws.unchecked(b)],
+];
+const itemsAt = lvl => lvl === "source" ? ws.sources : lvl === "decision" ? [ws.decision] : ws.blocks.filter(b => b.level === lvl);
+const isBlock = x => x.level !== "source" && x.level !== "decision";
+function passes(x) {
+  if (S.find && !x.text.toLowerCase().includes(S.find)) return false;
+  if (S.lens === "all" || !isBlock(x)) return true;
+  return LENSES.find(l => l[0] === S.lens)[2](x);
+}
+function barsHtml(list) {
+  const c = { sme: 0, peers: 0, owner: 0, bad: 0 };
+  list.forEach(b => { const s = ws.state(b); if (s === "checked_by_sme") c.sme++; else if (s === "checked_by_peers") c.peers++; else if (s === "checked_by_owner") c.owner++; else if (s !== "needs_check") c.bad++; });
+  const t = list.length || 1, seg = (n, col) => n ? `<i style="width:${(n / t * 100).toFixed(1)}%;background:${col}"></i>` : "";
+  return `<div class="bars">${seg(c.sme, "var(--fill-sme)")}${seg(c.peers, "var(--fill-peers)")}${seg(c.owner, "var(--fill-owner)")}${seg(c.bad, "var(--red)")}</div>`;
+}
+function fillColor(s) {
+  return { checked_by_sme: "var(--fill-sme)", checked_by_peers: "var(--fill-peers)", checked_by_owner: "var(--fill-owner)", needs_changes: "var(--amber)", disagreement: "var(--red)" }[s] || "transparent";
+}
+
+function row(x, line) {
+  const id = x.id, sel = id === S.sel, lin = line && line.has(id) && !sel;
+  const under = isBlock(x) || x.level === "decision" ? ws.under(id).length : 0, over = ws.over(id).length;
+  if (x.level === "source") {
+    return `<button type="button" class="it src${sel ? " sel" : ""}${lin ? " lin" : ""}" data-id="${id}"><span class="shape source"></span><span class="s">${esc(x.title)}</span><span class="m">${esc(x.kind)} · ${esc(x.by)}<span class="links"><span title="Taken from it">${over} ›</span></span></span></button>`;
+  }
+  if (x.level === "decision") {
+    return `<button type="button" class="it dec${sel ? " sel" : ""}" data-id="${id}"><span class="shape decision" style="border-color:currentColor"></span><span class="s">${esc(x.text)}</span><span class="m">Relies on ${under} insights</span></button>`;
+  }
+  const s = ws.state(x);
+  return `<button type="button" class="it s-${s}${sel ? " sel" : ""}${lin ? " lin" : ""}${ws.glow(x) ? " glow" : ""}${ws.waits(x) ? " waits" : ""}" data-id="${id}">
+    <span class="fill" style="background:${fillColor(s)}"></span>${A.shape(x.level)}<span class="s">${esc(x.text)}</span>
+    <span class="m">#${x.n}${x.ai ? " " + A.aiTag(x) : ""}${A.troubleTags(ws, x)}<span class="links"><span title="Built on">‹ ${under}</span><span title="Holds up">${over} ›</span></span></span>${sel ? `<span class="open-hint">Tap again to open and check it</span>` : ""}</button>`;
+}
+
+function colBody(c, ci) {
+  const all = itemsAt(c.level), shown = all.filter(passes);
+  if (c.level === "decision") return shown.map(x => row(x)).join("");
+  let h = "";
+  if (S.sel) {
+    // Linked first, the rest folded away.
+    const line = ws.lineage(S.sel);
+    const linked = shown.filter(x => line.has(x.id)), rest = shown.filter(x => !line.has(x.id));
+    const order = (a, b) => (a.id === S.sel ? -1 : b.id === S.sel ? 1 : 0) || (ws.unchecked(b) - ws.unchecked(a));
+    h += `<div class="grp linked"><span>Linked to ${esc(label(ws.get(S.sel)))}</span><span>${linked.length}</span></div>`;
+    h += linked.sort(order).map(x => row(x, line)).join("") || `<div class="empty">Nothing at this level.</div>`;
+    const key = "rest:" + c.level, open = S.unfold.has(key);
+    h += `<button type="button" class="grp" data-unfold="${key}"><span><span class="caret">${open ? "▾" : "▸"}</span> Not linked</span><span>${rest.length}</span></button>`;
+    if (open) h += rest.map(x => row(x)).join("");
+    return h;
+  }
+  // Nothing picked: grouped by sub-question, trouble first in each.
+  ws.questions.forEach(q => {
+    const list = shown.filter(x => x.q === q.id);
+    if (!list.length) return;
+    const key = c.level + ":" + q.id, folded = S.fold.has(key);
+    const pri = x => isBlock(x) ? (ws.trouble(x) ? 0 : ws.waits(x) ? 1 : ws.unchecked(x) ? 2 : 3) : 0;
+    h += `<button type="button" class="grp" data-fold="${key}"><span class="q"><span class="caret">${folded ? "▸" : "▾"}</span> Q${q.n}. ${esc(q.short)}</span><span>${list.length}</span></button>`;
+    if (!folded) {
+      const sorted = list.slice().sort((a, b) => pri(a) - pri(b));
+      const cap = S.unfold.has(key) ? sorted.length : 6;
+      h += sorted.slice(0, cap).map(x => row(x)).join("");
+      if (sorted.length > cap) h += `<button type="button" class="more" data-unfold="${key}">Show ${sorted.length - cap} more</button>`;
+    }
+  });
+  return h || `<div class="empty">Nothing matches.</div>`;
+}
+function label(x) { return x.level === "source" ? "this source" : x.level === "decision" ? "the decision" : `${A.LEVEL[x.level]} #${x.n}`; }
+
+function renderCols() {
+  const keep = [...document.querySelectorAll(".col-b")].map(el => el.scrollTop);
+  const pager = $("cols").scrollLeft;
+  $("cols").innerHTML = COLS.map((c, ci) => {
+    const all = itemsAt(c.level), blocks = all.filter(isBlock);
+    return `<section class="col" data-col="${ci}" aria-label="${c.name}">
+      <div class="col-h"><div class="t">${c.level === "source" ? `<span class="shape source"></span>` : c.level === "decision" ? `<span class="shape decision"></span>` : A.shape(c.level)}${c.name} <span class="n">${all.length}</span></div>
+      <div class="flow">${c.flow}</div>${blocks.length ? barsHtml(blocks) : ""}</div>
+      <div class="col-b">${colBody(c, ci)}${ci < COLS.length - 1 ? `<div class="next-col"><button type="button" data-goto="${ci + 1}">${COLS[ci + 1].name} ›</button></div>` : ""}</div>
+    </section>`;
+  }).join("") + `<svg class="links-svg" id="lsvg"></svg>`;
+  if (!S.sel) document.querySelectorAll(".col-b").forEach((el, i) => { el.scrollTop = keep[i] || 0; });
+  $("cols").scrollLeft = pager;
+  requestAnimationFrame(drawLinks);
+}
+function drawLinks() {
+  const svg = $("lsvg"); if (!svg || mobile() || !S.sel) { if (svg) svg.innerHTML = ""; return; }
+  const box = $("cols").getBoundingClientRect(), line = ws.lineage(S.sel);
+  const rect = id => { const el = document.querySelector(`.it[data-id="${id}"]`); if (!el) return null; const r = el.getBoundingClientRect(); if (r.bottom < box.top || r.top > box.bottom) return null; return r; };
+  let h = "";
+  [...line].forEach(id => {
+    const x = ws.get(id);
+    ws.under(id).filter(u => line.has(u)).forEach(u => {
+      const a = rect(u), b = rect(id); if (!a || !b) return;
+      const x1 = a.right - box.left, y1 = a.top + a.height / 2 - box.top, x2 = b.left - box.left, y2 = b.top + b.height / 2 - box.top, mx = (x1 + x2) / 2;
+      const weak = isBlock(ws.get(u)) && ws.unchecked(ws.get(u));
+      h += `<path class="lk${weak ? " weak" : ""}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"/>`;
+    });
+  });
+  svg.innerHTML = h;
+}
+
+function renderPath() {
+  const line = S.sel ? ws.lineage(S.sel) : null;
+  $("path").innerHTML = COLS.map((c, ci) => {
+    let v = `<span class="v none">Pick one</span>`, on = false;
+    if (line) {
+      const at = [...line].map(id => ws.get(id)).filter(x => x.level === c.level);
+      const selHere = S.sel && ws.get(S.sel).level === c.level;
+      if (selHere) { v = `<span class="v">${esc(ws.get(S.sel).text)}</span>`; on = true; }
+      else if (at.length === 1) { v = `<span class="v">${esc(at[0].text)}</span>`; on = true; }
+      else if (at.length) v = `<span class="v many">${at.length} linked</span>`;
+      else v = `<span class="v none">None</span>`;
+    }
+    const here = S.sel && ws.get(S.sel).level === c.level;
+    return `<button type="button" class="step${on ? " on" : ""}${here ? " here" : ""}" data-goto="${ci}"><span class="l">${c.name}</span>${v}</button>`;
+  }).join("");
+}
+function renderLenses() {
+  $("lenses").innerHTML = LENSES.map(([k, l, f]) => `<button type="button" data-lens="${k}" aria-pressed="${S.lens === k}">${l}${k === "all" ? "" : `<span class="n">${ws.blocks.filter(f).length}</span>`}</button>`).join("");
+}
+function renderPanel() {
+  const panel = $("panel");
+  panel.classList.toggle("closed", mobile() && !S.open);
+  if (!S.open) {
+    $("trail").innerHTML = `<span class="here">Workspace</span>`;
+    const c = ws.counts();
+    $("pbody").innerHTML = `<div class="ov"><div class="eyebrow">Workspace</div><h1>${esc(ws.question)}</h1>
+      <div class="small muted">For the decision: ${esc(ws.decisionText)}</div>
+      <div class="hint">Data flows left to right. Pick anything and every column pulls what is linked to it to the top. The lines show what is built on what. Amber dashes lead from blocks that still need a check.</div>
+      <div class="row small"><b>${c.total} blocks</b><span class="muted">${c.waits} wait on you · ${c.trouble} trouble · ${c.unchecked} need a check</span></div>
+      ${S.sel ? A.detail(ws, S.sel, { pending: S.pending }) : `<p class="muted small">Pick a block to see it here.</p>`}</div>`;
+    if (S.sel && !mobile()) { S.open = S.sel; renderPanel(); }
+    return;
+  }
+  $("trail").innerHTML = [`<button type="button" data-trail="-1">Workspace</button>`, ...S.trail.map((id, i) => {
+    const x = ws.get(id), l = x.level === "decision" ? "Decision" : x.level === "source" ? "Source" : `${A.LEVEL[x.level]} #${x.n}`;
+    return i === S.trail.length - 1 ? `<span class="here">${l}</span>` : `<button type="button" data-trail="${i}">${l}</button>`;
+  })].join(`<span class="sep">›</span>`);
+  $("pbody").innerHTML = A.detail(ws, S.open, { pending: S.pending });
+}
+function render() { renderPath(); renderCols(); renderPanel(); }
+
+function pick(id, { open = false, follow = false } = {}) {
+  if (!id) { S.sel = null; S.open = null; S.trail = []; render(); return; }
+  if (!follow) S.trail = [];
+  if (S.trail[S.trail.length - 1] !== id) S.trail.push(id);
+  S.sel = id; S.pending = {};
+  S.open = open || !mobile() ? id : null;
+  render();
+  document.querySelectorAll(".col-b").forEach(el => { el.scrollTop = 0; });
+  requestAnimationFrame(drawLinks);
+}
+function gotoCol(i) {
+  const col = document.querySelector(`.col[data-col="${i}"]`);
+  if (col && mobile()) $("cols").scrollTo({ left: col.offsetLeft, behavior: "smooth" });
+}
+
+$("cols").addEventListener("click", e => {
+  const it = e.target.closest(".it");
+  if (it) {
+    const id = it.dataset.id;
+    // On a phone: first tap picks and lines everything up, second tap opens the detail.
+    if (mobile() && S.sel === id) { S.open = id; S.trail = [id]; renderPanel(); return; }
+    pick(id);
+    return;
+  }
+  const f = e.target.closest("[data-fold]");
+  if (f) { const k = f.dataset.fold; S.fold.has(k) ? S.fold.delete(k) : S.fold.add(k); renderCols(); return; }
+  const u = e.target.closest("[data-unfold]");
+  if (u) { const k = u.dataset.unfold; S.unfold.has(k) ? S.unfold.delete(k) : S.unfold.add(k); renderCols(); return; }
+  const g = e.target.closest("[data-goto]");
+  if (g) gotoCol(+g.dataset.goto);
+});
+$("path").addEventListener("click", e => {
+  const g = e.target.closest("[data-goto]"); if (!g) return;
+  const i = +g.dataset.goto, c = COLS[i];
+  // If exactly one thing is linked at that level, pick it: walk the chain from the path bar.
+  if (S.sel) {
+    const at = [...ws.lineage(S.sel)].map(id => ws.get(id)).filter(x => x.level === c.level);
+    if (at.length === 1 && at[0].id !== S.sel) { pick(at[0].id, { follow: true }); gotoCol(i); return; }
+  }
+  gotoCol(i);
+});
+$("cols").addEventListener("scroll", () => {
+  if (!mobile()) return;
+  const i = Math.round($("cols").scrollLeft / ($("cols").clientWidth * .86));
+  document.querySelectorAll(".step").forEach((s, k) => s.classList.toggle("here", k === i));
+}, { passive: true });
+document.addEventListener("scroll", e => { if (e.target.classList && e.target.classList.contains("col-b")) requestAnimationFrame(drawLinks); }, true);
+$("lenses").addEventListener("click", e => { const b = e.target.closest("[data-lens]"); if (!b) return; S.lens = b.dataset.lens; renderLenses(); renderCols(); });
+$("find").addEventListener("input", e => {
+  S.find = e.target.value.trim().toLowerCase();
+  if (S.sel && S.find) { S.sel = null; S.open = null; S.trail = []; renderPath(); renderPanel(); }   // search the whole workspace
+  renderCols();
+});
+$("trail").addEventListener("click", e => {
+  const t = e.target.closest("[data-trail]"); if (!t) return;
+  const i = +t.dataset.trail;
+  if (i < 0) { pick(null); return; }
+  S.trail = S.trail.slice(0, i + 1); S.sel = S.open = S.trail[i]; S.pending = {}; render();
+});
+$("close").addEventListener("click", () => { if (mobile()) { S.open = null; renderPanel(); } else pick(null); });
+$("handle").addEventListener("click", () => $("panel").classList.toggle("full"));
+A.wireDetail($("pbody"), ws, () => S.open,
+  pend => { S.pending = pend; renderPanel(); },
+  id => { S.sel = id; S.open = id; S.trail.push(id); S.pending = {}; renderPath(); renderCols(); renderPanel(); },
+  b => { A.toast(`Checked ${A.LEVEL[b.level].toLowerCase()} #${b.n}.`); renderLenses(); render(); });
+addEventListener("resize", () => { renderPanel(); drawLinks(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !e.target.closest("input, textarea")) pick(null); });
+
+renderLenses(); render();
+const h = location.hash.slice(1);
+if (h === "pick") { const b = ws.blocks.find(x => x.key === "q1.f0"); pick(b.id); setTimeout(() => gotoCol(2), 50); }
+if (h === "open") { const b = ws.blocks.find(x => x.key === "q3.f0"); pick(b.id, { open: true }); setTimeout(() => gotoCol(2), 50); }
+</script>
+</body>
+</html>
