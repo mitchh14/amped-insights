@@ -149,12 +149,12 @@ def seed(s: Store) -> None:
                on=[o5, o6], answers=typing)
     s.check(f2, "Lee", how="evidence")
 
-    # Insights: what it means for us and what to do.
-    i1 = block("Address autofill is likely our biggest mobile checkout win", "insight", "Jordan", on=[f1, f2],
+    # Insights: what it means for us. What to do about it goes in a decision.
+    i1 = block("Address entry is the biggest fixable cause of mobile checkout drop-off for us", "insight", "Jordan", on=[f1, f2],
                answers=typing)
     s.check(i1, "Sam", how="judgment", note="Strong. Check the two open observations before the pitch.")
 
-    block("Test autofill with returning shoppers first, where the gain is easiest to measure", "insight", "Priya",
+    block("Returning shoppers are where an address fix will be easiest to measure", "insight", "Priya",
           on=[f2], ai=True, confidence="medium", why="Returning shoppers are the group we can measure fastest",
           assumes=["Returning shoppers react to autofill the same way new ones would"])
 

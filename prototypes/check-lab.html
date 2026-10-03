@@ -357,8 +357,8 @@ const BASE_BLOCKS = [
   { id: 9, level: "finding", statement: "Adding Apple Pay would fix most mobile checkout drop-off", owner: "Jordan", ai: true, conf: "low", why: "One shopper asked for it", assumes: ["What one shopper wants, most shoppers want"], on: [5], checks: [ck("Jordan"), ck("Dana", "disagree", null, "One quote cannot carry this. The funnel says the loss is at the address step.")] },
   { id: 10, level: "finding", statement: "Not having to type an address roughly doubles the chance a shopper pays", owner: "Priya", ai: false, on: [6, 7], checks: [ck("Lee", "looks_right", "evidence")] },
   { id: 15, level: "finding", statement: "Shoppers do not trust saving a card on a phone", owner: "Jordan", ai: true, conf: "low", why: "Common in other checkout studies", assumes: ["What other studies found holds for our shoppers"], on: [], checks: [ck("Jordan")] },
-  { id: 11, level: "insight", statement: "Address autofill is likely our biggest mobile checkout win", owner: "Jordan", ai: false, on: [8, 10], checks: [ck("Sam", "looks_right", "judgment", "Strong. Check the two open observations before the pitch.")] },
-  { id: 12, level: "insight", statement: "Test autofill with returning shoppers first, where the gain is easiest to measure", owner: "Priya", ai: true, conf: "medium", why: "Returning shoppers are the group we can measure fastest", assumes: ["Returning shoppers react to autofill the same way new ones would"], on: [10], checks: [] },
+  { id: 11, level: "insight", statement: "Address entry is the biggest fixable cause of mobile checkout drop-off for us", owner: "Jordan", ai: false, on: [8, 10], checks: [ck("Sam", "looks_right", "judgment", "Strong. Check the two open observations before the pitch.")] },
+  { id: 12, level: "insight", statement: "Returning shoppers are where an address fix will be easiest to measure", owner: "Priya", ai: true, conf: "medium", why: "Returning shoppers are the group we can measure fastest", assumes: ["Returning shoppers react to autofill the same way new ones would"], on: [10], checks: [] },
 ];
 const SAMPLE_AI_TEXT = `Checkout summary (drafted by an AI assistant)
 
@@ -377,7 +377,7 @@ const HOW = { evidence: "Read the evidence", source_data: "Checked the source da
 const ASKS = {
   observation: ["Does the source say exactly this, no more and no less?", "If there is a number, does it match the source?", "Would someone else pull the same thing from it?"],
   finding: ["Do the blocks under it really add up to this?", "Is anything under it still unchecked?", "Would a skeptic read the same evidence the same way?"],
-  insight: ["Does it follow from the findings under it?", "Is it clear what to do, and for which decision?", "What would have to be true for it to be wrong?"],
+  insight: ["Does it follow from the findings under it?", "Does it say why this matters to our goal?", "What would have to be true for it to be wrong?"],
 };
 const TABS = [
   ["swipe", "Swipe to check"], ["queue", "List and panel"], ["breakdown", "Break down review"], ["build", "Calm lines"], ["connect", "Columns"],

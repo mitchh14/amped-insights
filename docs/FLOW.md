@@ -26,7 +26,7 @@ flowchart LR
     subgraph M2["2. Learn"]
         O["Observations<br/>what we saw"]
         F["Findings<br/>what we think it means"]
-        I["Insights<br/>what it means for us"]
+        I["Insights<br/>what it means for us,<br/>not what to do"]
         O -->|supports| F
         F -->|promote| I
     end

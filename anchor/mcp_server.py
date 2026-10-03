@@ -32,8 +32,8 @@ mcp = _Server(
         "that is your judgment and never counts as a check. Observations cite sources; findings and insights "
         "are built on other blocks. get_workspace shows a workspace; add_blocks adds your blocks; check is how "
         "people check them. A shared layer of team learnings. Each learning has a level (observation: what we saw; "
-        "finding: what we think it means, not yet an insight; insight: what it means for us and what "
-        "to do), an origin (person, person_with_ai, ai_agent), a stage (draft, shared, replaced), and "
+        "finding: what we think it means, not yet an insight; insight: what it means for us, not what to do; "
+        "the call goes in a decision), an origin (person, person_with_ai, ai_agent), a stage (draft, shared, replaced), and "
         "one trust state (Not reviewed, Needs changes, Checked by peers, Checked by an SME, Contested). "
         "Query before claiming anything new. When you mention a learning, give its trust summary, and "
         "never present one that is Not reviewed, Needs changes, or Contested as settled. Anything you "
@@ -590,8 +590,8 @@ def prompt_break_down_text(text: str, study_id: str = "") -> str:
          "1. Ask which workspace this belongs to, then call get_workspace.\n")
         + "2. Call add_source with the text (kind=\"ai_text\") so the blocks can point back to it.\n"
         "3. Split it into one claim per block. Observations: only what was seen or measured, each citing the "
-        "source it came from. Findings: what observations mean, built on them. Insights: what to do, built on "
-        "findings.\n"
+        "source it came from. Findings: what observations mean, built on them. Insights: what it means for us, built on "
+        "findings. Leave out recommendations, they belong in a decision.\n"
         "4. For every block give confidence (low, medium, high), why in one line, and assumes: anything the "
         "text takes as given. If a claim has nothing under it, still add it, and say so in assumes.\n"
         "5. Show me the list first. Then call add_blocks with origin=\"person_with_ai\".\n"
@@ -607,7 +607,7 @@ def prompt_shape_insight(topic: str) -> str:
         "1. query the topic for findings. For each, get it and show its trust, evidence, conflicts, "
         "and its promotion readiness under the team's rule.\n"
         "2. Tell me which look ready and which do not, and why. Point out gaps honestly.\n"
-        "3. If I choose one, help me word the insight: what it means for us and what to do. "
+        "3. If I choose one, help me word the insight: what it means for us. Keep the action out of it, that goes in a decision. "
         "Then call promote with that statement, a short note, and origin=\"person_with_ai\" if you "
         "wrote the wording, and help me confirm it.",
     )

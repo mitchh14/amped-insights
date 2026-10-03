@@ -26,9 +26,9 @@ The rule: each thing gets one word, and each word means one thing.
 |---|---|---|
 | **Observation** | What we saw or measured. No reading into it. It comes from a source. | "7 of 12 people left the address form before finishing." |
 | **Finding** | What a set of observations means. Built on observations. | "People drop off when they have to type a full address." |
-| **Insight** | What a finding means for us, and what to do. Built on findings. | "Address autofill is likely our biggest checkout win." |
+| **Insight** | What a finding means for us: why it matters to our goal. It stops short of the call. What to do goes in a **decision**. Built on findings. | "Address entry is the biggest fixable cause of checkout drop-off for us." |
 
-Two questions tell the levels apart. Does it read into what we saw? If not, it is an observation. Does it say why it matters to us? If so, it is an insight. Anything in between is a finding.
+Two questions tell the levels apart. Does it read into what we saw? If not, it is an observation. Does it say why it matters to us? If so, it is an insight. Anything in between is a finding. Does it say what to do? Then it is a recommendation, and it belongs in a decision, not in a block.
 
 Level says how far a block goes, not how far to trust it.
 
@@ -108,7 +108,7 @@ In the app, how full a block looks says how far it has been checked: hollow, the
 
 ## Coming later
 
-**Decisions** (a call someone made, and the insights it relied on), **Narratives** (a package turned into a story you can follow back to the parts), and **Requests** (asking for research when nothing checked exists). The core already has decisions and requests; the app shows them as later.
+**Decisions** (a call someone made, what to do and why, and the insights it relied on), **Narratives** (a package turned into a story you can follow back to the parts), and **Requests** (asking for research when nothing checked exists). The core already has decisions and requests; the app shows them as later.
 
 ## In the code
 

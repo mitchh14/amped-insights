@@ -12,11 +12,21 @@ This matters most for work made with AI. An AI can write a long, confident answe
 
 ## The problem we're actually solving
 
+The full statement, with causes and symptoms for leadership, researchers, and people using AI, is in [docs/PROBLEM.md](docs/PROBLEM.md). The short version:
+
 As AI makes it fast for anyone to generate an analysis or a claim, the risk isn't slow research, it's ungrounded research. What teams learn lives in decks, docs, and chat threads with no shared, checkable place for what the org actually knows. People re-research settled questions, contradictions pile up quietly, and nobody can tell what's proven, what's a guess, or what's already been checked.
 
 This isn't new. Non-specialists picking up specialist work, PMs doing research, analysts doing strategy, has always happened. AI didn't start that drift, it just made it a lot more feasible and a lot more common, because it hands anyone the confidence to operate outside their own domain. We're not exempt from this either: this whole project is a research-minded person building software with AI's help.
 
 That drift isn't something to fight. It's an opening. Research's highest-value move right now isn't guarding who's allowed to produce insights, it's becoming the thing that makes everyone's insights trustworthy. That's not a defensive posture, it's an evolution, and it needs to happen fast, because the value research brings to the organization it serves has to be proven, not assumed.
+
+## Slow and steady
+
+Speed is good. But a claim that moves fast and rests on parts nobody looked at is not fast, it is a delay you have not paid for yet. It gets built on, shared, and decided on, and then someone has to take it apart.
+
+Taking the time to check each part and understand how it fits the whole is what gets you to the right outcome. Slow can be fast. It is faster to check a small block now than to unwind a decision later.
+
+This is why ANCHOR works in small blocks, one claim each, checked one at a time. It is why you can build on something unchecked but see a flag on everything above it. And it is why an AI draft waits for its owner before others lean on it. The point is not to slow people down. It is to put the care where it saves the most time: early, in small pieces, before anything big rests on them.
 
 ## Own your infrastructure, own your context
 

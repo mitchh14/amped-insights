@@ -8,14 +8,14 @@ An open source framework for research teams that governs insights, not people. A
 
 **Setting it up for your team?** Start with [docs/SETUP.md](docs/SETUP.md).
 
-See [PRINCIPLES.md](PRINCIPLES.md) for the why, [CONTEXT.md](CONTEXT.md) for the background and architecture, [docs/EXPERIENCE.md](docs/EXPERIENCE.md) for how the workbench looks and works, and [docs/FLOW.md](docs/FLOW.md) for the full research loop it is part of. The words we use are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md).
+See [docs/PROBLEM.md](docs/PROBLEM.md) for the problem, [PRINCIPLES.md](PRINCIPLES.md) for the why, [CONTEXT.md](CONTEXT.md) for the background and architecture, [docs/EXPERIENCE.md](docs/EXPERIENCE.md) for how the workbench looks and works, and [docs/FLOW.md](docs/FLOW.md) for the full research loop it is part of. The words we use are defined in [docs/GLOSSARY.md](docs/GLOSSARY.md).
 
 ## The workbench
 
 The core of ANCHOR is one place to do analysis, built up like building blocks:
 
 1. **Base**: a workspace starts with its question and the decision it serves. Context (notes, quotes, data, queries, pasted AI text), the method, and notes for checkers make up the base everything rests on.
-2. **Blocks**: observations (what we saw) come from sources. Findings (what it means) are built on observations. Insights (what to do) are built on findings. One claim per block.
+2. **Blocks**: observations (what we saw) come from sources. Findings (what it means) are built on observations. Insights (what it means for us) are built on findings. What to do about them goes in a decision. One claim per block.
 3. **Made with AI, and said so**: every block records whether a person or an AI made it. An AI block says how confident the AI is (low, medium, high), why, and what it assumes. That is shown apart from checks and never counts as one.
 4. **Check**: a person checks each block: Looks right, Needs changes, or Disagree, and how they checked. An AI draft is checked by its owner first, then anyone can check it. Each block shows one state: Needs a check, Checked by owner, Checked by peers, Checked by an SME, Needs changes, or Disagreement.
 5. **Soft but visible checkpoint**: you can build on a block that still needs a check, but what you build shows ⚠ until it is checked. A block with nothing under it shows "Rests on nothing".

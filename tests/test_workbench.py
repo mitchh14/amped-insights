@@ -143,17 +143,19 @@ def test_break_down_takes_ai_text_apart(ws):
     Summary:
     - Mobile checkout conversion is 42 percent.
     - Most shoppers leave because the address form is clearly too long.
+    Fixing the address step is our biggest checkout opportunity.
     We should prioritize address autofill next quarter."""
     out = s.break_down(sid, "Jordan", text)
     blocks = out["blocks"]
-    assert [b["level"] for b in blocks] == ["observation", "finding", "insight"]
+    assert [b["level"] for b in blocks] == ["observation", "finding", "insight", "finding"]
     assert out["source"]["kind"] == "ai_text" and out["source"]["body"] == text
     assert all(b["check"]["state"] == "needs_check" and b["origin"] == "ai_agent" for b in blocks)
     assert blocks[0]["source_ids"] == [out["source"]["id"]] and not blocks[0]["rests_on_nothing"]
     assert blocks[1]["rests_on_nothing"] and blocks[2]["rests_on_nothing"]
+    assert "decision" in " ".join(blocks[3]["assumes"])
     said = " ".join(blocks[1]["assumes"])
     assert '"most" without a number' in said and '"clearly"' in said and "cause" in said
-    assert "2 of 3 claims rest on nothing" in out["warnings"][0]
+    assert "3 of 4 claims rest on nothing" in out["warnings"][0]
     with pytest.raises(CoreError, match="no claims"):
         s.break_down(sid, "Jordan", "Summary:\n# Heading")
 
