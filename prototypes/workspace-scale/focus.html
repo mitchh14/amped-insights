@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Focus Map</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  /* Focus Map: the Zoom Map and Flow Columns in one. The map is where you look
+     around. The lens docked under it is where you work: what this block is
+     built on, the block, and what it holds up, like three flow columns. Step
+     along the chain and the map flies with you, drawing your trail. Go in
+     turns the rest down so you can think: one goal, one block at a time.
+     Conflicts and retired blocks live on the map too, and settle in the lens. */
+  .app { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); }
+  .app > .bar { grid-row: 1; } .app > .tools { grid-row: 2; } .app > .stage { grid-row: 3; } .app > .lens { grid-row: 4; min-width: 0; }
+  .tools { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+  .tools .chips { flex: 1; min-width: 0; }
+  .who { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); flex: none; }
+  .who select { padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); }
+  @media (max-width: 520px) { .who .lbl { display: none; } }
+  .stage { position: relative; overflow: hidden; touch-action: none; cursor: grab; background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 40px 40px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 40px 40px, var(--bg); }
+  .stage.dragging { cursor: grabbing; }
+
+  /* The world (same as the Zoom Map) */
+  .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+  .world svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+  .district { position: absolute; border-radius: 28px; background: color-mix(in srgb, var(--surface) 55%, transparent); border: 2px solid var(--line-soft); }
+  .district h3 { position: absolute; left: 28px; top: 22px; right: 28px; font-size: 26px; line-height: 1.2; font-weight: 800; }
+  .district h3 .qn { font-family: var(--f-mono); font-weight: 600; color: var(--muted); margin-right: 10px; }
+  .district .lvl-lbl { position: absolute; left: 28px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .far-lbl { position: absolute; left: 30px; right: 30px; top: 30px; z-index: 3; font-size: calc(13px * var(--iz)); line-height: 1.3; background: var(--surface); border: calc(1px * var(--iz)) solid var(--line); border-radius: calc(10px * var(--iz)); padding: calc(8px * var(--iz)) calc(9px * var(--iz)); box-shadow: var(--shadow); display: none; flex-direction: column; gap: calc(5px * var(--iz)); text-align: left; color: var(--ink); }
+  .world.far .far-lbl { display: flex; }
+  .world.far .district h3, .world.far .lvl-lbl { visibility: hidden; }
+  .world.tracing .far-lbl, .world.zone .far-lbl { display: none; }
+  .far-lbl b { font-size: 1em; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .far-lbl .meta { display: flex; flex-wrap: wrap; gap: .2em .8em; font-size: .88em; color: var(--muted); }
+  .far-lbl .meta .t { color: var(--red); font-weight: 600; }
+  .far-lbl .meta .w { color: var(--accent); font-weight: 600; }
+  .bars { display: flex; height: 7px; border-radius: 4px; overflow: hidden; background: var(--line-soft); }
+  .far-lbl .bars { height: calc(6px * var(--iz)); }
+  .bars i { display: block; height: 100%; }
+
+  .card { position: absolute; border-radius: 10px; padding: 9px 10px; border: 1.5px solid color-mix(in srgb, var(--accent) 30%, var(--line)); background: var(--surface); color: var(--ink); text-align: left; font-size: 13px; line-height: 1.3; display: flex; flex-direction: column; gap: 6px; overflow: hidden; transition: opacity .2s; }
+  .card .t { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .m { display: flex; gap: 5px; align-items: center; margin-top: auto; font-size: 11px; color: var(--muted); }
+  .card.insight { font-weight: 650; font-size: 14.5px; border-radius: 12px; }
+  .card.source { background: var(--stone); border: 1px solid var(--line); font-size: 12px; font-weight: 600; border-radius: 6px; }
+  .card.decision { background: var(--ink); color: var(--bg); border: 0; font-size: 22px; font-weight: 800; padding: 16px 20px; border-radius: 16px; justify-content: center; }
+  .card.decision .m { color: var(--bg); opacity: .8; font-size: 13px; }
+  .card.s-needs_check { border: 2px dashed var(--muted); }
+  .card.s-checked_by_owner { background: var(--fill-owner); }
+  .card.s-checked_by_peers { background: var(--fill-peers); }
+  .card.s-checked_by_sme { background: var(--fill-sme); color: var(--on-sme); border-color: var(--fill-sme); }
+  .card.s-checked_by_sme .m { color: var(--on-sme); opacity: .85; }
+  .card.s-needs_changes { border: 3px solid var(--amber); background: var(--amber-bg); }
+  .card.s-disagreement { border: 3px solid var(--red); background: var(--red-bg); }
+  .card.s-retired { background: repeating-linear-gradient(135deg, var(--line-soft) 0 6px, var(--surface) 6px 12px); border: 1.5px dashed var(--line); color: var(--muted); }
+  .card.s-retired .t { text-decoration: line-through; }
+  .world:not(.show-retired) .card.s-retired { display: none; }
+  .world:not(.show-retired) .wire.from-retired { display: none; }
+  .card.glow { box-shadow: 0 0 0 3px var(--glow), 0 0 22px color-mix(in srgb, var(--glow) 50%, transparent); }
+  .card.sel { outline: 4px solid var(--accent); outline-offset: 3px; }
+  .card.visited::after { content: ""; position: absolute; left: 6px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .world.mid .card:not(.decision) .t, .world.mid .card:not(.decision) .m, .world.far .card:not(.decision) .t, .world.far .card:not(.decision) .m { visibility: hidden; }
+  .world.far .card:not(.decision) { opacity: .5; }
+  .world.far .card.decision { transform: scale(calc(var(--iz) * .3)); transform-origin: 50% 100%; }
+  .world.filtering .card:not(.match):not(.decision) { opacity: .13; }
+  .world.tracing .card:not(.near) { opacity: .12; }
+  .world.far.tracing .card.near, .world.far.zone .card.todo { opacity: 1; }
+  .world.zone .card:not(.near):not(.todo) { opacity: .07; }
+  .world.zone .card.todo:not(.near) { opacity: .45; outline: 2px dotted var(--accent); outline-offset: 2px; }
+  .world.zone .district { opacity: .4; }
+
+  .wire { fill: none; stroke: var(--muted); stroke-width: 1.6; opacity: .22; }
+  .wire.src { stroke-dasharray: 3 4; opacity: .16; }
+  .wire.weak { stroke: var(--amber); stroke-dasharray: 6 5; opacity: .45; }
+  .world.far .wire { opacity: .08; }
+  .world.tracing .wire, .world.zone .wire { opacity: .03; }
+  .world.tracing .wire.hot { opacity: 1; stroke: var(--accent); stroke-width: calc(2.6px * var(--iz-wire)); stroke-dasharray: none; }
+  .world.tracing .wire.hot.weak { stroke: var(--amber); stroke-dasharray: 8 6; }
+  .trailpath { fill: none; stroke: var(--glow); stroke-width: calc(5px * var(--iz-wire)); stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+  .traildot { fill: var(--glow); }
+  /* Conflicts: a red zigzag between two blocks, with a badge you can tap */
+  .clash { fill: none; stroke: var(--red); stroke-width: calc(3px * var(--iz-wire)); opacity: .85; }
+  .clash.maybe { stroke: var(--muted); stroke-dasharray: 10 8; opacity: .7; }
+  .world.tracing .clash:not(.hot), .world.zone .clash:not(.hot) { opacity: .1; }
+  .clashbadge { position: absolute; z-index: 4; transform: translate(-50%, -50%) scale(clamp(1, calc(var(--iz) * .5), 9)); border: 2px solid var(--surface); background: var(--red); color: var(--on-sme); border-radius: 999px; width: 30px; height: 30px; padding: 0; font-weight: 800; font-size: 15px; box-shadow: var(--lift); white-space: nowrap; }
+  .clashbadge.maybe { background: var(--surface); color: var(--ink); border-color: var(--muted); border-style: dashed; }
+  .world:not(.show-clash) .clash, .world:not(.show-clash) .clashbadge, .world.far .clashbadge { display: none; }
+
+  /* Floating bits on the map */
+  .zoomctl { position: absolute; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; z-index: 5; }
+  .zoomctl button { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); font-size: 18px; font-weight: 600; }
+  .goin { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; border: 0; background: var(--ink); color: var(--bg); border-radius: 999px; padding: 10px 18px; font-weight: 700; box-shadow: var(--lift); white-space: nowrap; max-width: calc(100% - 120px); overflow: hidden; text-overflow: ellipsis; }
+  .zonebar { position: absolute; left: 12px; right: 12px; top: 10px; z-index: 6; display: flex; align-items: center; gap: 10px; background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--line); border-radius: 14px; padding: 8px 10px; box-shadow: var(--lift); backdrop-filter: blur(6px); }
+  .zonebar .goal { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+  .zonebar .goal b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .zonebar .goal span { font-size: 11.5px; color: var(--muted); }
+  .pips { display: flex; gap: 3px; flex-wrap: wrap; max-width: 40%; justify-content: flex-end; }
+  .pips i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+  .pips i.done { background: var(--green); }
+  .pips i.cur { background: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  body.zone .bar, body.zone .tools, body.zone .goin { display: none; }
+
+  /* The lens: three flow columns docked under the map */
+  .lens { background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -8px 24px rgba(21,32,44,.08); display: flex; flex-direction: column; min-height: 0; height: 168px; transition: height .22s ease; }
+  .lens.open { height: 46vh; }
+  body.zone .lens.open { height: 54vh; }
+
+  @media (max-width: 899px) { .lens.open { height: 60vh; } body.zone .lens.open { height: 66vh; } }
+  .lens.open.full { height: 80vh !important; height: 80dvh !important; }
+  .lens-top { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 16px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+  .lens-top .trail { flex: 1; min-width: 0; font-size: 12.5px; display: flex; gap: 2px 6px; align-items: center; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .lens-top .trail::-webkit-scrollbar { display: none; }
+  .lens-top .handle { display: block; width: 36px; height: 20px; border: 0; background: none; position: relative; flex: none; }
+  .lens-top .handle::after { content: ""; position: absolute; left: 50%; top: 8px; width: 28px; height: 4px; border-radius: 2px; background: var(--line); transform: translateX(-50%); }
+  .lens-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1fr); }
+  .pane { overflow-y: auto; padding: 12px 14px 24px; min-width: 0; display: flex; flex-direction: column; gap: 8px; overscroll-behavior: contain; }
+  .pane.side { background: var(--bg); }
+  .pane h4 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; display: flex; justify-content: space-between; }
+  .pane .hint { font-size: 12px; color: var(--muted); }
+  .panetabs { display: none; }
+  @media (max-width: 899px) {
+    .lens-body { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+    .lens-body::-webkit-scrollbar { display: none; }
+    .pane { flex: 0 0 100%; scroll-snap-align: start; }
+    .panetabs { display: flex; gap: 4px; padding: 6px 12px 0; }
+    .panetabs button { flex: 1; border: 0; background: none; border-bottom: 2px solid transparent; padding: 5px 4px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+    .panetabs button[aria-current="true"] { color: var(--ink); border-color: var(--ink); }
+  }
+  .lens-body.wide { display: block; overflow-y: auto; }
+  .lens-body.wide .pane { overflow: visible; max-width: 980px; margin: 0 auto; }
+
+  .step { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 3px 8px; text-align: left; width: 100%; border: 1px solid var(--line-soft); background: var(--surface); border-radius: 9px; padding: 8px 10px; color: var(--ink); }
+  .step .shape { margin-top: 3px; }
+  .step .s { font-size: 13px; line-height: 1.3; }
+  .step .r { display: flex; gap: 4px; align-items: center; padding-top: 2px; }
+  .step:hover { border-color: var(--accent); }
+  .step.retired .s { text-decoration: line-through; color: var(--muted); }
+  .here h2 { font-size: 19px; line-height: 1.3; }
+  .here .eyebrow { font-size: 11px; }
+  .box { border-radius: 10px; padding: 9px 11px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+  .box.clashbox { border: 1.5px solid var(--red); background: var(--red-bg); }
+  .box.maybebox { border: 1.5px dashed var(--muted); background: var(--bg); }
+  .box.retbox { border: 1.5px dashed var(--line); background: repeating-linear-gradient(135deg, var(--bg) 0 8px, var(--surface) 8px 16px); }
+  .box .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .msgs { display: flex; flex-direction: column; gap: 6px; }
+  .msg { border-radius: 10px; padding: 7px 10px; font-size: 12.5px; background: var(--bg); border: 1px solid var(--line-soft); }
+  .msg.bad { border-color: var(--red); background: var(--red-bg); }
+  .msg.chg { border-color: var(--amber); background: var(--amber-bg); }
+  .msg.old { opacity: .6; }
+  .msg b { font-size: 11.5px; display: block; }
+  .opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .opts button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 9px; padding: 9px 10px; text-align: left; font-size: 13px; display: flex; flex-direction: column; gap: 2px; color: var(--ink); }
+  .opts button span { font-size: 11.5px; color: var(--muted); font-weight: 400; }
+  .opts button b { font-weight: 650; }
+  .opts button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .act textarea, .pane textarea, .modal textarea, .modal input[type="search"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); resize: vertical; font-size: 13px; }
+  .navrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+  .more-menu { position: relative; }
+
+  /* Starting points when nothing is picked */
+  .starts { display: flex; gap: 10px; overflow-x: auto; padding: 10px 16px 14px; scrollbar-width: none; }
+  .starts::-webkit-scrollbar { display: none; }
+  .start { flex: 0 0 auto; width: 240px; text-align: left; border: 1px solid var(--line); background: var(--bg); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; color: var(--ink); }
+  .start b { font-size: 13.5px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .start span { font-size: 12px; color: var(--muted); }
+  .start .k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--accent); }
+  .start.clash .k { color: var(--red); }
+  .start.tidy .k { color: var(--muted); }
+  .start:hover { border-color: var(--ink); }
+
+  /* Conflict view */
+  .vs { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+  .vs .mid { align-self: center; font-weight: 800; color: var(--red); }
+  @media (max-width: 899px) { .vs { grid-template-columns: minmax(0, 1fr); } .vs .mid { justify-self: center; } }
+  .side-card { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; background: var(--surface); }
+  .side-card.keep { border-color: var(--green); box-shadow: 0 0 0 2px var(--green-bg); }
+  .side-card.lose { opacity: .55; }
+  .side-card .who2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; display: flex; justify-content: space-between; gap: 6px; }
+  .side-card .c { font-weight: 650; font-size: 15px; line-height: 1.3; }
+  .side-card .facts { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+  .stepnum { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+  .done-card { border: 1.5px solid var(--green); background: var(--green-bg); border-radius: 12px; padding: 10px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+  .done-card b { color: var(--green); }
+
+  /* Tidy up */
+  .tgroup { display: flex; flex-direction: column; gap: 6px; }
+  .tgroup h4 { margin: 8px 0 0; }
+  .trow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 4px 8px; align-items: start; border: 1px solid var(--line-soft); border-radius: 9px; padding: 8px 10px; background: var(--surface); font-size: 13px; }
+  .trow input { margin-top: 3px; width: 16px; height: 16px; }
+  .trow .why { grid-column: 2 / -1; font-size: 11.5px; color: var(--muted); }
+
+  /* Modal sheet for retire and pick */
+  .modal { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, var(--ink) 35%, transparent); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .sheet { background: var(--surface); border-radius: 16px; box-shadow: var(--lift); width: min(520px, 100%); max-height: 88%; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .sheet h2 { font-size: 18px; }
+  @media (max-width: 899px) { .modal { align-items: flex-end; padding: 0; } .sheet { border-radius: 16px 16px 0 0; width: 100%; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); } }
+  .picklist { display: flex; flex-direction: column; gap: 5px; max-height: 260px; overflow: auto; }
+  .picklist .step[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .check-line { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+  .impact { font-size: 12.5px; border-left: 3px solid var(--amber); padding: 4px 10px; color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <span class="brand"><a href="index.html">ANCHOR</a></span>
+    <span class="wsname">Why do mobile shoppers leave checkout?</span>
+    <nav class="protos" aria-label="Prototypes"><a href="focus.html" aria-current="page">Focus</a><a href="map.html">Map</a><a href="flow.html">Flow</a><a href="desk.html">Desk</a></nav>
+  </header>
+  <div class="tools">
+    <div class="chips" id="lenses" role="group" aria-label="Show"></div>
+    <label class="who" for="me"><span class="lbl">You are</span><select id="me"></select></label>
+  </div>
+  <main class="stage" id="stage" aria-label="Workspace map">
+    <div class="world show-clash" id="world"></div>
+    <div class="zonebar" id="zonebar" hidden></div>
+    <button type="button" class="goin" id="goin" hidden></button>
+    <div class="zoomctl">
+      <button type="button" id="zin" aria-label="Zoom in">+</button>
+      <button type="button" id="zout" aria-label="Zoom out">−</button>
+      <button type="button" id="zfit" aria-label="See everything">⤢</button>
+    </div>
+  </main>
+  <section class="lens" id="lens" aria-label="Lens"></section>
+</div>
+<div class="modal" id="modal" hidden></div>
+<script src="data.js"></script>
+<script>
+"use strict";
+const A = window.ANCHOR, ws = A.build("big"), esc = A.esc;
+const $ = id => document.getElementById(id);
+const mobile = () => matchMedia("(max-width: 899px)").matches;
+const FAR = 0.26, NEAR = 0.55;
+const S = {
+  z: 1, x: 0, y: 0, sel: null, trail: [], lens: "all", showRetired: false,
+  pend: {}, act: null, notes: {},
+  session: null,          // { kind, title, items, idx, done: Set, checked, settled, retired }
+  conflict: null, cf: {}, tidy: false, tidySel: new Set(), pane: 1, paths: [],
+};
+
+// ---------- Seed conflicts and a retired block, so both show ----------
+const K = k => ws.blocks.find(b => b.key === k);
+(function seedExtras() {
+  let n = Math.max(...ws.blocks.map(b => b.n));
+  const add = (props) => { const b = Object.assign({ id: "b" + (++n), n, on: [], src: [], checks: [], assumes: [], ai: false }, props); ws.blocks.push(b); ws.index.set(b.id, b); return b; };
+  const old = add({ key: "q1.old", level: "observation", q: "q1", owner: "Priya", text: "Mobile checkout conversion is 38 percent", src: [K("q1.o0").src[0]], checks: [{ by: "Sam", verdict: "looks_right", how: "source_data" }] });
+  K("q1.f2").on.push(old.id);
+  const dup = add({ key: "q1.dup", level: "observation", q: "q1", owner: "Jordan", ai: true, conf: "high", why: "Read straight from the source", text: K("q1.o1").text, src: K("q1.o1").src.slice() });
+  ws.relink();
+  ws.retire(old, "Lee", "Out of date", K("q1.o0").id, false);
+  ws.conflicts.push(
+    { id: "c1", a: K("q3.f0").id, b: K("q1.f0").id, confirmed: true, by: "Dana", status: "open", note: "If the address step loses the most people, Apple Pay cannot fix most of the drop-off." },
+    { id: "c2", a: K("q2.f0").id, b: K("q2.f3").id, confirmed: false, by: "Conflict check", status: "open", note: "One says not typing an address doubles the chance to pay. The other says most of that gap is loyalty." },
+    { id: "c3", a: K("q1.f3").id, b: K("q3.f2").id, confirmed: false, by: "Conflict check", status: "open", note: "One says payment step loss is normal. The other calls card entry a problem." },
+  );
+  S.dupId = dup.id;
+})();
+
+// ---------- Layout (same as the Zoom Map) ----------
+const SIZE = { insight: [250, 104], finding: [210, 92], observation: [168, 84], source: [168, 46] };
+const PER = { insight: 4, finding: 4, observation: 5, source: 5 };
+const GAP = 16, ROWGAP = 64, PAD = 36, HEAD = 92, DW = 5 * (168 + GAP) - GAP + PAD * 2;
+const pos = new Map(), districts = [];
+function layout() {
+  const r0 = $("stage").getBoundingClientRect();
+  const cols = r0.width > r0.height * 1.15 ? 3 : 2, colGap = 160, rowGap = 160, top = 340;
+  ws.questions.forEach(q => {
+    const items = { insight: [], finding: [], observation: [], source: ws.sources.filter(s => s.q === q.id) };
+    ws.blocks.filter(b => b.q === q.id).forEach(b => items[b.level].push(b));
+    let y = HEAD; const local = [], labels = [];
+    ["insight", "finding", "observation", "source"].forEach(lvl => {
+      const list = items[lvl], [w, h] = SIZE[lvl], per = PER[lvl];
+      labels.push([lvl, y]); y += 24;
+      for (let r = 0; r * per < list.length; r++) {
+        const row = list.slice(r * per, r * per + per), rowW = row.length * (w + GAP) - GAP;
+        row.forEach((b, k) => local.push([b.id, PAD + (DW - PAD * 2 - rowW) / 2 + k * (w + GAP), y, w, h]));
+        y += h + GAP;
+      }
+      y += ROWGAP - GAP;
+    });
+    districts.push({ q, local, labels, h: y + 6 });
+  });
+  const rowH = [];
+  districts.forEach((d, i) => { const r = Math.floor(i / cols); rowH[r] = Math.max(rowH[r] || 0, d.h); });
+  districts.forEach((d, i) => {
+    const r = Math.floor(i / cols), c = i % cols;
+    d.x = c * (DW + colGap); d.y = top + rowH.slice(0, r).reduce((a, b) => a + b + rowGap, 0); d.w = DW; d.h = rowH[r];
+    d.local.forEach(([id, x, y, w, h]) => pos.set(id, { x: d.x + x, y: d.y + y, w, h }));
+  });
+  S.worldW = cols * DW + (cols - 1) * colGap;
+  pos.set("D", { x: S.worldW / 2 - 300, y: 60, w: 600, h: 140 });
+  S.worldH = Math.max(...districts.map(d => d.y + d.h)) + 40;
+}
+const center = id => { const p = pos.get(id); return [p.x + p.w / 2, p.y + p.h / 2]; };
+
+// ---------- Draw ----------
+let svg;
+function draw() {
+  const world = $("world");
+  world.innerHTML = "";
+  world.style.width = S.worldW + "px"; world.style.height = S.worldH + "px";
+  districts.forEach(d => {
+    const el = document.createElement("div");
+    el.className = "district";
+    Object.assign(el.style, { left: d.x + "px", top: d.y + "px", width: d.w + "px", height: d.h + "px" });
+    el.innerHTML = `<h3><span class="qn">Q${d.q.n}</span>${esc(d.q.text)}</h3>` +
+      d.labels.map(([l, y]) => `<span class="lvl-lbl" style="top:${y}px">${l === "source" ? "Sources" : A.LEVEL[l] + "s"}</span>`).join("") +
+      `<button type="button" class="far-lbl" data-q="${d.q.id}"></button>`;
+    world.appendChild(el);
+  });
+  svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("width", S.worldW); svg.setAttribute("height", S.worldH);
+  world.appendChild(svg);
+  [ws.decision, ...ws.blocks, ...ws.sources].forEach(b => {
+    const p = pos.get(b.id), el = document.createElement("button");
+    el.type = "button"; el.className = "card"; el.dataset.id = b.id;
+    Object.assign(el.style, { left: p.x + "px", top: p.y + "px", width: p.w + "px", height: p.h + "px" });
+    world.appendChild(el);
+  });
+  const badges = document.createElement("div"); badges.id = "badges"; world.appendChild(badges);
+  repaint();
+}
+function paintCard(el) {
+  const b = ws.get(el.dataset.id);
+  if (!b) { el.remove(); return; }
+  if (b.level === "source") { el.className = "card source"; el.innerHTML = `<span class="t">${esc(b.title)}</span>`; return; }
+  if (b.level === "decision") {
+    const ready = b.on.filter(id => { const x = ws.get(id); return !ws.unchecked(x) && !ws.weakBelow(x).length; }).length;
+    el.className = "card decision";
+    el.innerHTML = `<span class="m">DECISION</span><span>${esc(b.text)}</span><span class="m">${ready} of ${b.on.length} insights stand on checked ground</span>`;
+    return;
+  }
+  const s = ws.state(b);
+  el.className = `card ${b.level} s-${s}${ws.glow(b) ? " glow" : ""}`;
+  el.innerHTML = `<span class="t">${esc(b.text)}</span><span class="m">${A.shape(b.level)}#${b.n}${b.ai ? " " + A.aiTag(b) : ""}<span class="grow"></span>${s === "retired" ? "Retired" : A.troubleTags(ws, b)}</span>`;
+}
+function farLabel(d) {
+  const list = ws.live().filter(b => b.q === d.q.id), c = ws.counts(list);
+  const clashes = ws.conflicts.filter(x => x.status !== "settled" && (ws.get(x.a).q === d.q.id || ws.get(x.b).q === d.q.id)).length;
+  return `<b>Q${d.q.n}. ${esc(d.q.text)}</b>${barsHtml(list)}<span class="meta"><span>${list.length} blocks</span>${c.waits ? `<span class="w">${c.waits} wait on you</span>` : ""}${clashes ? `<span class="t">⚡ ${clashes} conflict${clashes > 1 ? "s" : ""}</span>` : ""}</span>`;
+}
+function barsHtml(list) {
+  const c = { sme: 0, peers: 0, owner: 0, bad: 0 }, t = list.length || 1;
+  list.forEach(b => { const s = ws.state(b); if (s === "checked_by_sme") c.sme++; else if (s === "checked_by_peers") c.peers++; else if (s === "checked_by_owner") c.owner++; else if (s !== "needs_check") c.bad++; });
+  const seg = (n, col) => n ? `<i style="width:${(n / t * 100).toFixed(1)}%;background:${col}"></i>` : "";
+  return `<div class="bars">${seg(c.sme, "var(--fill-sme)")}${seg(c.peers, "var(--fill-peers)")}${seg(c.owner, "var(--fill-owner)")}${seg(c.bad, "var(--red)")}</div>`;
+}
+function wires() {
+  let h = "";
+  [ws.decision, ...ws.blocks].forEach(b => {
+    const to = pos.get(b.id);
+    [...(b.on || []), ...(b.src || [])].forEach(id => {
+      const from = pos.get(id), c = ws.get(id);
+      if (!from || !c) return;
+      const x1 = from.x + from.w / 2, y1 = from.y, x2 = to.x + to.w / 2, y2 = to.y + to.h, my = (y1 + y2) / 2;
+      const cls = c.level === "source" ? "src" : ws.unchecked(c) ? "weak" : "";
+      h += `<path class="wire ${cls}${c.retired || b.retired ? " from-retired" : ""}" data-a="${id}" data-b="${b.id}" d="M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}"/>`;
+    });
+  });
+  // Conflicts: a zigzag so it never reads as a "built on" line.
+  let badges = ""; const pinCount = {};
+  ws.conflicts.filter(c => c.status !== "settled").forEach(c => {
+    const [x1, y1] = center(c.a), [x2, y2] = center(c.b);
+    const n = 9, dx = (x2 - x1) / n, dy = (y2 - y1) / n, len = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / len * 14, ny = (x2 - x1) / len * 14;
+    let d = `M${x1},${y1}`;
+    for (let i = 1; i < n; i++) d += ` L${x1 + dx * i + (i % 2 ? nx : -nx)},${y1 + dy * i + (i % 2 ? ny : -ny)}`;
+    d += ` L${x2},${y2}`;
+    h += `<path class="clash${c.confirmed ? "" : " maybe"}" data-c="${c.id}" data-a="${c.a}" data-b="${c.b}" d="${d}"/>`;
+    // A badge on each of the two blocks, so it is clear which ones are in it.
+    [c.a, c.b].forEach(id => {
+      const p = pos.get(id), k = (pinCount[id] = (pinCount[id] || 0) + 1) - 1;
+      badges += `<button type="button" class="clashbadge${c.confirmed ? "" : " maybe"}" data-conflict="${c.id}" style="left:${p.x + p.w - 4 - k * 40}px;top:${p.y + 2}px" aria-label="${c.confirmed ? "Conflict" : "Possible conflict"}">${c.confirmed ? "⚡" : "?"}</button>`;
+    });
+  });
+  // Your trail: where you have been, in order.
+  const tr = S.paths.filter(id => pos.has(id));
+  if (tr.length > 1) h += `<path class="trailpath" d="${tr.map((id, i) => (i ? "L" : "M") + center(id).join(",")).join(" ")}"/>`;
+  tr.forEach(id => { const [x, y] = center(id); h += `<circle class="traildot" cx="${x}" cy="${y}" r="9"/>`; });
+  svg.innerHTML = h;
+  $("badges").innerHTML = badges;
+}
+function repaint() {
+  document.querySelectorAll(".card").forEach(paintCard);
+  districts.forEach(d => { const el = document.querySelector(`.far-lbl[data-q="${d.q.id}"]`); if (el) el.innerHTML = farLabel(d); });
+  wires(); applyLens(); applyTrace();
+}
+
+// ---------- Lenses on the map ----------
+const LENSES = () => [
+  ["all", "Everything", () => true],
+  ["waits", "Waiting on you", b => !!ws.waits(b)],
+  ["trouble", "Trouble", b => ws.trouble(b) || ws.restsOnRetired(b)],
+  ["clash", "Conflicts", b => ws.conflictsOf(b).length > 0, () => ws.conflicts.filter(c => c.status !== "settled").length],
+];
+function renderLenses() {
+  const n = f => ws.live().filter(f).length;
+  $("lenses").innerHTML = LENSES().map(([k, l, f, count]) => `<button type="button" data-lens="${k}" aria-pressed="${S.lens === k}">${l}${k === "all" ? "" : `<span class="n">${count ? count() : n(f)}</span>`}</button>`).join("") +
+    `<button type="button" data-retired aria-pressed="${S.showRetired}">Retired<span class="n">${ws.blocks.filter(b => b.retired).length}</span></button>`;
+}
+function applyLens() {
+  const world = $("world"), f = LENSES().find(l => l[0] === S.lens)[2];
+  world.classList.toggle("filtering", S.lens !== "all");
+  world.classList.toggle("show-retired", S.showRetired || !!(S.sel && ws.get(S.sel) && ws.get(S.sel).retired));
+  document.querySelectorAll(".card").forEach(el => { const b = ws.get(el.dataset.id); if (b) el.classList.toggle("match", b.level !== "source" && b.level !== "decision" && f(b)); });
+}
+function applyTrace() {
+  const world = $("world");
+  const zone = !!S.session;
+  world.classList.toggle("zone", zone);
+  world.classList.toggle("tracing", !!S.sel && !zone);
+  document.querySelectorAll(".card.sel").forEach(el => el.classList.remove("sel"));
+  const todo = new Set(zone ? S.session.items.flatMap(x => S.session.kind === "conflicts" ? [ws.conflicts.find(c => c.id === x).a, ws.conflicts.find(c => c.id === x).b] : [x]) : []);
+  const line = S.sel && ws.get(S.sel) ? ws.lineage(S.sel) : S.conflict ? (() => { const c = ws.conflicts.find(x => x.id === S.conflict); return new Set([...ws.lineage(c.a), ...ws.lineage(c.b)]); })() : new Set();
+  if (S.conflict && !zone) world.classList.add("tracing");
+  document.querySelectorAll(".card").forEach(el => {
+    el.classList.toggle("near", line.has(el.dataset.id));
+    el.classList.toggle("todo", todo.has(el.dataset.id));
+    el.classList.toggle("visited", S.paths.includes(el.dataset.id));
+  });
+  const el = S.sel && document.querySelector(`.card[data-id="${S.sel}"]`); if (el) el.classList.add("sel");
+  svg.querySelectorAll(".wire").forEach(w => w.classList.toggle("hot", line.has(w.dataset.a) && line.has(w.dataset.b)));
+  svg.querySelectorAll(".clash").forEach(w => w.classList.toggle("hot", w.dataset.c === S.conflict || line.has(w.dataset.a) && line.has(w.dataset.b) && (w.dataset.a === S.sel || w.dataset.b === S.sel)));
+  if (zone) world.classList.add("tracing");
+}
+
+// ---------- Camera ----------
+function setCam(z, x, y) {
+  S.z = Math.min(2.2, Math.max(minZ(), z)); S.x = x; S.y = y;
+  const world = $("world");
+  world.style.transform = `translate(${S.x}px, ${S.y}px) scale(${S.z})`;
+  world.style.setProperty("--iz", 1 / S.z);
+  world.style.setProperty("--iz-wire", Math.max(1, 1 / S.z * .5));
+  world.classList.toggle("far", S.z < FAR);
+  world.classList.toggle("mid", S.z >= FAR && S.z < NEAR);
+  updateGoIn();
+}
+function view() { const r = $("stage").getBoundingClientRect(); return { w: r.width, h: Math.max(80, r.height), left: r.left, top: r.top }; }
+function minZ() { const v = view(); return Math.min(0.12, Math.min(v.w / S.worldW, v.h / S.worldH) * 0.9); }
+function fitBox(x, y, w, h, pad = 40, maxZ = 1.1) {
+  const v = view(), topPad = S.session ? 70 : 0;
+  const z = Math.min(maxZ, (v.w - pad * 2) / w, (v.h - topPad - pad * 2) / h);
+  return [z, v.w / 2 - (x + w / 2) * z, topPad + (v.h - topPad) / 2 - (y + h / 2) * z];
+}
+let anim;
+function fly(target, ms = 460) {
+  cancelAnimationFrame(anim);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setCam(...target); return; }
+  const from = [S.z, S.x, S.y], t0 = performance.now();
+  const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const step = now => {
+    const t = Math.min(1, (now - t0) / ms), e = ease(t);
+    const z = Math.exp(Math.log(from[0]) + (Math.log(target[0]) - Math.log(from[0])) * e);
+    const k = Math.abs(target[0] - from[0]) < 1e-4 ? e : (z - from[0]) / (target[0] - from[0]);
+    setCam(z, from[1] + (target[1] - from[1]) * k, from[2] + (target[2] - from[2]) * k);
+    if (t < 1) anim = requestAnimationFrame(step);
+  };
+  anim = requestAnimationFrame(step);
+}
+function fitAll(animate = true) { const t = fitBox(0, 0, S.worldW, S.worldH, 16, 1); animate ? fly(t) : setCam(...t); }
+function flyTo(id) {
+  const p = pos.get(id); if (!p) return;
+  const [mx, my] = mobile() ? [40, 90] : [260, 200];   // close enough to read on a phone
+  fly(fitBox(p.x - mx, p.y - my, p.w + mx * 2, p.h + my * 2, 10, 0.9));
+}
+function flyToPair(a, b) {
+  const pa = pos.get(a), pb = pos.get(b);
+  const x0 = Math.min(pa.x, pb.x), y0 = Math.min(pa.y, pb.y), x1 = Math.max(pa.x + pa.w, pb.x + pb.w), y1 = Math.max(pa.y + pa.h, pb.y + pb.h);
+  fly(fitBox(x0 - 40, y0 - 40, x1 - x0 + 80, y1 - y0 + 80, 16, 0.9));
+}
+function zoomAt(f, cx, cy) { const z = Math.min(2.2, Math.max(minZ(), S.z * f)), k = z / S.z; setCam(z, cx - (cx - S.x) * k, cy - (cy - S.y) * k); }
+// Zoomed into one district: offer to go in.
+function updateGoIn() {
+  const btn = $("goin");
+  if (S.session || S.sel || S.conflict || S.tidy || S.z < NEAR * .8) { btn.hidden = true; return; }
+  const v = view(), cx = (v.w / 2 - S.x) / S.z, cy = (v.h / 2 - S.y) / S.z;
+  const d = districts.find(d => cx >= d.x && cx <= d.x + d.w && cy >= d.y && cy <= d.y + d.h);
+  if (!d) { btn.hidden = true; return; }
+  const n = ws.live().filter(b => b.q === d.q.id && ws.waits(b)).length;
+  btn.hidden = !n;
+  btn.dataset.q = d.q.id;
+  btn.textContent = `Go in: Q${d.q.n}, ${n} wait on you`;
+}
+
+// ---------- Sessions: go in ----------
+const ORDER = { observation: 0, finding: 1, insight: 2 };
+const bottomUp = (a, b) => ORDER[a.level] - ORDER[b.level] || a.n - b.n;
+function below(id, set = new Set()) { (ws.get(id).on || []).forEach(x => { if (!set.has(x)) { set.add(x); below(x, set); } }); return set; }
+function starts() {
+  const out = [];
+  const open = ws.conflicts.filter(c => c.status !== "settled");
+  if (open.length) out.push({ kind: "conflicts", k: "Settle conflicts", title: `${open.length} conflict${open.length > 1 ? "s" : ""} to settle`, sub: `${open.filter(c => c.confirmed).length} confirmed, ${open.filter(c => !c.confirmed).length} for a person to confirm`, items: open.map(c => c.id), cls: "clash" });
+  ws.decision.on.map(id => ws.get(id)).map(ins => {
+    const items = [ins, ...[...below(ins.id)].map(x => ws.get(x))].filter(b => !b.retired && ws.waits(b)).sort(bottomUp);
+    const all = [ins.id, ...below(ins.id)], ok = all.filter(id => !ws.unchecked(ws.get(id))).length;
+    return { ins, items, pct: ok / all.length };
+  }).filter(x => x.items.length).sort((a, b) => a.pct - b.pct).slice(0, 3).forEach(x =>
+    out.push({ kind: "ground", k: "Ground under an insight", title: x.ins.text, sub: `${x.items.length} wait on you · ${Math.round(x.pct * 100)}% checked under it`, items: x.items.map(b => b.id), goal: x.ins.id }));
+  const tid = tidyFinds();
+  out.push({ kind: "tidy", k: "Tidy up", title: "Retire what no longer belongs", sub: `${tid.dups.length} duplicates · ${tid.loose.length} loose ends · ${tid.onRetired.length} on retired blocks`, cls: "tidy" });
+  return out;
+}
+function startSession(kind, opts = {}) {
+  S.tidy = false; S.conflict = null; S.sel = null; S.act = null;
+  if (kind === "tidy") { S.tidy = true; S.session = null; render(); fitAll(); return; }
+  let items = opts.items, title = opts.title;
+  if (kind === "district") {
+    const q = ws.questions.find(x => x.id === opts.q);
+    items = ws.live().filter(b => b.q === q.id && ws.waits(b)).sort(bottomUp).map(b => b.id);
+    title = `Q${q.n}. ${q.text}`;
+  }
+  if (!items || !items.length) return;
+  S.session = { kind, title, items, idx: 0, done: new Set(), checked: 0, settled: 0, retired: 0 };
+  S.paths = [];
+  document.body.classList.add("zone");
+  openItem();
+}
+function openItem() {
+  const s = S.session; S.pend = {}; S.act = null; S.cf = {};
+  if (s.idx >= s.items.length) { S.sel = null; S.conflict = null; render(); fitAll(); return; }
+  const id = s.items[s.idx];
+  if (s.kind === "conflicts") { openConflict(id, true); return; }
+  S.trail = [id]; select(id, { keepTrail: true });
+}
+function leaveSession() {
+  S.session = null; document.body.classList.remove("zone");
+  S.sel = null; S.conflict = null; S.trail = []; render(); fitAll();
+}
+function nextInSession(markDone = true) {
+  const s = S.session; if (!s) return;
+  if (markDone) s.done.add(s.items[s.idx]);
+  s.idx += 1;
+  while (s.idx < s.items.length && s.done.has(s.items[s.idx])) s.idx += 1;
+  openItem();
+}
+function renderZoneBar() {
+  const s = S.session, bar = $("zonebar");
+  bar.hidden = !s;
+  if (!s) return;
+  const i = Math.min(s.idx + 1, s.items.length);
+  bar.innerHTML = `<button type="button" class="iconbtn" data-leave aria-label="Leave">←</button>
+    <span class="goal"><b>${s.kind === "ground" ? "Ground under: " : ""}${esc(s.title)}</b><span>${s.idx >= s.items.length ? "Done" : `${i} of ${s.items.length}`} · ← → to walk the chain · Esc to leave</span></span>
+    <span class="pips">${s.items.map((id, k) => `<i class="${s.done.has(id) ? "done" : k === s.idx ? "cur" : ""}"></i>`).join("")}</span>`;
+}
+
+// ---------- Select and step ----------
+function select(id, { keepTrail = false, follow = false } = {}) {
+  S.conflict = null; S.tidy = false; S.act = null; S.pend = {};
+  if (!id) { S.sel = null; S.trail = []; render(); return; }
+  if (follow) S.trail.push(id); else if (!keepTrail) S.trail = [id];
+  S.sel = id;
+  if (S.paths[S.paths.length - 1] !== id) S.paths.push(id);
+  S.pane = 1;
+  render();
+  requestAnimationFrame(() => flyTo(id));
+}
+// Walk the chain: down to what it is built on, up to what it holds up.
+function walk(dir) {
+  if (!S.sel) return;
+  const b = ws.get(S.sel);
+  const list = dir < 0 ? [...(b.on || []), ...(b.src || [])] : ws.over(S.sel).filter(x => x !== "D");
+  const live = list.filter(id => !ws.get(id).retired);
+  if (live.length) select(live[0], { follow: true });
+}
+function openConflict(id, inSession = false) {
+  S.conflict = id; S.sel = null; S.tidy = false; S.cf = {};
+  const c = ws.conflicts.find(x => x.id === id);
+  if (c.confirmed) S.cf.real = true;
+  S.paths = inSession ? S.paths : [];
+  render();
+  requestAnimationFrame(() => flyToPair(c.a, c.b));
+}
+
+// ---------- The lens ----------
+function render() {
+  renderZoneBar(); renderLenses(); repaint(); renderLens(); updateGoIn();
+}
+function lbl(x) { return x.level === "decision" ? "Decision" : x.level === "source" ? "Source" : `${A.LEVEL[x.level]} #${x.n}`; }
+function stepBtn(x, extra = "") {
+  const shape = x.level === "source" ? `<span class="shape source"></span>` : x.level === "decision" ? `<span class="shape decision"></span>` : A.shape(x.level);
+  const r = x.level === "source" || x.level === "decision" ? "" : `<span class="sq s-${ws.state(x)}"></span>${x.retired ? "" : A.troubleTags(ws, x)}`;
+  return `<button type="button" class="step${x.retired ? " retired" : ""}" data-step="${x.id}" ${extra}>${shape}<span class="s">${esc(x.level === "source" ? x.title : x.text)}</span><span class="r">${r}</span></button>`;
+}
+function renderLens() {
+  const lens = $("lens");
+  const opened = S.sel || S.conflict || S.tidy || (S.session && S.session.idx >= S.session.items.length);
+  lens.classList.toggle("open", !!opened);
+  if (!opened) lens.classList.remove("full");
+  let top, body;
+  if (!opened) {
+    lens.innerHTML = `<div class="lens-top"><div class="trail"><b>Where to start</b><span class="muted">or pinch in and tap any block</span></div></div>
+      <div class="starts">${starts().map((s, i) => `<button type="button" class="start ${s.cls || ""}" data-start="${i}"><span class="k">${s.k}</span><b>${esc(s.title)}</b><span>${esc(s.sub)}</span></button>`).join("")}</div>`;
+    return;
+  }
+  const trail = S.conflict ? `<b>⚡ Conflict</b>` : S.tidy ? `<b>Tidy up</b>` : S.session && S.session.idx >= S.session.items.length ? `<b>Session done</b>` :
+    [`<button type="button" data-home>Workspace</button>`, ...S.trail.map((id, i) => i === S.trail.length - 1 ? `<span class="here">${lbl(ws.get(id))}</span>` : `<button type="button" data-trail="${i}">${lbl(ws.get(id))}</button>`)].join(`<span class="sep">›</span>`);
+  top = `<div class="lens-top"><button type="button" class="handle" data-grow aria-label="Make bigger or smaller"></button><div class="trail">${trail}</div>${S.session ? "" : `<button type="button" class="iconbtn" data-close aria-label="Close">×</button>`}</div>`;
+  if (S.conflict) body = `<div class="lens-body wide"><div class="pane">${conflictHtml()}</div></div>`;
+  else if (S.tidy) body = `<div class="lens-body wide"><div class="pane">${tidyHtml()}</div></div>`;
+  else if (!S.sel) body = `<div class="lens-body wide"><div class="pane">${summaryHtml()}</div></div>`;
+  else {
+    const b = ws.get(S.sel);
+    const under = [...(b.on || []), ...(b.src || [])].map(id => ws.get(id));
+    const over = ws.over(b.id).map(id => ws.get(id));
+    body = `<nav class="panetabs" aria-label="Lens">${[`‹ Built on ${under.length}`, "This block", `Holds up ${over.length} ›`].map((t, i) => `<button type="button" data-pane="${i}" aria-current="${S.pane === i}">${t}</button>`).join("")}</nav>
+      <div class="lens-body" id="lbody">
+        <div class="pane side"><h4><span>‹ Built on</span><span>${under.length}</span></h4>${under.map(x => stepBtn(x)).join("") || `<p class="hint">${b.level === "observation" ? "No source." : "Nothing. This rests on nothing."}</p>`}<p class="hint">Tap to step down the chain. The map follows.</p></div>
+        <div class="pane here">${hereHtml(b)}</div>
+        <div class="pane side"><h4><span>Holds up ›</span><span>${over.length}</span></h4>${over.map(x => stepBtn(x)).join("") || `<p class="hint">Nothing is built on it yet.</p>`}</div>
+      </div>`;
+  }
+  lens.innerHTML = top + body;
+  const lb = $("lbody");
+  if (lb && mobile()) { lb.scrollLeft = lb.clientWidth * S.pane; lb.addEventListener("scroll", () => { const p = Math.round(lb.scrollLeft / lb.clientWidth); if (p !== S.pane) { S.pane = p; lens.querySelectorAll("[data-pane]").forEach((t, i) => t.setAttribute("aria-current", i === p)); } }, { passive: true }); }
+}
+
+function hereHtml(b) {
+  const q = ws.questions.find(x => x.id === b.q), s = ws.state(b), me = ws.you;
+  const weak = ws.weakBelow(b).filter(x => !x.retired), retiredUnder = (b.on || []).map(id => ws.get(id)).filter(x => x.retired);
+  const clashes = ws.conflictsOf(b);
+  let h = `<div class="eyebrow">${A.shape(b.level)}${lbl(b)}${b.ai ? " · " + A.aiTag(b) : ""} · <span class="qchip">Q${q.n}</span></div>
+    <h2>${esc(b.text)}</h2>
+    <div class="row">${A.stateTag(ws, b)}${b.retired ? "" : A.troubleTags(ws, b, true)}<span class="by">by ${esc(b.owner)}</span></div>`;
+  if (b.retired) {
+    const o = b.retired.other && ws.get(b.retired.other);
+    h += `<div class="box retbox"><b>Retired by ${esc(b.retired.by)}: ${esc(b.retired.reason)}.</b>${o ? `<span>Replaced by <button type="button" class="linkbtn" data-step="${o.id}">${lbl(o)}</button>.</span>` : ""}
+      <span class="small muted">It stays in history and on the map when you show retired blocks. Nothing new can be built on it.</span>
+      <div class="acts"><button type="button" class="btn" data-unretire>Bring it back</button></div></div>`;
+    return h;
+  }
+  clashes.forEach(c => {
+    const other = ws.get(c.a === b.id ? c.b : c.a);
+    h += `<div class="box ${c.confirmed ? "clashbox" : "maybebox"}"><b>${c.confirmed ? `⚡ ${esc(c.by)} says this conflicts with ${lbl(other)}` : `? It might conflict with ${lbl(other)}`}</b><span>${esc(other.text)}</span>
+      <div class="acts"><button type="button" class="btn${c.confirmed ? " primary" : ""}" data-conflict="${c.id}">${c.confirmed ? "Settle it" : "Look at both"}</button></div></div>`;
+  });
+  if (retiredUnder.length) h += `<div class="flag"><b>Rests on a retired block.</b> ${retiredUnder.map(x => { const o = x.retired.other && ws.get(x.retired.other); return `${lbl(x)} was retired (${esc(x.retired.reason.toLowerCase())}).${o ? ` <button type="button" class="linkbtn" data-relink="${x.id}">Move onto ${lbl(o)}</button>` : ""}`; }).join(" ")}</div>`;
+  if (weak.length) h += `<div class="flag"><b>⚠ Built on ${weak.length} block${weak.length > 1 ? "s" : ""} that still need a check.</b> ${weak.slice(0, 3).map(w => `<button type="button" class="linkbtn" data-step="${w.id}">${lbl(w)}</button>`).join(", ")}${weak.length > 3 ? "…" : ""}</div>`;
+  if (ws.restsOnNothing(b)) h += `<div class="flag"><b>Rests on nothing.</b> Connect what it is built on, or retire it.</div>`;
+  const why = ws.waits(b);
+  if (why) h += `<div class="waits">Waiting on you: ${esc(why)}</div>`;
+  // The thread, when people do not agree.
+  const hist = ws.latest(b), old = b.checks.filter(c => c.old);
+  if (s === "disagreement" || s === "needs_changes" || old.length) {
+    h += `<div class="sect"><h3>What people said</h3><div class="msgs">${old.map(c => `<div class="msg old"><b>${esc(c.by)} · ${A.VERDICT[c.verdict]} · on an earlier version</b>${esc(c.note || "")}</div>`).join("")}${hist.map(c => `<div class="msg ${c.verdict === "disagree" ? "bad" : c.verdict === "needs_changes" ? "chg" : ""}"><b>${esc(c.by)} · ${A.VERDICT[c.verdict]}</b>${esc(c.note || (c.by === b.owner ? "Stands behind it." : "No note."))}</div>`).join("")}</div></div>`;
+  }
+  if (b.ai) h += `<div class="aibox"><div><b class="${b.conf === "low" ? "warn" : ""}">AI says: ${b.conf} confidence.</b> ${esc(b.why || "")}</div>${b.assumes.length ? `<div>Assumes: ${b.assumes.map(esc).join("; ")}</div>` : ""}<div class="muted small">The AI's own view. It never counts as a check.</div></div>`;
+  h += `<div class="sect yourcheck"><h3>Your move</h3>${moveHtml(b)}</div>`;
+  h += `<details class="fold"><summary>Think it through</summary><ul class="asks">${({ observation: ["Does the source say exactly this, no more and no less?", "If there is a number, does it match the source?"], finding: ["Do the blocks under it really add up to this?", "Would a skeptic read them the same way?"], insight: ["Does it follow from the findings under it?", "What would make it wrong?"] })[b.level].map(a => `<li>${esc(a)}</li>`).join("")}</ul><textarea id="mynote" rows="2" placeholder="Your notes. Only you see these.">${esc(S.notes[b.id] || "")}</textarea></details>`;
+  h += `<details class="fold"><summary>Clean up</summary><div class="in small"><p class="muted" style="margin:0">If this no longer belongs, retire it. It leaves the map but stays in history${ws.over(b.id).length ? `, and the ${ws.over(b.id).length} block${ws.over(b.id).length > 1 ? "s" : ""} on it get a flag` : ""}.</p><div class="row"><button type="button" class="btn" data-retire>Retire…</button>${ws.canDelete(b) ? `<button type="button" class="btn ghost" data-delete>Delete for good</button>` : ""}<button type="button" class="btn ghost" data-newclash>It conflicts with…</button></div>${ws.canDelete(b) ? "" : `<p class="muted" style="margin:0">Delete is only for your own mistakes that nobody else has checked or built on.</p>`}</div></details>`;
+  if (S.session) h += `<div class="navrow"><button type="button" class="btn" data-skip>Skip</button><span class="grow"></span><button type="button" class="btn primary" data-next>Next in session ›</button></div>`;
+  return h;
+}
+// What you can do here depends on who you are and what state it is in.
+function moveHtml(b) {
+  const me = ws.you, s = ws.state(b), mine = b.owner === me;
+  const ownerChecked = ws.latest(b).some(c => c.by === b.owner);
+  if (S.act === "revise") return `<div class="act"><textarea id="rev" rows="3">${esc(b.text)}</textarea><p class="small muted" style="margin:4px 0">Saves a new version. Checks on this wording move to history and the people who checked it are asked to look again.</p><div class="row"><button type="button" class="btn primary" data-saverev>Save new version</button><button type="button" class="btn ghost" data-act="">Cancel</button></div></div>`;
+  if (S.act === "stand") return `<div class="act"><textarea id="stand" rows="2" placeholder="Why it holds as written"></textarea><label class="check-line"><input type="checkbox" id="asksme" checked> Ask an SME to weigh in</label><div class="row"><button type="button" class="btn primary" data-savestand>Reply</button><button type="button" class="btn ghost" data-act="">Cancel</button></div></div>`;
+  if (S.act === "add") {
+    const lower = b.level === "insight" ? "finding" : "observation";
+    const cands = ws.live().filter(x => x.q === b.q && x.level === lower && !b.on.includes(x.id)).slice(0, 12);
+    return `<div class="act"><p class="small" style="margin:0 0 6px">Pick what it rests on, from Q${ws.questions.find(q => q.id === b.q).n}:</p><div class="picklist">${cands.map(x => stepBtn(x, `data-pickadd="${x.id}" aria-pressed="${!!(S.pend.add && S.pend.add.includes(x.id))}"`)).join("")}</div><div class="row" style="margin-top:6px"><button type="button" class="btn primary" data-saveadd>Add ${S.pend.add ? S.pend.add.length : 0}</button><button type="button" class="btn ghost" data-act="">Cancel</button></div></div>`;
+  }
+  if (mine && (s === "disagreement" || s === "needs_changes") && !ws.conflictsOf(b).some(c => c.confirmed)) {
+    return `<p class="small" style="margin:0">${s === "disagreement" ? "Someone disagrees." : "Changes were asked for."} Pick how to answer:</p>
+      <div class="opts"><button type="button" data-act="revise"><b>Change the wording</b><span>Narrow it to what holds</span></button><button type="button" data-act="add"><b>Add what it rests on</b><span>Show more evidence</span></button><button type="button" data-act="stand"><b>Stand by it</b><span>Reply, and ask an SME</span></button><button type="button" data-retire><b>Retire it</b><span>It no longer holds</span></button></div>`;
+  }
+  if (mine && b.ai && !ownerChecked) return `<p class="small" style="margin:0">Your AI draft. Read it, fix the wording if needed, and say it looks right.</p><div class="verdicts one"><button type="button" data-v="looks_right" aria-pressed="${S.pend.v === "looks_right"}">Looks right</button></div>${S.pend.v ? `<button type="button" class="btn primary" data-save>Save</button>` : ""}<button type="button" class="linkbtn small" data-act="revise">Change the wording first</button>`;
+  if (mine) return `<p class="small muted" style="margin:0">You made this. Others check it.</p><button type="button" class="linkbtn small" data-act="revise">Change the wording</button>`;
+  if (b.ai && !ownerChecked) return `<p class="small muted" style="margin:0">This AI draft waits on ${esc(b.owner)}, its owner, to check it first.</p>`;
+  const dis = ws.latest(b).filter(c => c.verdict === "disagree").map(c => c.by);
+  return `${dis.length ? `<p class="small" style="margin:0">${esc(dis.join(" and "))} disagree${dis.length > 1 ? "" : "s"}. Where do you land?</p>` : ""}
+    <div class="verdicts">${Object.entries(A.VERDICT).map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${S.pend.v === v}">${l}</button>`).join("")}</div>
+    ${S.pend.v === "looks_right" ? `<div class="hows">${Object.entries(A.HOW).map(([k, l]) => `<button type="button" data-how="${k}" aria-pressed="${S.pend.how === k}">${l}</button>`).join("")}</div>` : ""}
+    ${S.pend.v && S.pend.v !== "looks_right" ? `<textarea id="ck-note" rows="2" placeholder="${S.pend.v === "disagree" ? "Why do you disagree?" : "What should change?"}"></textarea>` : ""}
+    ${S.pend.v ? `<button type="button" class="btn primary" data-save>Save check</button>` : ""}`;
+}
+
+// ---------- Conflict: see both, then settle ----------
+function conflictHtml() {
+  const c = ws.conflicts.find(x => x.id === S.conflict), a = ws.get(c.a), b = ws.get(c.b), cf = S.cf;
+  if (c.status === "settled") return `<div class="done-card"><b>Settled.</b><span>${esc(c.outcome)}</span><span class="small muted">The owners and everyone who checked either block hear about it, and can reopen it.</span></div>${S.session ? `<div class="navrow"><span class="grow"></span><button type="button" class="btn primary" data-next>Next in session ›</button></div>` : ""}`;
+  const side = (x, tag) => {
+    const under = [...below(x.id)].map(id => ws.get(id)), ok = under.filter(u => !ws.unchecked(u)).length, over = ws.over(x.id).length;
+    const cls = cf.end === "one" && cf.keep ? (cf.keep === x.id ? " keep" : " lose") : "";
+    return `<div class="side-card${cls}"><span class="who2"><span>${tag} · ${lbl(x)} · ${esc(x.owner)}</span>${A.stateTag(ws, x)}</span><span class="c">${esc(x.text)}</span>
+      <span class="facts"><span>Rests on ${under.length} block${under.length === 1 ? "" : "s"}, ${ok} checked</span><span>Holds up ${over} block${over === 1 ? "" : "s"}</span>${x.ai ? `<span>AI said ${x.conf} confidence</span>` : ""}</span>
+      <div class="row"><button type="button" class="btn" data-step="${x.id}">Open its line</button></div></div>`;
+  };
+  if (c.status === "waiting" && !cf.reopen) return `<div class="done-card"><b>Waiting on research.</b><span>${esc(c.outcome)} Both blocks stay marked Disagree, so nobody leans on either without knowing.</span></div>
+    <div class="vs">${side(a, "A")}<span class="mid">vs</span>${side(b, "B")}</div>
+    <div class="navrow"><button type="button" class="btn" data-cf-reopen>Settle it now</button><span class="grow"></span>${S.session ? `<button type="button" class="btn primary" data-next>Next in session ›</button>` : ""}</div>`;
+  let h = `<div class="sect"><h3>${c.confirmed ? `⚡ ${esc(c.by)} confirmed these cannot both be true` : "? The conflict check thinks these may not both be true"}</h3><p class="small" style="margin:0">${esc(c.note)}</p></div>
+    <div class="vs">${side(a, "A")}<span class="mid">vs</span>${side(b, "B")}</div>`;
+  if (!cf.real) {
+    h += `<div class="sect"><span class="stepnum">Step 1 of 2</span><h3>Can both be true?</h3><div class="opts"><button type="button" data-cf-real="yes"><b>No, they conflict</b><span>Both show Disagree until it is settled</span></button><button type="button" data-cf-real="no"><b>Yes, they fit together</b><span>Close it with a note</span></button></div>
+      ${cf.fit ? `<textarea id="cf-why" rows="2" placeholder="How do they fit together?"></textarea><div class="row"><button type="button" class="btn primary" data-cf-fit>Close it</button></div>` : ""}</div>`;
+    return h + footnote();
+  }
+  h += `<div class="sect"><span class="stepnum">${c.confirmed && !cf.confirmedNow ? "How it ends" : "Step 2 of 2"}</span><h3>How should it end?</h3>
+    <div class="opts">
+      <button type="button" data-cf-end="one" aria-pressed="${cf.end === "one"}"><b>One holds</b><span>Retire the other. Blocks on it get a flag.</span></button>
+      <button type="button" data-cf-end="scope" aria-pressed="${cf.end === "scope"}"><b>Both hold, each in its own scope</b><span>Narrow each one. Both get a new version.</span></button>
+      <button type="button" data-cf-end="later" aria-pressed="${cf.end === "later"}"><b>We can't tell yet</b><span>Add an open question to the plan</span></button>
+    </div></div>`;
+  if (cf.end === "one") {
+    const lose = cf.keep ? ws.get(cf.keep === a.id ? b.id : a.id) : null;
+    h += `<div class="sect"><h3>Which one holds?</h3><div class="opts"><button type="button" data-cf-keep="${a.id}" aria-pressed="${cf.keep === a.id}"><b>A holds</b><span>${esc(a.text.slice(0, 60))}…</span></button><button type="button" data-cf-keep="${b.id}" aria-pressed="${cf.keep === b.id}"><b>B holds</b><span>${esc(b.text.slice(0, 60))}…</span></button></div>
+      ${lose ? `<div class="impact">${lbl(lose)} will be retired. ${ws.over(lose.id).length ? `${ws.over(lose.id).length} block${ws.over(lose.id).length > 1 ? "s" : ""} built on it will show a flag until moved or checked again.` : "Nothing is built on it."}</div>${ws.over(lose.id).length && lose.level === ws.get(cf.keep).level ? `<label class="check-line"><input type="checkbox" id="cf-move"> Move them onto ${lbl(ws.get(cf.keep))}</label>` : ""}` : ""}</div>`;
+  }
+  if (cf.end === "scope") h += `<div class="sect"><h3>Say who or when each one is true</h3><textarea id="cf-a" rows="2">${esc(a.text)}</textarea><textarea id="cf-b" rows="2">${esc(b.text)}</textarea><p class="small muted" style="margin:0">For example: "for returning shoppers" or "on 3G and slower". The owners are asked to check the new wording.</p></div>`;
+  if (cf.end === "later") h += `<div class="sect"><h3>The open question</h3><textarea id="cf-q" rows="2">Does ${esc(a.text.charAt(0).toLowerCase() + a.text.slice(1))}, or ${esc(b.text.charAt(0).toLowerCase() + b.text.slice(1))}?</textarea><p class="small muted" style="margin:0">It goes into the plan. Both blocks stay marked Disagree, so nobody leans on either without knowing.</p></div>`;
+  if (cf.end) h += `<div class="sect"><h3>Why</h3><textarea id="cf-why" rows="2" placeholder="What tipped it"></textarea><div class="row"><button type="button" class="btn primary" data-cf-settle ${cf.end === "one" && !cf.keep ? "disabled" : ""}>${cf.end === "later" ? "Add to the plan" : "Settle it"}</button></div></div>`;
+  return h + footnote();
+}
+function footnote() { return `<p class="small muted" style="margin:4px 0 0">Anyone can settle a conflict. Nothing is erased: the owners and everyone who checked either block hear about it, and can reopen it.</p>`; }
+function settle(c) {
+  const a = ws.get(c.a), b = ws.get(c.b), cf = S.cf, why = (($("cf-why") || {}).value || "").trim();
+  if (!why) { const t = $("cf-why"); if (t) { t.focus(); t.placeholder = "Say a few words so others know why."; } return false; }
+  if (cf.end === "one") {
+    const keep = ws.get(cf.keep), lose = keep === a ? b : a, move = ($("cf-move") || {}).checked;
+    ws.retire(lose, ws.you, `Lost a conflict with ${lbl(keep)}`, keep.id, !!move);
+    c.status = "settled"; c.outcome = `${lbl(keep)} holds. ${lbl(lose)} is retired.${move ? " What was built on it now rests on " + lbl(keep) + "." : ""} Why: ${why}`;
+  } else if (cf.end === "scope") {
+    const ta = $("cf-a").value.trim(), tb = $("cf-b").value.trim();
+    if (ta !== a.text) ws.revise(a, ta, ws.you, "Scoped to settle a conflict");
+    if (tb !== b.text) ws.revise(b, tb, ws.you, "Scoped to settle a conflict");
+    c.status = "settled"; c.outcome = `Both hold, each in its own scope. New versions wait for their owners to check them. Why: ${why}`;
+  } else {
+    const n = ws.questions.length + 1, text = $("cf-q").value.trim();
+    ws.questions.push({ id: "q" + n, n, text, short: "Open question" });
+    c.status = "waiting"; c.confirmed = true; c.outcome = `Added Q${n} to the plan.`;
+    A.toast(`Added Q${n} to the plan. Both stay marked Disagree until it is answered.`);
+    if (S.session) S.session.done.add(c.id);
+    return true;
+  }
+  if (S.session) { S.session.settled += 1; S.session.done.add(c.id); }
+  A.toast("Settled. Everyone involved hears about it.");
+  return true;
+}
+
+// ---------- Tidy up: retire what no longer belongs ----------
+function tidyFinds() {
+  const live = ws.live();
+  const seen = new Map(), dups = [];
+  live.forEach(b => { const k = b.level + "|" + b.text.toLowerCase(); if (seen.has(k)) dups.push([seen.get(k), b]); else seen.set(k, b); });
+  const loose = live.filter(b => b.level === "observation" && b.ai && ws.state(b) === "needs_check" && !ws.over(b.id).length && !dups.some(d => d[1] === b));
+  const onRetired = live.filter(b => ws.restsOnRetired(b));
+  return { dups, loose, onRetired };
+}
+function tidyHtml() {
+  const t = tidyFinds();
+  const row = (b, why, def) => `<label class="trow"><input type="checkbox" data-tsel="${b.id}" ${S.tidySel.has(b.id) ? "checked" : ""}><span>${A.shape(b.level)} ${esc(b.text)}</span><span class="r"><button type="button" class="linkbtn small" data-step="${b.id}">Open</button></span><span class="why">${why}</span></label>`;
+  return `<p class="small" style="margin:0">Nothing here is erased. Retired blocks leave the map, keep their history, and anything built on them gets a flag.</p>
+    <div class="tgroup"><h4><span>Same as another block</span><span>${t.dups.length}</span></h4>${t.dups.map(([keep, d]) => row(d, `Same words as ${lbl(keep)}. Retire this one as "Same as ${lbl(keep)}".`)).join("") || `<p class="hint">None.</p>`}</div>
+    <div class="tgroup"><h4><span>Loose ends</span><span>${t.loose.length}</span></h4><p class="hint" style="margin:0">AI drafts nobody has checked and nothing is built on.</p>${t.loose.slice(0, 8).map(b => row(b, `AI draft by ${esc(b.owner)}. Waiting on its owner.`)).join("")}${t.loose.length > 8 ? `<p class="hint">and ${t.loose.length - 8} more</p>` : ""}</div>
+    <div class="tgroup"><h4><span>Rest on a retired block</span><span>${t.onRetired.length}</span></h4>${t.onRetired.map(b => { const r = b.on.map(id => ws.get(id)).find(x => x.retired), o = r.retired.other && ws.get(r.retired.other); return `<div class="trow"><span></span><span>${A.shape(b.level)} ${esc(b.text)}</span><span class="r">${o ? `<button type="button" class="btn" data-relinkfor="${b.id}">Move onto ${lbl(o)}</button>` : ""}</span><span class="why">${lbl(r)} was retired: ${esc(r.retired.reason.toLowerCase())}.</span></div>`; }).join("") || `<p class="hint">None.</p>`}</div>
+    <div class="navrow"><span class="small muted">${S.tidySel.size} picked</span><span class="grow"></span><button type="button" class="btn primary" data-tidyretire ${S.tidySel.size ? "" : "disabled"}>Retire ${S.tidySel.size}…</button></div>`;
+}
+function summaryHtml() {
+  const s = S.session;
+  return `<div class="done-card"><b>Session done.</b><span>${s.checked} checked${s.settled ? `, ${s.settled} conflicts settled` : ""}${s.retired ? `, ${s.retired} retired` : ""}. Your trail is lit on the map.</span></div><div class="navrow"><span class="grow"></span><button type="button" class="btn primary" data-leave>Leave and see the whole map</button></div>`;
+}
+
+// ---------- Retire sheet ----------
+const REASONS = ["Out of date", "Out of scope", "Replaced by another block", "Same as another block", "Wrong"];
+function retireSheet(ids) {
+  const st = { reason: null, other: null, move: true, q: "" };
+  const list = ids.map(id => ws.get(id));
+  const draw = () => {
+    const needOther = st.reason === "Replaced by another block" || st.reason === "Same as another block";
+    const above = new Set(list.flatMap(b => ws.over(b.id)));
+    const cands = needOther ? ws.live().filter(x => x.level === list[0].level && !ids.includes(x.id) && x.text.toLowerCase().includes(st.q.toLowerCase())).sort((x, y) => (y.q === list[0].q) - (x.q === list[0].q)).slice(0, 30) : [];
+    $("modal").innerHTML = `<div class="sheet" role="dialog" aria-label="Retire">
+      <h2>Retire ${list.length === 1 ? lbl(list[0]) : `${list.length} blocks`}</h2>
+      ${list.length === 1 ? `<p class="small" style="margin:0">${esc(list[0].text)}</p>` : ""}
+      <div class="sect"><h3>Why</h3><div class="chips" style="flex-wrap:wrap">${REASONS.map(r => `<button type="button" data-reason="${r}" aria-pressed="${st.reason === r}">${r}</button>`).join("")}</div></div>
+      ${needOther ? `<div class="sect"><h3>Which block</h3><input type="search" id="pickq" placeholder="Find a block" value="${esc(st.q)}"><div class="picklist">${cands.map(x => stepBtn(x, `data-pickother="${x.id}" aria-pressed="${st.other === x.id}"`)).join("")}</div></div>` : ""}
+      ${above.size ? `<div class="impact">${above.size} block${above.size > 1 ? "s are" : " is"} built on ${list.length === 1 ? "it" : "them"}. They will show "Rests on a retired block" until moved or checked again.</div>` : `<div class="impact">Nothing is built on ${list.length === 1 ? "it" : "them"}.</div>`}
+      ${above.size && st.other ? `<label class="check-line"><input type="checkbox" id="mv" ${st.move ? "checked" : ""}> Move them onto ${lbl(ws.get(st.other))}</label>` : ""}
+      <p class="small muted" style="margin:0">Retired blocks keep their history and can be brought back.</p>
+      <div class="row"><button type="button" class="btn primary" data-doretire ${st.reason && (!needOther || st.other) ? "" : "disabled"}>Retire</button><button type="button" class="btn ghost" data-cancel>Cancel</button></div></div>`;
+    const pq = $("pickq"); if (pq) { pq.addEventListener("input", e => { st.q = e.target.value; draw(); const n = $("pickq"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }); }
+  };
+  $("modal").hidden = false; draw();
+  $("modal").onclick = e => {
+    const t = e.target;
+    if (t === $("modal") || t.closest("[data-cancel]")) { $("modal").hidden = true; return; }
+    const r = t.closest("[data-reason]"); if (r) { st.reason = r.dataset.reason; st.other = null; draw(); return; }
+    const o = t.closest("[data-pickother]"); if (o) { st.other = o.dataset.pickother; draw(); return; }
+    if (t.id === "mv") { st.move = t.checked; return; }
+    if (t.closest("[data-doretire]")) {
+      const reason = st.other ? `${st.reason === "Same as another block" ? "Same as" : "Replaced by"} ${lbl(ws.get(st.other))}` : st.reason;
+      list.forEach(b => ws.retire(b, ws.you, reason, st.other, st.move));
+      if (S.session) S.session.retired += list.length;
+      S.tidySel.clear(); $("modal").hidden = true;
+      const undoIds = ids.slice();
+      showUndo(`Retired ${list.length === 1 ? lbl(list[0]) : list.length + " blocks"}.`, () => { undoIds.forEach(id => ws.unretire(ws.get(id))); render(); });
+      if (S.sel && ids.includes(S.sel)) S.showRetired = true;
+      render();
+    }
+  };
+}
+function pickConflictSheet(b) {
+  let q = "", pick = null;
+  const draw = () => {
+    const cands = ws.live().filter(x => x.id !== b.id && (x.level === b.level || Math.abs(ORDER[x.level] - ORDER[b.level]) === 1) && x.text.toLowerCase().includes(q.toLowerCase())).slice(0, 30);
+    $("modal").innerHTML = `<div class="sheet" role="dialog" aria-label="Conflicts with"><h2>${lbl(b)} conflicts with…</h2><p class="small" style="margin:0">${esc(b.text)}</p>
+      <input type="search" id="pickq" placeholder="Find a block" value="${esc(q)}"><div class="picklist">${cands.map(x => stepBtn(x, `data-pickother="${x.id}" aria-pressed="${pick === x.id}"`)).join("")}</div>
+      <textarea id="cnote" rows="2" placeholder="Why can they not both be true?"></textarea>
+      <div class="row"><button type="button" class="btn primary" data-doclash ${pick ? "" : "disabled"}>Mark the conflict</button><button type="button" class="btn ghost" data-cancel>Cancel</button></div></div>`;
+    $("pickq").addEventListener("input", e => { q = e.target.value; draw(); const n = $("pickq"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); });
+  };
+  $("modal").hidden = false; draw();
+  $("modal").onclick = e => {
+    const t = e.target;
+    if (t === $("modal") || t.closest("[data-cancel]")) { $("modal").hidden = true; return; }
+    const o = t.closest("[data-pickother]"); if (o) { pick = o.dataset.pickother; const note = $("cnote").value; draw(); $("cnote").value = note; return; }
+    if (t.closest("[data-doclash]")) {
+      const note = $("cnote").value.trim() || "They cannot both be true.";
+      const id = "c" + (ws.conflicts.length + 1);
+      ws.conflicts.push({ id, a: b.id, b: pick, confirmed: true, by: ws.you, status: "open", note });
+      $("modal").hidden = true; A.toast("Marked. Both blocks show Disagree until it is settled.");
+      render();
+    }
+  };
+}
+function showUndo(msg, fn) {
+  A.toast(msg);
+  const t = $("toast"); const btn = document.createElement("button");
+  btn.textContent = "Undo"; btn.style.cssText = "margin-left:12px;border:0;background:none;color:inherit;text-decoration:underline";
+  btn.onclick = () => { fn(); t.hidden = true; };
+  t.appendChild(btn);
+}
+
+// ---------- Lens clicks ----------
+$("lens").addEventListener("click", e => {
+  const t = e.target;
+  const st = t.closest("[data-start]"); if (st) { const s = starts()[+st.dataset.start]; startSession(s.kind, s); return; }
+  const stp = t.closest("[data-step]");
+  if (stp && !t.closest("[data-pickadd]")) { select(stp.dataset.step, { follow: !!S.sel }); return; }
+  if (t.closest("[data-close]")) { select(null); return; }
+  if (t.closest("[data-home]")) { select(null); return; }
+  if (t.closest("[data-grow]")) { $("lens").classList.toggle("full"); return; }
+  const tr = t.closest("[data-trail]"); if (tr) { const i = +tr.dataset.trail; S.trail = S.trail.slice(0, i + 1); select(S.trail[i], { keepTrail: true }); return; }
+  const pn = t.closest("[data-pane]"); if (pn) { const lb = $("lbody"); S.pane = +pn.dataset.pane; lb.scrollTo({ left: lb.clientWidth * S.pane, behavior: "smooth" }); return; }
+  if (t.closest("[data-leave]")) { leaveSession(); return; }
+  if (t.closest("[data-next]")) { nextInSession(true); return; }
+  if (t.closest("[data-skip]")) { nextInSession(false); return; }
+  const cfl = t.closest("[data-conflict]"); if (cfl) { openConflict(cfl.dataset.conflict); return; }
+  // checking
+  const v = t.closest("[data-v]"); if (v) { S.pend = { v: v.dataset.v }; keepNote(); renderLens(); return; }
+  const how = t.closest("[data-how]"); if (how) { S.pend.how = how.dataset.how; keepNote(); renderLens(); return; }
+  if (t.closest("[data-save]")) {
+    const b = ws.get(S.sel), note = (($("ck-note") || {}).value || "").trim();
+    if (S.pend.v !== "looks_right" && !note) { const n = $("ck-note"); if (n) { n.focus(); n.placeholder = "Say a few words so the owner knows what to fix."; } return; }
+    ws.check(b, ws.you, S.pend.v, S.pend.how || null, note);
+    A.toast(`${A.VERDICT[S.pend.v]} · ${lbl(b)}.`);
+    if (S.session) { S.session.checked += 1; nextInSession(true); } else { S.pend = {}; render(); }
+    return;
+  }
+  // owner moves
+  const act = t.closest("[data-act]"); if (act) { S.act = act.dataset.act || null; S.pend = {}; renderLens(); return; }
+  if (t.closest("[data-saverev]")) { const b = ws.get(S.sel), txt = $("rev").value.trim(); if (txt && txt !== b.text) { ws.revise(b, txt, ws.you); A.toast("Saved a new version. Checkers are asked to look again."); } S.act = null; render(); return; }
+  if (t.closest("[data-savestand]")) { const b = ws.get(S.sel), n = $("stand").value.trim(); if (!n) { $("stand").focus(); return; } b.checks.push({ by: ws.you, verdict: "looks_right", how: null, note: n + ($("asksme").checked ? " (Asked an SME to weigh in.)" : "") }); A.toast($("asksme").checked ? "Replied. Sam and Dana are asked to weigh in." : "Replied."); S.act = null; render(); return; }
+  const pa = t.closest("[data-pickadd]"); if (pa) { S.pend.add = S.pend.add || []; const id = pa.dataset.pickadd; S.pend.add = S.pend.add.includes(id) ? S.pend.add.filter(x => x !== id) : [...S.pend.add, id]; renderLens(); return; }
+  if (t.closest("[data-saveadd]")) { const b = ws.get(S.sel); (S.pend.add || []).forEach(id => b.on.push(id)); ws.relink(); A.toast(`Now built on ${b.on.length} blocks.`); S.act = null; S.pend = {}; render(); return; }
+  if (t.closest("[data-retire]")) { retireSheet([S.sel]); return; }
+  if (t.closest("[data-delete]")) { const b = ws.get(S.sel); ws.remove(b); A.toast(`Deleted ${lbl(b)}.`); select(null); return; }
+  if (t.closest("[data-unretire]")) { ws.unretire(ws.get(S.sel)); A.toast("Brought back. It needs checking like anything else."); render(); return; }
+  if (t.closest("[data-newclash]")) { pickConflictSheet(ws.get(S.sel)); return; }
+  const rl = t.closest("[data-relink]"); if (rl) { const b = ws.get(S.sel), r = ws.get(rl.dataset.relink); b.on = b.on.map(x => x === r.id ? r.retired.other : x); ws.relink(); A.toast(`Moved onto ${lbl(ws.get(r.retired.other))}.`); render(); return; }
+  const rf = t.closest("[data-relinkfor]"); if (rf) { const b = ws.get(rf.dataset.relinkfor); const r = b.on.map(id => ws.get(id)).find(x => x.retired); b.on = b.on.map(x => x === r.id ? r.retired.other : x); ws.relink(); A.toast(`Moved onto ${lbl(ws.get(r.retired.other))}.`); render(); return; }
+  // conflicts
+  const real = t.closest("[data-cf-real]"); if (real) { if (real.dataset.cfReal === "yes") { const c = ws.conflicts.find(x => x.id === S.conflict); c.confirmed = true; c.by = ws.you; S.cf = { real: true, confirmedNow: true }; } else S.cf = { fit: true }; render(); return; }
+  if (t.closest("[data-cf-fit]")) { const c = ws.conflicts.find(x => x.id === S.conflict), why = $("cf-why").value.trim(); if (!why) { $("cf-why").focus(); return; } c.status = "settled"; c.outcome = `They fit together. Why: ${why}`; if (S.session) { S.session.settled += 1; S.session.done.add(c.id); } A.toast("Closed. Not a conflict."); render(); return; }
+  if (t.closest("[data-cf-reopen]")) { S.cf = { real: true, reopen: true }; renderLens(); return; }
+  const end = t.closest("[data-cf-end]"); if (end) { S.cf.end = end.dataset.cfEnd; S.cf.keep = null; renderLens(); return; }
+  const keep = t.closest("[data-cf-keep]"); if (keep) { S.cf.keep = keep.dataset.cfKeep; renderLens(); return; }
+  if (t.closest("[data-cf-settle]")) { const c = ws.conflicts.find(x => x.id === S.conflict); if (settle(c)) render(); return; }
+  // tidy
+  if (t.closest("[data-tidyretire]")) { retireSheet([...S.tidySel]); return; }
+});
+$("lens").addEventListener("change", e => { const s = e.target.closest("[data-tsel]"); if (s) { s.checked ? S.tidySel.add(s.dataset.tsel) : S.tidySel.delete(s.dataset.tsel); renderLens(); } });
+$("lens").addEventListener("input", e => { if (e.target.id === "mynote" && S.sel) S.notes[S.sel] = e.target.value; });
+function keepNote() { const n = $("mynote"); if (n && S.sel) S.notes[S.sel] = n.value; }
+$("zonebar").addEventListener("click", e => { if (e.target.closest("[data-leave]")) leaveSession(); });
+$("goin").addEventListener("click", () => startSession("district", { q: $("goin").dataset.q }));
+$("lenses").addEventListener("click", e => {
+  if (e.target.closest("[data-retired]")) { S.showRetired = !S.showRetired; render(); return; }
+  const b = e.target.closest("[data-lens]"); if (!b) return; S.lens = b.dataset.lens; render();
+});
+$("me").innerHTML = Object.keys(ws.people).map(p => `<option${p === ws.you ? " selected" : ""}>${p}</option>`).join("");
+$("me").addEventListener("change", e => { ws.you = e.target.value; S.pend = {}; S.act = null; render(); });
+
+// ---------- Gestures (same as the Zoom Map) ----------
+const pts = new Map(); let gesture = null, moved = 0, downAt = null, lastTap = 0;
+const stage = $("stage");
+stage.addEventListener("pointerdown", e => {
+  if (e.target.closest(".zoomctl, .zonebar, .goin")) return;
+  stage.setPointerCapture(e.pointerId);
+  pts.set(e.pointerId, [e.clientX, e.clientY]); moved = 0; downAt = e.target;
+  gesture = { cam: [S.z, S.x, S.y], pts: new Map([...pts].map(([k, v]) => [k, [...v]])) };
+  cancelAnimationFrame(anim);
+});
+stage.addEventListener("pointermove", e => {
+  if (!pts.has(e.pointerId)) return;
+  const prev = pts.get(e.pointerId);
+  moved += Math.abs(e.clientX - prev[0]) + Math.abs(e.clientY - prev[1]);
+  pts.set(e.pointerId, [e.clientX, e.clientY]);
+  const v = view();
+  if (pts.size === 1) {
+    if (moved > 6) stage.classList.add("dragging");
+    const [[sx, sy]] = [...gesture.pts.values()];
+    setCam(gesture.cam[0], gesture.cam[1] + e.clientX - sx, gesture.cam[2] + e.clientY - sy);
+  } else if (pts.size === 2) {
+    const [a, b] = [...pts.values()], [a0, b0] = [...gesture.pts.values()]; if (!b0) return;
+    const d = Math.hypot(a[0] - b[0], a[1] - b[1]), d0 = Math.hypot(a0[0] - b0[0], a0[1] - b0[1]) || 1;
+    const mx = (a[0] + b[0]) / 2 - v.left, my = (a[1] + b[1]) / 2 - v.top, mx0 = (a0[0] + b0[0]) / 2 - v.left, my0 = (a0[1] + b0[1]) / 2 - v.top;
+    const z = Math.min(2.2, Math.max(minZ(), gesture.cam[0] * d / d0)), k = z / gesture.cam[0];
+    setCam(z, mx - (mx0 - gesture.cam[1]) * k, my - (my0 - gesture.cam[2]) * k);
+  }
+});
+stage.addEventListener("pointerup", e => {
+  if (!pts.has(e.pointerId)) return;
+  pts.delete(e.pointerId); stage.classList.remove("dragging");
+  if (pts.size === 0 && moved < 8 && downAt) tap(downAt, e);
+  if (pts.size) { gesture = { cam: [S.z, S.x, S.y], pts: new Map([...pts].map(([k, v]) => [k, [...v]])) }; moved = 99; }
+});
+stage.addEventListener("pointercancel", e => { pts.delete(e.pointerId); stage.classList.remove("dragging"); });
+function tap(target, e) {
+  const badge = target.closest(".clashbadge"); if (badge) { openConflict(badge.dataset.conflict); return; }
+  const far = target.closest(".far-lbl"); if (far) { const d = districts.find(x => x.q.id === far.dataset.q); fly(fitBox(d.x, d.y, d.w, d.h, 12, 1)); return; }
+  const card = target.closest(".card");
+  if (card && card.dataset.id !== "D" && !card.classList.contains("source")) { select(card.dataset.id, { follow: !!S.session }); return; }
+  const now = performance.now(), v = view();
+  if (now - lastTap < 320) { zoomAt(2, e.clientX - v.left, e.clientY - v.top); lastTap = 0; return; }
+  lastTap = now;
+}
+stage.addEventListener("wheel", e => {
+  e.preventDefault();
+  const v = view();
+  if (e.ctrlKey || e.deltaMode !== 0 || (Math.abs(e.deltaY) >= 40 && !e.deltaX)) zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0022)), e.clientX - v.left, e.clientY - v.top);
+  else setCam(S.z, S.x - e.deltaX, S.y - e.deltaY);
+}, { passive: false });
+$("zin").addEventListener("click", () => { const v = view(); zoomAt(1.6, v.w / 2, v.h / 2); });
+$("zout").addEventListener("click", () => { const v = view(); zoomAt(1 / 1.6, v.w / 2, v.h / 2); });
+$("zfit").addEventListener("click", () => fitAll());
+document.addEventListener("keydown", e => {
+  if (e.target.closest("textarea, input, select")) return;
+  if (!$("modal").hidden) { if (e.key === "Escape") $("modal").hidden = true; return; }
+  if (e.key === "Escape") { if (S.session) leaveSession(); else select(null); }
+  if (e.key === "ArrowLeft") walk(-1);
+  if (e.key === "ArrowRight") walk(1);
+  if (S.session && e.key === "j") nextInSession(false);
+  if (S.sel) { const k = { "1": "looks_right", "2": "needs_changes", "3": "disagree" }[e.key]; if (k) { S.pend = { v: k }; renderLens(); } }
+});
+// Refit after the lens changes height.
+new ResizeObserver(() => { if (S.sel) flyTo(S.sel); else if (S.conflict) { const c = ws.conflicts.find(x => x.id === S.conflict); flyToPair(c.a, c.b); } }).observe($("stage"));
+
+layout(); draw(); render();
+requestAnimationFrame(() => fitAll(false));
+// Deep links for screenshots
+const h = location.hash.slice(1);
+setTimeout(() => {
+  if (h === "zone") { const s = starts().find(x => x.kind === "ground"); startSession("ground", s); }
+  if (h === "conflict") openConflict("c1");
+  if (h === "maybe") openConflict("c2");
+  if (h === "tidy") startSession("tidy");
+  if (h === "owner") { ws.you = "Jordan"; $("me").value = "Jordan"; select(K("q1.f3").id); }
+  if (h === "walk") { select(K("q1.f0").id); setTimeout(() => walk(1), 500); setTimeout(() => walk(1), 1000); }
+}, 60);
+</script>
+</body>
+</html>

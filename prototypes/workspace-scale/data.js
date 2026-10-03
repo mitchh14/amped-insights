@@ -15,6 +15,7 @@
   const STATE = {
     needs_check: "Needs a check", checked_by_owner: "Checked by owner", checked_by_peers: "Checked by peers",
     checked_by_sme: "Checked by an SME", needs_changes: "Needs changes", disagreement: "Disagree",
+    retired: "Retired",
   };
   const VERDICT = { looks_right: "Looks right", needs_changes: "Needs changes", disagree: "Disagree" };
   const HOW = { evidence: "Read the evidence", source_data: "Checked the source data", reran: "Reran the numbers", judgment: "Used my judgment" };
@@ -329,9 +330,14 @@
     constructor(d) {
       Object.assign(this, d);
       this.you = YOU;
+      this.conflicts = d.conflicts || [];   // {id, a, b, confirmed, by, note, status: open|waiting|settled, outcome}
       this.people = PEOPLE;
       this.index = new Map();
       [...this.sources, ...this.blocks, this.decision].forEach(x => this.index.set(x.id, x));
+      this.relink();
+    }
+    // Who is built on whom. Called again after anything moves.
+    relink() {
       this.above = new Map();     // id -> blocks built on it
       this.index.forEach(x => this.above.set(x.id, []));
       [...this.blocks, this.decision].forEach(b => {
@@ -342,10 +348,13 @@
     get(id) { return this.index.get(id); }
     under(id) { const b = this.get(id); return [...(b.on || []), ...(b.src || [])]; }
     over(id) { return this.above.get(id) || []; }
-    latest(b) { const m = new Map(); b.checks.forEach(c => m.set(c.by, c)); return [...m.values()]; }
+    // Checks on the current wording only. Checks on an earlier version stay in history.
+    latest(b) { const m = new Map(); b.checks.filter(c => !c.old).forEach(c => m.set(c.by, c)); return [...m.values()]; }
     state(b) {
       if (b.level === "source") return "source";
       if (b.level === "decision") return "decision";
+      if (b.retired) return "retired";
+      if (this.conflictsOf(b).some(c => c.confirmed)) return "disagreement";
       const cs = this.latest(b);
       if (cs.some(c => c.verdict === "disagree")) return "disagreement";
       if (cs.some(c => c.verdict === "needs_changes")) return "needs_changes";
@@ -355,7 +364,7 @@
       if (cs.some(c => c.by === b.owner)) return "checked_by_owner";
       return "needs_check";
     }
-    unchecked(b) { const s = this.state(b); return s === "needs_check" || s === "needs_changes" || s === "disagreement"; }
+    unchecked(b) { const s = this.state(b); return s === "needs_check" || s === "needs_changes" || s === "disagreement" || s === "retired"; }
     trouble(b) { const s = this.state(b); return s === "needs_changes" || s === "disagreement" || this.restsOnNothing(b); }
     restsOnNothing(b) { return (b.level === "finding" || b.level === "insight") && !(b.on || []).length; }
     // Blocks under it, all the way down, that still need a check: the ⚠.
@@ -413,6 +422,37 @@
       return count;
     }
     check(b, by, verdict, how = null, note = "") { b.checks.push({ by, verdict, how, note, fresh: true }); }
+
+    // ---------- Conflicts, versions, retiring ----------
+    conflictsOf(b, all = false) { return this.conflicts.filter(c => (c.a === b.id || c.b === b.id) && (all || c.status !== "settled")); }
+    // A new version of the wording. Earlier checks move to history and checkers are asked to look again.
+    revise(b, text, by, note = "") {
+      b.versions = b.versions || [];
+      b.versions.push({ text: b.text, by, note });
+      b.checks.forEach(c => { c.old = true; });
+      b.text = text;
+      b.checks.push({ by: b.owner, verdict: "looks_right", how: null, note: note || "New version", fresh: true });
+    }
+    // Retire: out of the way, never erased. What was built on it is flagged, or moved onto its replacement.
+    retire(b, by, reason, other = null, move = false) {
+      b.retired = { by, reason, other };
+      if (other && move) {
+        this.over(b.id).forEach(id => { const x = this.get(id); x.on = x.on.map(y => y === b.id ? other : y).filter((y, i, a) => a.indexOf(y) === i); });
+        this.relink();
+      }
+    }
+    unretire(b) { delete b.retired; }
+    // Delete is only for a mistake: yours, unchecked by anyone else, nothing built on it, no conflict.
+    canDelete(b, me = this.you) {
+      return b.owner === me && !this.latest(b).some(c => c.by !== me) && !this.over(b.id).length && !this.conflictsOf(b, true).length;
+    }
+    remove(b) {
+      this.blocks = this.blocks.filter(x => x !== b);
+      this.index.delete(b.id);
+      this.relink();
+    }
+    restsOnRetired(b) { return (b.on || []).some(id => this.get(id).retired); }
+    live() { return this.blocks.filter(b => !b.retired); }
     questionState(qid) {
       const ins = this.blocks.filter(b => b.q === qid && b.level === "insight");
       if (ins.some(b => this.glow(b) && !this.weakBelow(b).length)) return "Answered";

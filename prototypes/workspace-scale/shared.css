@@ -87,6 +87,7 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 .s-checked_by_sme { background: var(--fill-sme); border-color: var(--fill-sme); }
 .s-needs_changes { background: var(--amber-bg); border-color: var(--amber); }
 .s-disagreement { background: var(--red-bg); border-color: var(--red); }
+.s-retired { background: repeating-linear-gradient(135deg, var(--line) 0 2px, transparent 2px 5px); border-color: var(--line); }
 .qchip { font-family: var(--f-mono); font-size: 10.5px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; color: var(--muted); }
 
 /* The detail and the check, shared by every prototype */

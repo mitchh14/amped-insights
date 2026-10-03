@@ -36,6 +36,8 @@
   th, td { text-align: left; padding: 10px 14px; border-top: 1px solid var(--line-soft); vertical-align: top; }
   thead th { border-top: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
   tbody th { font-weight: 600; width: 22%; }
+  .idea.new { box-shadow: 0 0 0 2px var(--accent), var(--shadow); }
+  .earlier { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 8px; }
   .note { font-size: 13px; color: var(--muted); max-width: 68ch; }
 </style>
 </head>
@@ -43,16 +45,74 @@
 <header class="bar">
   <span class="brand">ANCHOR</span>
   <span class="wsname">Prototypes for big workspaces</span>
-  <nav class="protos" aria-label="Prototypes"><a href="map.html">Map</a><a href="flow.html">Flow</a><a href="desk.html">Desk</a></nav>
+  <nav class="protos" aria-label="Prototypes"><a href="focus.html">Focus</a><a href="map.html">Map</a><a href="flow.html">Flow</a><a href="desk.html">Desk</a></nav>
 </header>
 <main class="page">
   <section class="intro">
     <h1>Workspace at Scale</h1>
-    <p>When a workspace grows past a few dozen blocks, the Build view turns into a wall of boxes and lines. It gets hard to see where the data flows, which findings rest on what, and what to check next. These are three different ways to handle that, all on the same big sample workspace.</p>
+    <p>When a workspace grows past a few dozen blocks, the Build view turns into a wall of boxes and lines. It gets hard to see where the data flows, which findings rest on what, and what to check next. Below are four ways to handle that, all on the same big sample workspace. The newest, Focus Map, mixes the Map and Flow ideas, and shows how conflicts get settled and how blocks get retired.</p>
     <div class="facts"><span><b>253</b> blocks</span><span><b>17</b> sources</span><span><b>6</b> sub-questions</span><span><b>1</b> decision</span><span>You are <b>Sam</b>, an SME</span></div>
     <p class="note">Each one is clickable and works on a phone. Checks you make stay until you reload. Nothing talks to the real core.</p>
   </section>
 
+  <section class="idea new" aria-labelledby="i4">
+    <div class="txt">
+      <span class="num">Idea 4 · Map and Flow together</span>
+      <h2 id="i4">Focus Map</h2>
+      <p>The map is where you look around. The lens docked under it is where you work: what this block is built on, the block itself, and what it holds up, like three flow columns. Tap a step in the lens and the map flies there, drawing your trail.</p>
+      <h3>Getting in the zone</h3>
+      <ul><li><b>Where to start</b> offers a few goals: settle conflicts, shore up the insight with the weakest ground, or tidy up.</li><li>Zoom into a sub-question and a <b>Go in</b> button appears.</li><li>Going in hides the tool bars, fades every block that is not part of the goal, and shows one quiet line: the goal and a row of dots. Arrow keys walk down and up the chain. Your notes stay private.</li><li>When you finish, your trail stays lit on the map.</li></ul>
+      <a class="btn primary try" href="focus.html">Try the Focus Map</a>
+    </div>
+    <div class="shots">
+      <figure class="ph"><img src="shots/phone-focus-start.jpg" alt="Focus Map on a phone: the plan with places to start below" loading="lazy"><figcaption>Where to start</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-focus-zone.jpg" alt="Focus Map on a phone in focus mode: one block, the rest faded" loading="lazy"><figcaption>Gone in: one goal, one block</figcaption></figure>
+      <figure class="dk"><img src="shots/desktop-focus-zone.jpg" alt="Focus Map on a desktop in focus mode: map above, three-column lens below" loading="lazy"><figcaption>Desktop: map above, the lens below</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="idea" aria-labelledby="c1">
+    <div class="txt">
+      <span class="num">How it works</span>
+      <h2 id="c1">When blocks conflict</h2>
+      <p>There are two kinds of trouble, and the app says which one it is.</p>
+      <ul>
+        <li><b>Someone disagrees with one block.</b> The owner picks how to answer: change the wording, add what it rests on, stand by it and ask an SME, or retire it. A new wording moves old checks to history and asks those checkers to look again.</li>
+        <li><b>Two blocks can't both be true.</b> A red zigzag joins them on the map. The conflict check can only suggest one (a dashed "?"). A person confirms it, and until then nothing changes.</li>
+      </ul>
+      <h3>Settling a conflict</h3>
+      <ul>
+        <li>See both side by side: what each rests on, how far it is checked, and what it holds up.</li>
+        <li>Pick an ending: <b>One holds</b> (the other is retired, and what was built on it can move across), <b>Both hold, each in its own scope</b> (narrow the wording of each), or <b>We can't tell yet</b> (it becomes an open question in the plan, and both stay marked Disagree).</li>
+        <li>Say why. Anyone can settle. The owners and everyone who checked either block hear about it, and can reopen it.</li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure class="ph"><img src="shots/phone-focus-conflict.jpg" alt="Settling a conflict on a phone: pick which one holds and say why" loading="lazy"><figcaption>Pick an ending, say why</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-focus-owner.jpg" alt="The owner's four ways to answer a disagreement" loading="lazy"><figcaption>The owner answers a disagreement</figcaption></figure>
+      <figure class="dk"><img src="shots/desktop-focus-conflict.jpg" alt="A conflict on a desktop: both blocks side by side, scoping the wording" loading="lazy"><figcaption>Desktop: both hold, each in its own scope</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="idea" aria-labelledby="c2">
+    <div class="txt">
+      <span class="num">How it works</span>
+      <h2 id="c2">Retiring and cleaning up</h2>
+      <p><b>Retire</b> is the normal way to clear something out. A retired block leaves the map, keeps its history, and can be brought back. You say why: out of date, out of scope, replaced by another block, same as another block, or wrong.</p>
+      <ul>
+        <li>Nothing loses its footing quietly. Blocks built on a retired one show "Rests on a retired block". If you named a replacement, one tap moves them onto it.</li>
+        <li><b>Delete</b> is only for your own mistake that nobody else has checked or built on. Everything else can only be retired.</li>
+        <li><b>Tidy up</b> finds what probably doesn't belong: blocks with the same words, AI drafts nobody checked and nothing is built on, and blocks resting on retired ones. Pick several and retire them together, with undo.</li>
+        <li>The <b>Retired</b> chip shows retired blocks on the map again, striped.</li>
+      </ul>
+    </div>
+    <div class="shots">
+      <figure class="ph"><img src="shots/phone-focus-retire.jpg" alt="Retiring a block on a phone: pick a reason and a replacement" loading="lazy"><figcaption>Retire, with a reason</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-focus-tidy.jpg" alt="Tidy up on a phone: duplicates and loose ends to retire" loading="lazy"><figcaption>Tidy up</figcaption></figure>
+    </div>
+  </section>
+
+  <h2 class="earlier">The first three ideas</h2>
   <section class="idea" aria-labelledby="i1">
     <div class="txt">
       <span class="num">Idea 1</span>
