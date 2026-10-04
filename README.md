@@ -14,17 +14,17 @@ See [docs/PROBLEM.md](docs/PROBLEM.md) for the problem, [PRINCIPLES.md](PRINCIPL
 
 The core of ANCHOR is one place to do analysis, built up like building blocks:
 
-1. **Base**: a workspace starts with its question and the decision it serves. Context (notes, quotes, data, queries, pasted AI text), the method, and notes for checkers make up the base everything rests on.
-2. **Blocks**: observations (what we saw) come from sources. Findings (what it means) are built on observations. Insights (what it means for us) are built on findings. What to do about them goes in a decision. One claim per block.
+1. **Base**: a workspace starts with its question and the decision it serves. Context (notes, quotes, data, queries, pasted AI text), the method, and notes for checkers make up the base everything is based on.
+2. **Blocks**: observations (what we saw) come from sources. Findings (what it means) are based on observations. Insights (what it means for us) are based on findings. What to do about them goes in a decision. One claim per block.
 3. **Made with AI, and said so**: every block records whether a person or an AI made it. An AI block says how confident the AI is (low, medium, high), why, and what it assumes. That is shown apart from checks and never counts as one.
 4. **Check**: a person checks each block: Looks right, Needs changes, or Disagree, and how they checked. An AI draft is checked by its owner first, then anyone can check it. Each block shows one state: Needs a check, Checked by owner, Checked by peers, Checked by an SME, Needs changes, or Disagreement.
-5. **Soft but visible checkpoint**: you can build on a block that still needs a check, but what you build shows ⚠ until it is checked. A block with nothing under it shows "Rests on nothing".
-6. **Break down AI text**: paste a long AI answer and ANCHOR splits it into draft blocks, one per claim, flags the claims that rest on nothing, and lists the words that take things as given. Your own AI tool can do a smarter job over MCP.
+5. **Soft but visible checkpoint**: you can build on a block that still needs a check, but what you build shows ⚠ until it is checked. A block with nothing under it shows "Unsupported".
+6. **Break down AI text**: paste a long AI answer and ANCHOR splits it into draft blocks, one per claim, flags the claims that are unsupported, and lists the words that take things as given. Your own AI tool can do a smarter job over MCP.
 7. **Package**: the checked insights a workspace shares together, each traceable down to its sources.
 8. **Sources are links**: something that lives elsewhere (a doc, sheet, dashboard, query, recording) is kept as a link, and each observation says the spot in it ("S7 at 18:02", "Row 4"), so anyone can open the source there and check.
-9. **Conflicts get settled, and old blocks get deleted**: when two blocks cannot both be true, a person settles it with a reason (one holds, both hold in their own scope, not a conflict, or can't tell yet, which adds an open sub-question). A block that no longer belongs is deleted.
+9. **Conflicts get resolved, and old blocks get retired**: when two blocks cannot both be true, a person resolves it with a reason (pick one, keep both and narrow each, not a conflict, or not sure yet, which adds an open sub-question). A block that no longer belongs is retired with a reason and can be brought back. The person who made a block can also delete it for good.
 
-Two views: **Build** shows the blocks stacked on the base, with faint lines to what each is built on (hover a block to trace its line). **List** shows them by what waits on you. A cabinet on the right holds the detail and the check, with a trail so you always know where you are. Break down AI text opens in the same place, and shows the pieces before anything is added. Decisions, narratives, and research requests come later; the core already has decisions and requests.
+Two views: **Build** shows the blocks stacked on the base, with faint lines to what each is based on (hover a block to trace its line). **List** shows them by what waits on you. A cabinet on the right holds the detail and the check, with a trail so you always know where you are. Break down AI text opens in the same place, and shows the pieces before anything is added. Decisions, narratives, and research requests come later; the core already has decisions and requests.
 
 The same actions work the same way from an AI tool (MCP) or the web app, because both call the same core functions. A team shapes it with one plain config file, `anchor.toml`.
 
@@ -111,7 +111,7 @@ Point the web app and the MCP server at the same database file and changes from 
 
 Everything is plain SQLite tables. There is no migration code yet: an older database is refused with a clear message, so start a new file.
 
-- **learnings** (blocks): `statement`, `level` (observation, finding, insight), `stage` (draft, shared, replaced), `origin` (person, person_with_ai, ai_agent), `owner`, `evidence` (the blocks it is built on), `source_ids` (the sources it came from), `confidence` (low, medium, high), `why`, `assumes`, `study_id`, `question_id` (the sub-question a finding or insight answers), `promoted_from`, `revises`, and who is working on it. Check state is not stored: it is worked out from the stage, reviews, and conflicts.
+- **learnings** (blocks): `statement`, `level` (observation, finding, insight), `stage` (draft, shared, replaced), `origin` (person, person_with_ai, ai_agent), `owner`, `evidence` (the blocks it is based on), `source_ids` (the sources it came from), `confidence` (low, medium, high), `why`, `assumes`, `study_id`, `question_id` (the sub-question a finding or insight answers), `promoted_from`, `revises`, and who is working on it. Check state is not stored: it is worked out from the stage, reviews, and conflicts.
 - **questions**: the plan of a workspace. Sub-questions, each with `text`, an optional `expect` (what we think we will find), and a `position`. Whether one is Open, In progress, or Answered is worked out from the blocks that answer it.
 - **sources**: context in a workspace. `kind` (note, quote, data, query, link, file, ai_text), `title`, `body`, `url`, who added it.
 - **reviews**: one row per review, never collapsed. `verdict` (approve, changes, disagree), `how` they checked, `note`, and the reviewer's `role` and SME standing at the time. A person's latest review counts; earlier ones stay visible.
@@ -179,7 +179,7 @@ Open by default. Roles inform, they never block, unless a team turns on a rule t
 - One check state per block, first match wins: Disagreement, Needs changes, Needs a check (an AI draft), Checked by an SME, Checked by peers, Checked by owner.
 - `check` is the one verb people use. For the owner of an AI draft it confirms it; for the owner of a block with changes asked, a new wording saves a new version; for anyone else it is a review. Blocks built on a revised block follow the newest version.
 - Building on unchecked blocks is allowed. The block built on them reports `unchecked_parts` (directly under it) and `deep_unchecked` (further down) until they are checked.
-- An observation with no source, or a finding or insight built on no blocks, reports `rests_on_nothing`.
+- An observation with no source, or a finding or insight based on no blocks, reports `rests_on_nothing` (shown as Unsupported).
 - A sub-question is Open when nothing answers it, In progress when findings or insights answer it, and Answered once an insight that answers it is Checked by peers or Checked by an SME. Already known lists checked blocks from other workspaces that share its words; drafts stay out.
 - AI confidence, why, and assumes are stored as the AI gave them. A block made with AI that leaves them out gets a warning. They never change the check state.
 - `break_down` is a plain text splitter with no AI: one draft block per sentence, a level guessed from cue words, and hedges or sweeping words listed as assumptions. With `preview` it writes nothing and returns the pieces; pass the ones to keep back as `blocks` (statement and level) to add exactly those.

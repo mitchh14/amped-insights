@@ -28,7 +28,7 @@ Researcher roles are shifting from executing every study personally to orchestra
 2. Transparency over authority. The system does not grant credibility by role. It makes the basis for credibility visible: who stated something, what evidence backs it, who reviewed it. Trust is earned by the work, not handed out by a badge.
 3. Not all learnings are equal, and the system should never pretend they are. An observation, a finding, and an insight are different things, and one that nobody has reviewed looks different from one an SME has checked.
 4. More than one person can review a learning. Reviews are shown individually, not merged into a single verdict, so agreement and disagreement are both visible.
-5. Contradictions get surfaced, not hidden or silently overwritten. When a new learning conflicts with a checked one, both stay visible as Contested and the conflict triggers a re-evaluation that a person settles, with a reason everyone involved can see.
+5. Contradictions get surfaced, not hidden or silently overwritten. When a new learning conflicts with a checked one, both stay visible as Contested and the conflict triggers a re-evaluation that a person resolves, with a reason everyone involved can see.
 6. Framework over system. This should be a small set of primitives (add, confirm, review, query, check for conflicts) that teams can run and adapt themselves, not a heavy platform people have to migrate into.
 7. Data stays where the org already trusts it, self-hosted by default, no required outbound calls, storage that stays boring and inspectable so the data always stays yours. See PRINCIPLES.md for the full reasoning.
 8. Everyone generates insights, by design. Review is open to everyone, with varied trust: the most trusted reviews come from the SMEs the team names, from any team. Roles inform, they never block.
@@ -55,7 +55,7 @@ See [docs/FLOW.md](docs/FLOW.md) for how these people move through the work mode
 
 Level says how far a learning goes, not how far to trust it. Anyone can add at any level, and one nobody has reviewed says so. A hypothesis is what a study sets out to test, not a level.
 
-Escalation path: observations are taken from sources, findings are built on observations, and insights are built on findings. Each is one claim, so each can be checked on its own. A block with nothing under it is shown as resting on nothing.
+Escalation path: observations are taken from sources, findings are based on observations, and insights are based on findings. Each is one claim, so each can be checked on its own. A block with nothing under it is shown as resting on nothing.
 
 When an AI makes a block, it states its confidence (low, medium, high), a one line why, and what it assumes. That helps the person checking it, and it never counts as a check.
 
@@ -64,8 +64,8 @@ When an AI makes a block, it states its confidence (low, medium, high), a one li
 - Each learning carries: who stated it, whether an AI drafted it and whether its owner confirmed it, what evidence backs it, and each review with who gave it, their role, whether they are an SME, and how they checked.
 - Multiple reviewers are allowed and expected. Their reviews stay visible individually, never collapsed. The learning shows one trust state, worked out from them: Not reviewed, Needs changes, Checked by peers, Checked by an SME, or Contested.
 - If a new learning conflicts with a checked one, a person can confirm the conflict and both become Contested rather than silently favoring one.
-- A person settles a conflict, with a reason: one holds (the other is deleted), both hold in their own scope (each gets a new version), not a conflict, or can't tell yet (it becomes an open sub-question).
-- A block that no longer belongs is deleted. Keeping only what is in use keeps the workspace clean and easy to trust.
+- A person resolves a conflict, with a reason: pick one (the other is retired), keep both, narrow each (each gets a new version), not a conflict, or not sure yet (it becomes an open sub-question).
+- A block that no longer belongs is retired, with a reason. It keeps its history and can be brought back. The person who made a block can also delete it for good, which keeps the workspace clean.
 - Sources that live elsewhere are kept as links, and each observation says the spot in its source, so anyone can open it there and check.
 
 ## Architecture shape

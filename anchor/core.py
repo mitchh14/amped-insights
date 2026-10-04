@@ -22,9 +22,12 @@ from . import config as config_mod
 LEVELS = ("observation", "finding", "insight")
 NEXT_LEVEL = {"observation": "finding", "finding": "insight"}
 # Where a learning is in its life. Made with AI starts as a draft until its
-# owner confirms it. Replaced means a newer version took its place. A block
-# that no longer belongs is deleted.
-STAGES = ("draft", "shared", "replaced")
+# owner confirms it. Replaced means a newer version took its place. Retired
+# means a person took it out of use, with a reason: it keeps its history and
+# can be brought back. Only the person who made a block can delete it.
+STAGES = ("draft", "shared", "replaced", "retired")
+# Stages that are no longer in use: left out of workspaces' live work.
+OUT_OF_USE = ("replaced", "retired")
 # Who made it. An AI agent always has a named person as owner.
 ORIGINS = ("person", "person_with_ai", "ai_agent")
 # A review's verdict. Only approve counts toward a learning being checked.
@@ -50,11 +53,11 @@ CONFIDENCE = ("low", "medium", "high")
 # What a piece of context in a workspace is. ai_text is pasted AI output, kept
 # whole so the blocks taken from it can point back to it.
 SOURCE_KINDS = ("note", "quote", "data", "query", "link", "file", "ai_text")
-# How a conflict between two learnings ends. One holds deletes the other.
-# Can't tell yet keeps both marked as a disagreement and adds an open
+# How a conflict between two learnings is resolved. Pick one retires the
+# other. Not sure yet keeps both marked as a disagreement and adds an open
 # sub-question to the plan.
-SETTLE_OUTCOMES = {"one_holds": "One holds", "both_hold": "Both hold, each in its own scope",
-                   "not_a_conflict": "Not a conflict", "cant_tell_yet": "Can't tell yet"}
+RESOLVE_OUTCOMES = {"pick_one": "Pick one", "keep_both": "Keep both, narrow each",
+                    "not_a_conflict": "Not a conflict", "not_sure_yet": "Not sure yet"}
 # The plan: how far each sub-question has got, worked out from its blocks.
 # Answered means an insight that answers it is checked by someone other than
 # its owner. Only findings and insights answer; observations sit under them.
@@ -76,6 +79,7 @@ TRUST_ORDER = tuple(TRUST_LABEL)
 # folds stage and trust together: a draft needs its owner's check, and a shared
 # block nobody else has reviewed is checked by its owner.
 CHECK_LABEL = {
+    "retired": "Retired",
     "disagreement": "Disagreement",
     "needs_changes": "Needs changes",
     "needs_check": "Needs a check",
@@ -86,7 +90,7 @@ CHECK_LABEL = {
 CHECK_FROM_TRUST = {"contested": "disagreement", "needs_changes": "needs_changes",
                     "checked_by_sme": "checked_by_sme", "checked_by_peers": "checked_by_peers",
                     "not_reviewed": "checked_by_owner"}
-# States a block can be built on, but that keep what is built on it flagged.
+# States a block can be based on, but that keep what is based on it flagged.
 UNCHECKED = ("disagreement", "needs_changes", "needs_check")
 # The three answers to a check, and the review verdict each becomes.
 CHECK_VERDICTS = {"looks_right": "approve", "needs_changes": "changes", "disagree": "disagree"}
@@ -120,6 +124,7 @@ CREATE TABLE IF NOT EXISTS learnings (
     promoted_from  INTEGER REFERENCES learnings(id),
     revises        INTEGER REFERENCES learnings(id),
     spots          TEXT NOT NULL DEFAULT '{{}}',  -- JSON: source id -> where in it this comes from
+    retired        TEXT,                         -- JSON: why, by whom, when, and what replaced it
     created_at     TEXT NOT NULL,
     working_by     TEXT,
     working_at     TEXT
@@ -157,7 +162,7 @@ CREATE TABLE IF NOT EXISTS review_requests (
 );
 
 -- A confirmed conflict between two learnings. Both stay visible. It stays
--- open until a person settles it, and the settling is kept with it.
+-- open until a person resolves it, and how it was resolved is kept with it.
 CREATE TABLE IF NOT EXISTS conflicts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     a            INTEGER NOT NULL REFERENCES learnings(id),
@@ -165,11 +170,11 @@ CREATE TABLE IF NOT EXISTS conflicts (
     by           TEXT NOT NULL,
     at           TEXT NOT NULL,
     note         TEXT,
-    status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'waiting', 'settled')),
+    status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'waiting', 'resolved')),
     outcome      TEXT,
-    settled_by   TEXT,
-    settled_at   TEXT,
-    settle_note  TEXT,
+    resolved_by   TEXT,
+    resolved_at   TEXT,
+    resolve_note  TEXT,
     question_id  INTEGER REFERENCES questions(id)
 );
 
@@ -630,7 +635,7 @@ class Store:
     def _conflict_ids(conn, learning_id: int) -> list[int]:
         return [r[0] for r in conn.execute(
             "SELECT CASE WHEN a = ? THEN b ELSE a END FROM conflicts WHERE (a = ? OR b = ?) "
-            "AND status != 'settled' ORDER BY id",
+            "AND status != 'resolved' ORDER BY id",
             (learning_id, learning_id, learning_id),
         )]
 
@@ -688,12 +693,16 @@ class Store:
             return {"key": "draft", "label": "Draft"}
         if row["stage"] == "replaced":
             return {"key": "replaced", "label": "Replaced"}
+        if row["stage"] == "retired":
+            return {"key": "retired", "label": "Retired"}
         return {"key": trust["state"], "label": trust["label"]}
 
     def _check(self, conn, row: sqlite3.Row, trust: dict[str, Any] | None = None) -> dict[str, str]:
         """The one check state a block shows: stage and trust folded together."""
         if row["stage"] == "replaced":
             return {"state": "replaced", "label": "Replaced"}
+        if row["stage"] == "retired":
+            return {"state": "retired", "label": "Retired"}
         if row["stage"] == "draft":
             state = "needs_check"
         else:
@@ -702,7 +711,7 @@ class Store:
 
     @staticmethod
     def _latest(conn, learning_id: int) -> int:
-        """Follow revisions to the newest version, so what a block is built on
+        """Follow revisions to the newest version, so what a block is based on
         always points at the version people see."""
         seen = {learning_id}
         while True:
@@ -714,12 +723,12 @@ class Store:
             seen.add(learning_id)
 
     def _parts(self, conn, row: sqlite3.Row) -> dict[str, Any]:
-        """What a block rests on, and how much of that is still unchecked.
+        """What a block is based on, and how much of that is still unchecked.
 
         unchecked_parts counts the blocks directly under it that need a check,
         need changes, or have a disagreement. deep_unchecked counts the same
         further down. rests_on_nothing is true when an observation cites no
-        source, or a finding or insight is built on no blocks.
+        source, or a finding or insight is based on no blocks.
         """
         built_on = []
         for e in json.loads(row["evidence"]):
@@ -753,14 +762,16 @@ class Store:
             "SELECT 1 FROM sources WHERE id = ? AND url IS NOT NULL AND body IS NULL", (sid,)).fetchone()]
         return {"built_on": built_on, "source_ids": source_ids, "unchecked_parts": len(direct),
                 "unchecked_ids": direct, "deep_unchecked": len(deep), "rests_on_nothing": nothing,
+                "based_on_retired": [e for e in built_on if state_of(e) == "retired"],
                 "spots": spots, "no_spot": no_spot}
 
     def _block(self, conn, row: sqlite3.Row) -> dict[str, Any]:
         """A block as the workbench draws it: what it says, its one check state,
-        what it rests on, and what the AI said about it."""
+        what it is based on, and what the AI said about it."""
         return {"id": row["id"], "statement": row["statement"], "level": row["level"], "stage": row["stage"],
                 "origin": row["origin"], "owner": row["owner"], "study_id": row["study_id"],
                 "question_id": row["question_id"], "check": self._check(conn, row),
+                "retired": json.loads(row["retired"]) if row["retired"] else None,
                 "conflicts": self._conflict_ids(conn, row["id"]),
                 **self._ai_said(row), **self._parts(conn, row)}
 
@@ -853,7 +864,7 @@ class Store:
         for c in conn.execute("SELECT * FROM conflicts WHERE a = ? OR b = ? ORDER BY id", (lid, lid)):
             other = c["b"] if c["a"] == lid else c["a"]
             conflicts.append({"id": c["id"], "with": self._brief(conn, self._row(conn, other)), "by": c["by"],
-                              "at": c["at"], "note": c["note"], **self._settled(c)})
+                              "at": c["at"], "note": c["note"], **self._resolved(c)})
         links = {"builds_on": [], "built_on_by": [], "same_as": []}
         for link in conn.execute("SELECT * FROM links WHERE from_id = ? OR to_id = ? ORDER BY id", (lid, lid)):
             outgoing = link["from_id"] == lid
@@ -899,6 +910,7 @@ class Store:
             "sources": [{**dict(r), "spot": json.loads(row["spots"]).get(str(r["id"]))} for r in conn.execute(
                 "SELECT s.id, s.kind, s.title, s.body, s.url FROM sources s, json_each(?) j WHERE s.id = j.value",
                 (row["source_ids"],))],
+            "retired": json.loads(row["retired"]) if row["retired"] else None,
             "study": {k: srow[k] for k in ("id", "question", "decision", "status")} if srow else None,
             "answers": dict(qrow) if qrow else None,
             "evidence_ids": evidence_ids,
@@ -965,20 +977,20 @@ class Store:
         """Learnings that match a topic or question, best match first.
 
         An empty topic returns the most recent. trust filters by chip: one of
-        the trust states, or draft or replaced. Replaced learnings are left out
-        unless asked for.
+        the trust states, or draft, replaced, or retired. Replaced and retired
+        learnings are left out unless asked for.
         """
         if level and level not in LEVELS:
             raise CoreError(f"level must be one of {LEVELS}")
-        chips = TRUST_ORDER + ("draft", "replaced")
+        chips = TRUST_ORDER + ("draft", "replaced", "retired")
         if trust and trust not in chips:
             raise CoreError(f"trust must be one of {chips}")
         sql, args = "SELECT * FROM learnings WHERE 1=1", []
         if level:
             sql += " AND level = ?"
             args.append(level)
-        if trust != "replaced":
-            sql += " AND stage != 'replaced'"
+        if trust not in OUT_OF_USE:
+            sql += " AND stage NOT IN ('replaced', 'retired')"
         wanted = topic_tokens(topic or "")
         with self._conn() as conn:
             out = []
@@ -1049,14 +1061,18 @@ class Store:
             return f"{a} linked: #{d['source']} {LINK_SAID[d['type']]} #{d['target']}"
         if kind == "conflict_flagged":
             return f"{a} flagged a conflict between {ref} and #{d['with']}"
-        if kind == "conflict_settled":
-            if d.get("outcome") == "cant_tell_yet":
+        if kind == "conflict_resolved":
+            if d.get("outcome") == "not_sure_yet":
                 return f"{a} added an open question about the conflict between {ref} and #{d['with']}"
-            return f"{a} settled the conflict between {ref} and #{d['with']}: {SETTLE_OUTCOMES[d['outcome']]}"
-        if kind == "deleted":
-            return f"{a} deleted #{d.get('id')}: \"{_short(d.get('statement'))}\""
+            return f"{a} resolved the conflict between {ref} and #{d['with']}: {RESOLVE_OUTCOMES[d['outcome']]}"
+        if kind == "retired":
+            return f"{a} retired {ref}: {d.get('reason')}"
+        if kind == "brought_back":
+            return f"{a} brought {ref} back into use"
         if kind == "spot_set":
             return f"{a} said where {ref} comes from: {d.get('spot')}"
+        if kind == "deleted":
+            return f"{a} deleted #{d.get('id')}: \"{_short(d.get('statement'))}\""
         if kind == "source_updated":
             return f"{a} updated the source \"{d.get('title')}\" in {study}"
         if kind == "source_deleted":
@@ -1116,7 +1132,7 @@ class Store:
             return self._events(conn, "e.kind != 'moment'", (), limit)
 
     def history(self, learning_id: int) -> list[dict[str, Any]]:
-        """Every change to one learning, oldest first."""
+        """Every change to one learning, oldest first. Nothing is erased."""
         with self._conn() as conn:
             self._row(conn, learning_id)
             return list(reversed(self._events(conn, "e.learning_id = ? AND e.kind != 'moment'", (learning_id,))))
@@ -1212,7 +1228,8 @@ class Store:
         if origin not in ORIGINS:
             raise CoreError(f"origin must be one of {ORIGINS}")
         for e in evidence:
-            self._row(conn, e)
+            if self._row(conn, e)["stage"] == "retired":
+                raise CoreError(f"#{e} is retired; build on what replaced it, or bring it back first")
         if study_id is not None:
             study_id = self._study_row(conn, int(study_id))["id"]
         said = said or self._said(conn, study_id)
@@ -1268,7 +1285,7 @@ class Store:
         origin says who made it: person, person_with_ai, or ai_agent. Anything
         made with AI starts as a draft until its owner checks it. source_ids
         are the workspace sources it was taken from; evidence is the blocks it
-        is built on. An AI that made it says how confident it is (low, medium,
+        is based on. An AI that made it says how confident it is (low, medium,
         high), why, and what it assumes. That never counts as a check. A
         finding or insight can say which of the workspace's sub-questions it
         answers (question_id). An observation says where in each source it
@@ -1288,11 +1305,11 @@ class Store:
                                question_id=question_id)
             no_spot = self._parts(conn, self._row(conn, lid))["no_spot"]
         if level == "observation" and not said["source_ids"] and study_id is not None:
-            warnings.append("this observation cites no source, so it rests on nothing yet")
+            warnings.append("this observation cites no source, so it is unsupported")
         if no_spot:
             warnings.append("say where in the linked source this comes from, so a checker can open it there")
         if level != "observation" and not evidence:
-            warnings.append(f"this {self._level_label(level).lower()} is built on nothing yet")
+            warnings.append(f"this {self._level_label(level).lower()} is not based on any blocks yet, so it is unsupported")
         if origin != "person" and not (said["confidence"] and said["why"]):
             warnings.append("say how confident the AI is and why, so a checker can judge it")
         return self._created(lid, warnings)
@@ -1352,7 +1369,7 @@ class Store:
             if state == "contested":
                 warnings.append(f"#{learning_id} is contested; its conflict is not resolved")
             if row["level"] != "observation" and not json.loads(row["evidence"]):
-                warnings.append(f"#{learning_id} has no evidence, so this rests on it alone")
+                warnings.append(f"#{learning_id} has no evidence, so this is based on it alone")
             new = (statement or "").strip() or row["statement"]
             lid = self._insert(conn, new, to, by, [learning_id], row["study_id"], origin, promoted_from=learning_id,
                                question_id=row["question_id"])
@@ -1376,6 +1393,8 @@ class Store:
             if row["stage"] == "replaced":
                 newer = conn.execute("SELECT id FROM learnings WHERE revises = ?", (learning_id,)).fetchone()
                 raise CoreError(f"#{learning_id} is already replaced by #{newer[0]}; revise that one")
+            if row["stage"] == "retired":
+                raise CoreError(f"#{learning_id} is retired; bring it back first")
             if statement == row["statement"]:
                 raise CoreError("the new version says the same thing; change the wording to revise")
             warnings = []
@@ -1433,6 +1452,8 @@ class Store:
             if row["stage"] == "replaced":
                 newer = conn.execute("SELECT id FROM learnings WHERE revises = ?", (learning_id,)).fetchone()
                 raise CoreError(f"#{learning_id} was replaced by #{newer[0]}; review that one")
+            if row["stage"] == "retired":
+                raise CoreError(f"#{learning_id} is retired; bring it back before checking it")
             warnings = []
             if row["working_by"] and row["working_by"] != by:
                 warnings.append(f"{row['working_by']} is working on #{learning_id}; your review still counts")
@@ -1529,7 +1550,8 @@ class Store:
         builds_on: from_id builds on to_id.
         same_as: the two say the same thing.
         conflicts_with: a person confirms they conflict; both become Contested
-        until someone settles it (settle_conflict).
+        until someone resolves it (resolve_conflict). A resolved conflict can be
+        flagged again.
         """
         if type not in LINK_TYPES:
             raise CoreError(f"type must be one of {LINK_TYPES}")
@@ -1541,7 +1563,7 @@ class Store:
             source, target = self._row(conn, from_id), self._row(conn, to_id)
             if type == "conflicts_with":
                 if conn.execute("SELECT 1 FROM conflicts WHERE ((a = ? AND b = ?) OR (a = ? AND b = ?)) "
-                                "AND status != 'settled'", (from_id, to_id, to_id, from_id)).fetchone():
+                                "AND status != 'resolved'", (from_id, to_id, to_id, from_id)).fetchone():
                     raise CoreError(f"#{from_id} and #{to_id} are already flagged as in conflict")
                 before = {r["id"]: self._trust(conn, r["id"])["state"] for r in (source, target)}
                 conn.execute("INSERT INTO conflicts (a, b, by, at, note) VALUES (?, ?, ?, ?, ?)",
@@ -1652,7 +1674,7 @@ class Store:
         study = dict(row)
         study["fields"] = json.loads(row["fields"])
         learnings = [self._full(conn, r) for r in conn.execute(
-            "SELECT * FROM learnings WHERE study_id = ? AND stage != 'replaced' ORDER BY id", (row["id"],))]
+            "SELECT * FROM learnings WHERE study_id = ? AND stage NOT IN ('replaced', 'retired') ORDER BY id", (row["id"],))]
         drow = conn.execute("SELECT * FROM decisions WHERE id = ?", (row["from_decision_id"],)).fetchone()
         study["from_decision"] = {k: drow[k] for k in ("id", "title", "made_by", "at")} if drow else None
         study["by_level"] = {lv: [x for x in learnings if x["level"] == lv] for lv in LEVELS}
@@ -1683,7 +1705,7 @@ class Store:
                 study = dict(r)
                 study["fields"] = json.loads(r["fields"])
                 study["learning_count"] = conn.execute(
-                    "SELECT COUNT(*) FROM learnings WHERE study_id = ? AND stage != 'replaced'", (r["id"],)).fetchone()[0]
+                    "SELECT COUNT(*) FROM learnings WHERE study_id = ? AND stage NOT IN ('replaced', 'retired')", (r["id"],)).fetchone()[0]
                 study["needs"] = self._study_needs(study)
                 counts = {k: 0 for k in CHECK_LABEL}
                 for r2 in conn.execute("SELECT * FROM learnings WHERE study_id = ? AND stage != 'replaced'", (r["id"],)):
@@ -1783,7 +1805,7 @@ class Store:
     # -- the workbench ----------------------------------------------------
 
     def _base(self, conn, study: sqlite3.Row) -> list[dict[str, Any]]:
-        """The four parts every block rests on, and whether each is in place.
+        """The four parts every block is based on, and whether each is in place.
         The plan is in place once the question, the decision, and at least one
         sub-question are set."""
         n = conn.execute("SELECT COUNT(*) FROM sources WHERE study_id = ?", (study["id"],)).fetchone()[0]
@@ -1800,9 +1822,9 @@ class Store:
         """Everything the workbench draws for one workspace: the question and
         decision, the plan (sub-questions, how far each has got, and what other
         workspaces already know), the base (context, method, notes), the
-        sources, every current block with its check state, what it rests on,
-        and the spot in each source, the conflicts still open, and the
-        package."""
+        sources (with what someone last found when opening each), every
+        current block with its check state and what it is based on (retired ones
+        included, marked), the conflicts still open, and the package."""
         with self._conn() as conn:
             row = self._study_row(conn, study_id)
             blocks = [self._block(conn, r) for r in conn.execute(
@@ -1813,14 +1835,15 @@ class Store:
         counts = {k: 0 for k in CHECK_LABEL}
         for b in blocks:
             counts[b["check"]["state"]] += 1
+        live = {b["id"] for b in blocks if b["stage"] != "retired"}
         ids = {b["id"] for b in blocks}
         with self._conn() as conn:
             conflicts = [self._conflict(conn, c) for c in conn.execute(
-                "SELECT * FROM conflicts WHERE status != 'settled' ORDER BY id") if c["a"] in ids or c["b"] in ids]
+                "SELECT * FROM conflicts WHERE status != 'resolved' ORDER BY id") if c["a"] in ids or c["b"] in ids]
         return {"id": row["id"], "question": row["question"], "decision": row["decision"], "method": row["method"],
                 "notes": row["notes"], "owner": row["owner"], "status": row["status"], "base": base,
                 "plan": plan, "sources": sources, "blocks": blocks, "counts": counts, "conflicts": conflicts,
-                "package": [i for i in json.loads(row["package"]) if i in ids]}
+                "package": [i for i in json.loads(row["package"]) if i in live]}
 
     # -- the plan ---------------------------------------------------------
 
@@ -1863,7 +1886,7 @@ class Store:
         """Each sub-question, the current blocks that answer it, and its state."""
         out = []
         for q in conn.execute("SELECT * FROM questions WHERE study_id = ? ORDER BY position, id", (study_id,)):
-            rows = conn.execute("SELECT * FROM learnings WHERE question_id = ? AND stage != 'replaced' ORDER BY id",
+            rows = conn.execute("SELECT * FROM learnings WHERE question_id = ? AND stage NOT IN ('replaced', 'retired') ORDER BY id",
                                 (q["id"],)).fetchall()
             checks = {r["id"]: self._check(conn, r)["state"] for r in rows}
             answered_by = [r["id"] for r in rows if r["level"] == "insight" and checks[r["id"]] in CHECKED]
@@ -2059,7 +2082,7 @@ class Store:
 
     def delete_source(self, source_id: int, by: str) -> dict[str, Any]:
         """Delete a source. Observations that cited it no longer do, and any
-        left citing nothing show that they rest on nothing."""
+        left citing nothing show as unsupported."""
         with self._conn() as conn:
             by = self._person(conn, by, "by")
             row = self._source_row(conn, source_id)
@@ -2093,24 +2116,91 @@ class Store:
             self._log(conn, learning_id, "spot_set", by, row["study_id"], source_id=sid, spot=spots[str(sid)])
         return {"learning": self.get(learning_id), "warnings": []}
 
+    def retire(self, learning_id: int, by: str, reason: str | None = None, replaced_by: int | None = None,
+               move: bool = False) -> dict[str, Any]:
+        """Take a block out of use, with a reason: out of date, out of scope,
+        wrong, a mistake, or replaced by (or the same as) another block. It is
+        never deleted. It leaves the workspace's live work, keeps its history,
+        and can be brought back. Blocks based on it show that they are based on a
+        retired block. With replaced_by and move, they are moved onto the
+        replacement instead. Anyone can retire; the owner and everyone who
+        checked it hear about it."""
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            by = self._person(conn, by, "by")
+            if row["stage"] == "retired":
+                raise CoreError(f"#{learning_id} is already retired")
+            if row["stage"] == "replaced":
+                raise CoreError(f"#{learning_id} was replaced by a newer version; retire that one")
+            other = None
+            if replaced_by not in (None, ""):
+                other = self._row(conn, int(replaced_by))
+                if other["id"] == row["id"] or other["stage"] in OUT_OF_USE:
+                    raise CoreError(f"#{other['id']} cannot replace #{learning_id}; pick a block in use")
+            reason = _clean(reason) or (f"Replaced by #{other['id']}" if other else None)
+            if not reason:
+                raise CoreError("say why it is retired")
+            if move and other is None:
+                raise CoreError("say which block replaces it, to move what is based on it")
+            info = {"reason": reason, "by": by, "at": _now(), "stage": row["stage"],
+                    "replaced_by": other["id"] if other else None}
+            conn.execute("UPDATE learnings SET stage = 'retired', retired = ? WHERE id = ?",
+                         (json.dumps(info), learning_id))
+            moved = []
+            for up in conn.execute("SELECT l.* FROM learnings l, json_each(l.evidence) j WHERE j.value = ? "
+                                   "AND l.stage NOT IN ('replaced', 'retired')", (learning_id,)).fetchall():
+                if move:
+                    ev = sorted({other["id"] if e == learning_id else e for e in json.loads(up["evidence"])})
+                    conn.execute("UPDATE learnings SET evidence = ? WHERE id = ?", (json.dumps(ev), up["id"]))
+                    moved.append(up["id"])
+            conn.execute("UPDATE review_requests SET status = 'withdrawn', closed_by = ?, closed_at = ? "
+                         "WHERE learning_id = ? AND status = 'open'", (by, _now(), learning_id))
+            self._log(conn, learning_id, "retired", by, row["study_id"], reason=reason,
+                      replaced_by=info["replaced_by"], moved=moved)
+            for u in conn.execute("SELECT decision_id FROM decision_uses WHERE learning_id = ?", (learning_id,)).fetchall():
+                self._log(conn, learning_id, "decision_at_risk", by, None, u["decision_id"])
+        warnings = []
+        resting = [b for b in self.get(learning_id)["supports"] if b["stage"] not in OUT_OF_USE]
+        if resting and not move:
+            warnings.append(f"{len(resting)} block{'s' if len(resting) != 1 else ''} based on it now "
+                            f"{'are' if len(resting) != 1 else 'is'} based on a retired block")
+        return {"learning": self.get(learning_id), "moved": moved, "warnings": warnings}
+
+    def bring_back(self, learning_id: int, by: str, note: str | None = None) -> dict[str, Any]:
+        """Put a retired block back into use, as it was before. Its checks
+        stay; it needs no new ones unless someone asks."""
+        with self._conn() as conn:
+            row = self._row(conn, learning_id)
+            by = self._person(conn, by, "by")
+            if row["stage"] != "retired":
+                raise CoreError(f"#{learning_id} is not retired")
+            info = json.loads(row["retired"])
+            conn.execute("UPDATE learnings SET stage = ?, retired = NULL WHERE id = ?",
+                         (info.get("stage") or "shared", learning_id))
+            self._log(conn, learning_id, "brought_back", by, row["study_id"], reason=info.get("reason"),
+                      note=_clean(note))
+        return {"learning": self.get(learning_id), "warnings": []}
+
     def delete(self, learning_id: int, by: str, move_to: int | None = None) -> dict[str, Any]:
-        """Delete a block, with its earlier versions, checks, and history.
-        Blocks built on it lose it from what they rest on. With move_to, they
-        rest on that block instead, which suits a duplicate or a better
-        version. Anyone can delete. Its owner and checkers hear that it went."""
+        """Delete a block for good, with its earlier versions, checks, and
+        history. Only the person who made it can delete it; anyone can retire
+        it instead. Blocks based on it lose it, or with move_to, are based on
+        that block instead. Its checkers hear that it went."""
         with self._conn() as conn:
             row = self._row(conn, learning_id)
             by = self._person(conn, by, "by")
             if row["stage"] == "replaced":
                 newer = self._latest(conn, learning_id)
                 raise CoreError(f"#{learning_id} is an earlier version of #{newer}; delete that one")
+            if by != row["owner"]:
+                raise CoreError(f"only {row['owner']}, who made #{learning_id}, can delete it; you can retire it")
             ids = [learning_id]  # the block and every earlier version of it
             while (prev := conn.execute("SELECT revises FROM learnings WHERE id = ?", (ids[-1],)).fetchone()[0]):
                 ids.append(prev)
             target = None
             if move_to not in (None, ""):
                 target = self._row(conn, int(move_to))
-                if target["id"] in ids or target["stage"] == "replaced":
+                if target["id"] in ids or target["stage"] in OUT_OF_USE:
                     raise CoreError(f"#{target['id']} cannot take its place; pick another block in use")
             marks = ",".join("?" * len(ids))
             checked_by = sorted({r[0] for r in conn.execute(
@@ -2145,87 +2235,80 @@ class Store:
         return {"deleted": learning_id, "moved": moved, "warnings": []}
 
     @staticmethod
-    def _settled(c: sqlite3.Row) -> dict[str, Any]:
+    def _resolved(c: sqlite3.Row) -> dict[str, Any]:
         return {"status": c["status"], "outcome": c["outcome"],
-                "outcome_label": SETTLE_OUTCOMES.get(c["outcome"]) if c["outcome"] else None,
-                "settled_by": c["settled_by"], "settled_at": c["settled_at"], "settle_note": c["settle_note"],
+                "outcome_label": RESOLVE_OUTCOMES.get(c["outcome"]) if c["outcome"] else None,
+                "resolved_by": c["resolved_by"], "resolved_at": c["resolved_at"], "resolve_note": c["resolve_note"],
                 "question_id": c["question_id"]}
 
     def _conflict(self, conn, c: sqlite3.Row) -> dict[str, Any]:
         return {"id": c["id"], "a": self._brief(conn, self._row(conn, c["a"])),
                 "b": self._brief(conn, self._row(conn, c["b"])), "by": c["by"], "at": c["at"], "note": c["note"],
-                **self._settled(c)}
+                **self._resolved(c)}
 
-    def settle_conflict(self, conflict_id: int, by: str, outcome: str, note: str, keep: int | None = None,
+    def resolve_conflict(self, conflict_id: int, by: str, outcome: str, note: str, keep: int | None = None,
                         statements: dict[str, str] | None = None, question: str | None = None,
                         move: bool = False) -> dict[str, Any]:
-        """End a conflict between two blocks, and say why.
+        """Resolve a conflict between two blocks, and say why.
 
-        one_holds: keep is the block that holds; the other is deleted. With
-        move, what was built on the other rests on the one that holds.
-        both_hold: each is true in its own scope; statements gives new wording
-        for a and b (either or both), written as new versions.
+        pick_one: keep is the block to keep; the other is retired, as replaced
+        by it. With move, what was based on the other moves onto it.
+        keep_both: each is true in different cases; statements gives narrower
+        wording for a and b (either or both), written as new versions.
         not_a_conflict: they fit together after all.
-        cant_tell_yet: we need to find out. An open sub-question is added to
+        not_sure_yet: we need to find out. An open sub-question is added to
         the plan (question, or one made from the two), and both stay marked as
-        a disagreement until someone settles it.
+        a disagreement until someone resolves it.
 
-        Anyone can settle a conflict. Its owners and everyone who checked
-        either block hear about it."""
-        if outcome not in SETTLE_OUTCOMES:
-            raise CoreError(f"outcome must be one of {tuple(SETTLE_OUTCOMES)}")
+        Anyone can resolve a conflict. Its owners and everyone who checked
+        either block hear about it, and can flag it again."""
+        if outcome not in RESOLVE_OUTCOMES:
+            raise CoreError(f"outcome must be one of {tuple(RESOLVE_OUTCOMES)}")
         note = self._require(note, "note")
         with self._conn() as conn:
             by = self._person(conn, by, "by")
             c = conn.execute("SELECT * FROM conflicts WHERE id = ?", (int(conflict_id),)).fetchone()
             if c is None:
                 raise CoreError(f"conflict {conflict_id} does not exist")
-            if c["status"] == "settled":
-                raise CoreError(f"conflict {conflict_id} is already settled")
+            if c["status"] == "resolved":
+                raise CoreError(f"conflict {conflict_id} is already resolved")
             a, b = self._row(conn, c["a"]), self._row(conn, c["b"])
         result: dict[str, Any] = {"warnings": []}
-        status, question_id = "settled", None
-        if outcome == "one_holds":
+        status, question_id = "resolved", None
+        if outcome == "pick_one":
             if keep is None or int(keep) not in (a["id"], b["id"]):
-                raise CoreError(f"keep must be #{a['id']} or #{b['id']}")
+                raise CoreError(f"pick #{a['id']} or #{b['id']} to keep")
             lose = b if int(keep) == a["id"] else a
-            with self._conn() as conn:
-                before = self._trust(conn, int(keep))["state"]
-                conn.execute("UPDATE conflicts SET status = 'settled', outcome = ?, settled_by = ?, settled_at = ?, "
-                             "settle_note = ? WHERE id = ?", (outcome, by, _now(), note, c["id"]))
-                self._log(conn, int(keep), "conflict_settled", by, a["study_id"], **{"with": lose["id"]},
-                          outcome=outcome, note=note, deleted=lose["id"])
-                self._retrust(conn, int(keep), before, by, "conflict_settled")
-                settled = self._settled(conn.execute("SELECT * FROM conflicts WHERE id = ?", (c["id"],)).fetchone())
-            self.delete(lose["id"], by, int(keep) if move else None)
-            return {"deleted": lose["id"], "conflict": {"id": c["id"], **settled}, "warnings": []}
-        elif outcome == "both_hold":
+            out = self.retire(lose["id"], by, f"Lost a conflict with #{int(keep)}", int(keep), move)
+            result["retired"] = lose["id"]
+            result["warnings"] += out["warnings"]
+        elif outcome == "keep_both":
             new = {k: (v or "").strip() for k, v in (statements or {}).items() if k in ("a", "b")}
             changed = {k: v for k, v in new.items() if v and v != {"a": a, "b": b}[k]["statement"]}
             if not changed:
-                raise CoreError("give new wording for a or b that says when each one holds")
+                raise CoreError("give narrower wording for a or b that says when each is true")
             result["revised"] = {}
             for k, text in changed.items():
                 row = {"a": a, "b": b}[k]
-                out = self.revise(row["id"], by, text, f"Scoped to settle a conflict: {note}")
+                out = self.revise(row["id"], by, text, f"Narrowed to resolve a conflict: {note}")
                 result["revised"][k] = out["learning"]["id"]
-                result["warnings"] += [w for w in out["warnings"] if "revising does not resolve" not in w]
-        elif outcome == "cant_tell_yet":
+                result["warnings"] += [w for w in out["warnings"] if "does not resolve" not in w]
+        elif outcome == "not_sure_yet":
             study = a["study_id"] or b["study_id"]
             if study is None:
                 raise CoreError("these blocks are in no workspace, so there is no plan to add a question to")
-            text = (question or "").strip() or f"Which holds: \"{_short(a['statement'])}\" or \"{_short(b['statement'])}\"?"
+            text = (question or "").strip() or f"Which one: \"{_short(a['statement'])}\" or \"{_short(b['statement'])}\"?"
             question_id = self.add_question(study, by, text)["question"]["id"]
             status = "waiting"
         with self._conn() as conn:
             before = {r["id"]: self._trust(conn, r["id"])["state"] for r in (a, b)}
-            conn.execute("UPDATE conflicts SET status = ?, outcome = ?, settled_by = ?, settled_at = ?, settle_note = ?, "
+            conn.execute("UPDATE conflicts SET status = ?, outcome = ?, resolved_by = ?, resolved_at = ?, resolve_note = ?, "
                          "question_id = ? WHERE id = ?", (status, outcome, by, _now(), note, question_id, c["id"]))
             for r, other in ((a, b["id"]), (b, a["id"])):
-                self._log(conn, r["id"], "conflict_settled", by, r["study_id"], **{"with": other}, outcome=outcome,
+                self._log(conn, r["id"], "conflict_resolved", by, r["study_id"], **{"with": other}, outcome=outcome,
                           note=note, question_id=question_id)
-                if r["stage"] != "replaced":
-                    self._retrust(conn, r["id"], before[r["id"]], by, "conflict_settled")
+                if r["stage"] not in OUT_OF_USE:
+                    self._retrust(conn, r["id"], before[r["id"]], by, "conflict_resolved")
             result["conflict"] = self._conflict(conn, conn.execute("SELECT * FROM conflicts WHERE id = ?",
                                                                    (c["id"],)).fetchone())
         return result
@@ -2249,6 +2332,8 @@ class Store:
         changed = bool(new) and new != row["statement"]
         if state == "replaced":
             raise CoreError(f"#{learning_id} was replaced by a newer version; check that one")
+        if state == "retired":
+            raise CoreError(f"#{learning_id} is retired; bring it back before checking it")
         if by != row["owner"]:
             if row["stage"] == "draft":
                 raise CoreError(f"{row['owner']} checks this AI draft first")
@@ -2299,7 +2384,7 @@ class Store:
         checked on its own. A simple built-in splitter, with no AI and nothing
         sent anywhere: the text is kept as a source, each sentence becomes a
         draft block, and a level is guessed from its words. Observations cite
-        the text. Findings and insights are left built on nothing, which is the
+        the text. Findings and insights are left unsupported, which is the
         point: it shows which claims the text never supported. Hedges and
         sweeping words are listed as what the block assumes. Your AI tool can
         do a better job with add_blocks.
@@ -2325,7 +2410,7 @@ class Store:
             p["assumes"] = _assumptions(p["statement"])
             p["rests_on_nothing"] = p["level"] != "observation"
         nothing = sum(p["rests_on_nothing"] for p in pieces)
-        warnings = [f"{nothing} of {len(pieces)} claims rest on nothing in the text"] if nothing else []
+        warnings = [f"{nothing} of {len(pieces)} claims are unsupported in the text"] if nothing else []
         if preview:
             with self._conn() as conn:
                 self._person(conn, by, "by")
@@ -2619,14 +2704,14 @@ class Store:
                     if r["study_id"] in my_requests:
                         level = DIGEST
                 elif kind == "deleted":
-                    if who.lower() in [n.lower() for n in [d.get("owner") or ""] + d.get("checked_by", [])]:
+                    if who.lower() in [n.lower() for n in d.get("checked_by", [])]:
                         level = NEWS
                 elif lid in following and r["id"] > following[lid]:
                     if kind == "reviewed" and lid in owned:
                         level = DO_NOW if d["verdict"] != "approve" and r["stage"] == "shared" else NEWS
                     elif kind == "trust_changed" and not (lid in owned and d.get("cause") == "review"):
                         level = NEWS if d["to"] in CHECKED + ("contested",) else DIGEST
-                    elif kind in ("revised", "promoted", "conflict_settled"):
+                    elif kind in ("revised", "promoted", "retired", "conflict_resolved"):
                         level = NEWS
                     elif kind in ("reviewed", "conflict_flagged", "confirmed"):
                         level = DIGEST

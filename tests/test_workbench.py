@@ -100,7 +100,7 @@ def test_built_on_follows_the_newest_version(ws):
 def test_rests_on_nothing(ws):
     s, sid = ws
     obs = s.add("Conversion is 42 percent", "observation", "Priya", study_id=sid)
-    assert "rests on nothing" in obs["warnings"][0] and obs["learning"]["rests_on_nothing"]
+    assert "is unsupported" in obs["warnings"][0] and obs["learning"]["rests_on_nothing"]
     finding = s.add("People leave", "finding", "Priya", study_id=sid)["learning"]
     assert finding["rests_on_nothing"]
     assert not s.add("It is the form", "finding", "Priya", [obs["learning"]["id"]], sid)["learning"]["rests_on_nothing"]
@@ -155,7 +155,7 @@ def test_break_down_takes_ai_text_apart(ws):
     assert "decision" in " ".join(blocks[3]["assumes"])
     said = " ".join(blocks[1]["assumes"])
     assert '"most" without a number' in said and '"clearly"' in said and "cause" in said
-    assert "3 of 4 claims rest on nothing" in out["warnings"][0]
+    assert "3 of 4 claims are unsupported" in out["warnings"][0]
     with pytest.raises(CoreError, match="no claims"):
         s.break_down(sid, "Jordan", "Summary:\n# Heading")
 

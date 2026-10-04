@@ -9,7 +9,7 @@ The rule: each thing gets one word, and each word means one thing.
 | Word | Means |
 |---|---|
 | **Workspace** | One piece of analysis: the question, the decision it serves, its base, and its blocks. |
-| **Base** | What every block rests on. It has four parts: the plan, context, method and approach, and notes. |
+| **Base** | What every block is based on. It has four parts: the plan, context, method and approach, and notes. |
 | **Plan** | The question, the decision it serves, and a few sub-questions. |
 | **Sub-question** | Something we need to know to make the decision. It can say what we expect to find. A finding or insight says which sub-question it **answers**. |
 | **Already known** | Checked blocks from other workspaces that speak to a sub-question. |
@@ -26,8 +26,8 @@ The rule: each thing gets one word, and each word means one thing.
 | Level | Means | Example |
 |---|---|---|
 | **Observation** | What we saw or measured. No reading into it. It comes from a source. | "7 of 12 people left the address form before finishing." |
-| **Finding** | What a set of observations means. Built on observations. | "People drop off when they have to type a full address." |
-| **Insight** | What a finding means for us: why it matters to our goal. It stops short of the call. What to do goes in a **decision**. Built on findings. | "Address entry is the biggest fixable cause of checkout drop-off for us." |
+| **Finding** | What a set of observations means. Based on observations. | "People drop off when they have to type a full address." |
+| **Insight** | What a finding means for us: why it matters to our goal. It stops short of the call. What to do goes in a **decision**. Based on findings. | "Address entry is the biggest fixable cause of checkout drop-off for us." |
 
 Two questions tell the levels apart. Does it read into what we saw? If not, it is an observation. Does it say why it matters to us? If so, it is an insight. Anything in between is a finding. Does it say what to do? Then it is a recommendation, and it belongs in a decision, not in a block.
 
@@ -41,12 +41,13 @@ Level says how far a block goes, not how far to trust it.
 | **In progress** | Findings or insights answer it, but no insight that answers it is checked by someone other than its owner. |
 | **Answered** | An insight that answers it is Checked by peers or Checked by an SME. |
 
-### Built on
+### Based on
 
 | Word | Means |
 |---|---|
-| **Built on** | What is under a block. An observation is built on sources. A finding or insight is built on other blocks. |
-| **Rests on nothing** | A block with nothing under it: an observation with no source, or a finding or insight built on no blocks. Shown so it gets looked at. |
+| **Based on** | What is under a block. An observation is based on sources. A finding or insight is based on other blocks. |
+| **Unsupported** | A block with nothing under it: an observation with no source, or a finding or insight based on no blocks. Shown so it gets looked at. |
+| **Based on a retired block** | Something under it was retired. Move it onto what replaced it, or check it again. |
 | **Built on unchecked** | Shown with ⚠ on a block when something directly under it still needs a check, needs changes, or has a disagreement. You can still build on it. The flag stays until those parts are checked. |
 | **No exact spot** | An observation cites a linked source but does not say where in it, so nobody can check it there. Anyone can add the spot. |
 
@@ -74,27 +75,27 @@ One block shows one check state. The first that applies wins.
 
 | Check state | Means |
 |---|---|
-| **Disagreement** | Someone disagrees, or it is in a conflict with another block that nobody has settled yet. |
+| **Disagreement** | Someone disagrees, or it is in a conflict with another block that nobody has resolved yet. |
 | **Needs changes** | Someone asked for changes. |
 | **Needs a check** | Made with AI, and its owner has not checked it yet. |
 | **Checked by an SME** | An SME said it looks right. |
 | **Checked by peers** | Someone other than the owner said it looks right. |
 | **Checked by owner** | Its owner stands behind it, and nobody else has checked it yet. |
 
-In the app, how full a block looks says how far it has been checked: hollow, then light, then mid, then solid. Only trouble gets words and color: Disagreement and Needs changes.
+In the app, how full a block looks says how far it has been checked: hollow, then light, then mid, then solid. Only trouble gets words and color: Disagreement, Needs changes, and Retired.
 
 ### Conflicts
 
-A **conflict** is two blocks that cannot both be true. The conflict check only suggests one; a person confirms it. Both then show **Disagreement** until someone **settles** it, in one of four ways:
+A **conflict** is two blocks that cannot both be true. The conflict check only suggests one; a person confirms it. Both then show **Disagreement** until someone **resolves** it, in one of four ways:
 
 | Ending | Means |
 |---|---|
-| **One holds** | One block holds. The other is deleted, and what was built on it can move across. |
-| **Both hold, each in its own scope** | Both are true for different people, places, or times. Each gets a new version that says when it holds. |
+| **Pick one** | Keep one block. The other is retired, and what was based on it can move across. |
+| **Keep both, narrow each** | Both are true for different people, places, or times. Each gets a new version that says when it is true. |
 | **Not a conflict** | They fit together after all. |
-| **Can't tell yet** | We need to find out. An open sub-question goes into the plan, and both stay marked Disagreement until it is settled. |
+| **Not sure yet** | We need to find out. An open sub-question goes into the plan, and both stay marked Disagreement until it is resolved. |
 
-Settling always says why.
+Resolving always says why.
 
 
 ## What we do
@@ -107,8 +108,9 @@ Settling always says why.
 | **Break down** | anyone | Take a long piece of AI text apart into blocks, one claim each. |
 | **Add to package** | anyone | Put an insight in the workspace's package. |
 | **Plan** | anyone | Add, change, or remove the sub-questions, and say which one a finding or insight answers. |
-| **Delete** | anyone | Remove a block that no longer belongs, with its earlier versions and checks. What was built on it can move onto another block. Its owner and checkers hear that it went. |
-| **Settle** | anyone | End a conflict, in one of the four ways above, and say why. |
+| **Retire** | anyone | Take a block out of use, and say why: out of date, out of scope, wrong, or replaced by another block. It keeps its history. Its owner and checkers hear about it. **Bring back** puts it back in use. |
+| **Delete** | the person who made it | Remove a block for good, with its earlier versions and checks. What was based on it can move onto another block. |
+| **Resolve** | anyone | End a conflict, in one of the four ways above, and say why. |
 | **Add the spot** | anyone | Say where in a source an observation comes from. |
 | **Fix a link** | anyone | Change a source's link when it moved. Every block keeps its spot. |
 
@@ -139,13 +141,14 @@ The code keeps some older names. This is how they map.
 | Workspace | study (`start_study`, `get_workspace`) |
 | Sub-question | question (`add_question`, `question_id`) |
 | Block | learning |
-| Built on (blocks) | evidence |
+| Based on (blocks) | evidence |
+| Unsupported | `rests_on_nothing` |
 | Check, by the owner of a draft | confirm |
 | Check, by anyone else | review (verdicts approve, changes, disagree) |
 | New version | revise, and the old one is Replaced |
 | Disagreement | contested |
-| Delete | `delete`, `delete_source` |
-| Conflict, Settle | `conflicts_with` link; `settle_conflict` (one_holds, both_hold, not_a_conflict, cant_tell_yet) |
+| Retire, Bring back, Delete | `retire`, `bring_back` (stage retired); `delete`, `delete_source` |
+| Conflict, Resolve | `conflicts_with` link; `resolve_conflict` (pick_one, keep_both, not_a_conflict, not_sure_yet) |
 | Spot | `spots` on a block; `set_spot` |
 | Fix a link | `update_source` |
 
@@ -160,9 +163,9 @@ The code keeps some older names. This is how they map.
 | validated | Checked by peers, Checked by an SME |
 | draft (as a state) | Needs a check |
 | contested | Disagreement |
-| evidence (in the app) | built on |
-| unsupported | rests on nothing |
-| archive, retire, remove | delete |
-| resolve (a conflict) | settle |
+| evidence, built on, rests on (in the app) | based on |
+| rests on nothing | unsupported |
+| archive, remove (to take out of use) | retire |
+| settle (a conflict) | resolve |
 | snippet, excerpt (of a source) | link, spot |
 | trusted reviewer | SME |

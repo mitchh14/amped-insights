@@ -5,8 +5,8 @@ How the app shows the work, and why. The goal: open a workspace, see how the ins
 ## Design rules
 
 1. One idea per element. A block shows its statement. How full it looks says how far it has been checked.
-2. Only trouble gets words and color: Needs changes, Disagree, Rests on nothing, and ⚠ for something unchecked underneath. A block that needs a check is dashed, with no words.
-3. Show what is under everything. Lines connect each block to what it is built on, down to the sources. They stay faint until you trace one.
+2. Only trouble gets words and color: Needs changes, Disagree, Unsupported, and ⚠ for something unchecked underneath. A block that needs a check is dashed, with no words.
+3. Show what is under everything. Lines connect each block to what it is based on, down to the sources. They stay faint until you trace one.
 4. What the AI says (confidence, why, assumes) sits apart from the check, and never counts as one.
 5. Ask for the least first. Pick a verdict, then say how you checked or why.
 6. Never get lost. The cabinet on the right always says where you are, and the detail lives there, not in a new page.
@@ -28,11 +28,11 @@ A card per workspace: its question, the decision it serves, a strip of small squ
 |                    Lines: Faint · Traced only ·  | Finding #8                   |
 |                    Connect blocks                | Shoppers leave mobile ...    |
 |  INSIGHTS      [ solid, glowing ] [ dashed ]     | Checked by an SME · Jordan   |
-|  FINDINGS   [ solid ⚠ ] [ mid ] [ red, Disagree ]| Built on: 3 blocks           |
+|  FINDINGS   [ solid ⚠ ] [ mid ] [ red, Disagree ]| Based on: 3 blocks           |
 |  OBSERVATIONS [light][mid][dashed][solid]...     | AI says (apart from checks)  |
 |  BASE          (source) (source) (source)        | Your check                   |
-|  [The plan][Context][Method][Notes]              | > Think it through           |
-|                                                  | > Holds up · History · Ask AI|
+|  [The plan][Context][Method][Notes]              | > Things to consider         |
+|                                                  | > Supports · History · Ask AI|
 +--------------------------------------------------+------------------------------+
 ```
 
@@ -40,8 +40,8 @@ The work is on the left, the cabinet on the right. The header holds the question
 
 ## Build
 
-- Blocks build up from the base: sources, then observations, findings, and insights. Lines show what each block is built on. Dashed amber lines lead into parts that still need a check.
-- Lines are faint. Hover a block, or open it, to trace its whole line: everything under it, down to the sources, and everything built on it. The rest fades. **Traced only** hides every other line.
+- Blocks build up from the base: sources, then observations, findings, and insights. Lines show what each block is based on. Dashed amber lines lead into parts that still need a check.
+- Lines are faint. Hover a block, or open it, to trace its whole line: everything under it, down to the sources, and everything based on it. The rest fades. **Traced only** hides every other line.
 - A thin base shows. A part of the base that is empty is striped, with "+ add".
 - An insight glows once someone other than its owner has checked it.
 - **Connect blocks**: click blocks to pick them, then write the finding or insight they add up to, or copy a prompt for your AI tool. Pick the sub-question it answers; starting from a sub-question picks it for you.
@@ -62,7 +62,7 @@ The panel on the right. Beside a workspace it is always open.
 - **Nothing picked**: the workspace. The plan, with each sub-question's state (Open, In progress, Answered) and a note when something is already known. What waits on you, with **Start**. What needs attention. The package. The base, folded. How to pair your AI tool, folded.
 - **A block**:
   1. The statement, its check state, and who made it.
-  2. **From** (an observation's sources, with the matching lines marked) or **Built on** (the blocks under it, each with its state).
+  2. **From** (an observation's sources, with the matching lines marked) or **Based on** (the blocks under it, each with its state).
   3. **AI says**, for blocks made with AI: confidence, why, and what it assumes. "This is the AI's own view. It never counts as a check."
   4. **Answers**, on a finding or insight when the workspace has a plan: pick the sub-question it answers. It is not a check.
   5. **Your check**:
@@ -70,7 +70,7 @@ The panel on the right. Beside a workspace it is always open.
      - When changes were asked for, the owner changes the wording, which saves a new version.
      - Anyone else picks **Looks right**, **Needs changes**, or **Disagree**, then says how they checked or why.
      - A draft is checked by its owner first. Others see who it is waiting on.
-  6. Folded: **Think it through** (questions for this level, and private notes kept in your browser, open when the cabinet is wider), **Holds up** (what is built on it), **History** (each check, and the AI's original wording if the owner changed it), and **Ask your AI about it** (a prompt for your AI tool to test the block against what it rests on, without checking it for you).
+  6. Folded: **Things to consider** (questions for this level, and private notes kept in your browser, open when the cabinet is wider), **Supports** (what is based on it), **History** (each check, and the AI's original wording if the owner changed it), and **Ask your AI about it** (a prompt for your AI tool to test the block against what it rests on, without checking it for you).
 - **Check N blocks** steps through what waits on you, in the cabinet: "Checking 2 of 3", **Skip**, **Stop**. The block is lit up on the left with its line. After each check the next one opens.
 
 ## Break down AI text
@@ -94,4 +94,4 @@ Click a part of the base to fill it in: the plan, the sources (add one, or copy 
 
 ## The package
 
-Insights added to the package show at the top. Opened, the package groups them by the sub-question they answer, and each shows what it rests on (blocks, observations, sources) and how much of that still needs a check, plus any observations two insights share. Narratives come later.
+Insights added to the package show at the top. Opened, the package groups them by the sub-question they answer, and each shows what it is based on (blocks, observations, sources) and how much of that still needs a check, plus any observations two insights share. Narratives come later.

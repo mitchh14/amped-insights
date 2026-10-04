@@ -104,7 +104,7 @@ Anyone can be an SME, whatever their role. Their approvals show as Checked by an
 
 ## 3. The life of a learning
 
-A learning keeps its versions and checks while it is in use. When it no longer belongs, a person deletes it.
+A learning keeps its versions and checks. When it no longer belongs, anyone can retire it, and the person who made it can delete it.
 
 Its **stage** says where it is in its life:
 
@@ -114,16 +114,19 @@ stateDiagram-v2
     [*] --> Shared: written by a person
     Draft --> Shared: the owner confirms it
     Shared --> Replaced: a newer version is written
+    Draft --> Retired: a person takes it out of use, with a reason
+    Shared --> Retired: a person takes it out of use, with a reason
+    Retired --> Shared: brought back
     Replaced --> [*]
 ```
 
-Deleting a learning removes it, with its earlier versions and checks. What was built on it loses it, or rests on another learning the person picks instead. Its owner and checkers hear that it went.
+Retiring takes a learning out of use, with a reason. It keeps its history and can be brought back. What was based on it is flagged, or moves onto what replaced it. Deleting removes a learning for good, with its earlier versions and checks. Only the person who made it can delete it.
 
 Its **trust** says how far to lean on it, and is worked out from reviews and conflicts. One state shows at a time. When more than one could apply, the first match wins:
 
 | Trust | When |
 |---|---|
-| Contested | A person confirmed a conflict with another learning that nobody has settled yet, or a current review disagrees |
+| Contested | A person confirmed a conflict with another learning that nobody has resolved yet, or a current review disagrees |
 | Needs changes | A current review asks for changes |
 | Checked by an SME | At least one SME approves |
 | Checked by peers | At least one person approves, and no SME yet |
@@ -131,9 +134,9 @@ Its **trust** says how far to lean on it, and is worked out from reviews and con
 
 Anyone can promote an observation to a finding, or a finding to an insight. Promotion adds a new learning linked back to the original, which stays as it was, so the chain from evidence to insight stays readable. A team can set a "ready to promote" rule in `anchor.toml`. When a reviewer asks for changes, the owner revises into a new, linked version, and the reviewer is asked to look again.
 
-Anyone who owns, reviewed, used, or follows a learning hears when it is revised, promoted, newly checked, or contested. A decision that relied on something now contested becomes its maker's next step. The same goes for one that relied on something now deleted.
+Anyone who owns, reviewed, used, or follows a learning hears when it is revised, promoted, newly checked, or contested. A decision that relied on something now contested becomes its maker's next step. The same goes for one that relied on something now retired or deleted.
 
-A conflict is settled by a person, with a reason, in one of four ways: one holds (the other is deleted), both hold in their own scope (each gets a new version), not a conflict, or can't tell yet (an open sub-question goes into the plan and both stay contested). See [GLOSSARY.md](GLOSSARY.md#conflicts).
+A conflict is resolved by a person, with a reason, in one of four ways: pick one (the other is retired), keep both, narrow each (each gets a new version), not a conflict, or not sure yet (an open sub-question goes into the plan and both stay contested). See [GLOSSARY.md](GLOSSARY.md#conflicts).
 
 ## 4. Setting it up: a framework powered by your team
 

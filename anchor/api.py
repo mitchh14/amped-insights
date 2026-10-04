@@ -21,7 +21,7 @@ ACTIONS = (
     "link", "check_conflict", "working_on", "follow", "mark_seen",
     "log_decision", "update_decision",
     "add_source", "update_source", "delete_source", "set_spot", "add_blocks", "break_down", "check",
-    "set_package", "delete", "settle_conflict",
+    "set_package", "retire", "bring_back", "delete", "resolve_conflict",
     "add_question", "update_question", "remove_question", "set_answers",
 )
 
