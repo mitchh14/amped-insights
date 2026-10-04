@@ -20,7 +20,8 @@ ACTIONS = (
     "add", "confirm", "promote", "revise", "review", "ask_for_review", "withdraw_request",
     "link", "check_conflict", "working_on", "follow", "mark_seen",
     "log_decision", "update_decision",
-    "add_source", "add_blocks", "break_down", "check", "set_package",
+    "add_source", "update_source", "set_spot", "add_blocks", "break_down", "check", "set_package",
+    "retire", "bring_back", "settle_conflict",
     "add_question", "update_question", "remove_question", "set_answers",
 )
 

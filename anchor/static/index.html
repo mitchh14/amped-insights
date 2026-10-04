@@ -405,6 +405,7 @@ async function renderHome() {
 // ---------- Workspace ----------
 async function fetchWorkspace(id) {
   const [ws, q] = await Promise.all([api("workspaces/" + id), api(`needs-check?who=${encodeURIComponent(S.me)}&study_id=${id}`)]);
+  ws.blocks = ws.blocks.filter(b => b.stage !== "retired");  // retired blocks are out of the live work
   S.ws = ws; S.queue = q.items;
 }
 async function openWorkspace(id) {

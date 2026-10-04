@@ -114,14 +114,19 @@ stateDiagram-v2
     [*] --> Shared: written by a person
     Draft --> Shared: the owner confirms it
     Shared --> Replaced: a newer version is written
+    Draft --> Retired: a person takes it out of use, with a reason
+    Shared --> Retired: a person takes it out of use, with a reason
+    Retired --> Shared: brought back
     Replaced --> [*]
 ```
+
+Retired is how anything is cleared out. It is never a delete: a retired learning keeps its history, leaves the live work, and can be brought back. What was built on it shows that it rests on a retired learning, or moves onto what replaced it.
 
 Its **trust** says how far to lean on it, and is worked out from reviews and conflicts. One state shows at a time. When more than one could apply, the first match wins:
 
 | Trust | When |
 |---|---|
-| Contested | A person confirmed a conflict with another learning, or a current review disagrees |
+| Contested | A person confirmed a conflict with another learning that nobody has settled yet, or a current review disagrees |
 | Needs changes | A current review asks for changes |
 | Checked by an SME | At least one SME approves |
 | Checked by peers | At least one person approves, and no SME yet |
@@ -129,7 +134,9 @@ Its **trust** says how far to lean on it, and is worked out from reviews and con
 
 Anyone can promote an observation to a finding, or a finding to an insight. Promotion adds a new learning linked back to the original, which stays as it was, so the chain from evidence to insight stays readable. A team can set a "ready to promote" rule in `anchor.toml`. When a reviewer asks for changes, the owner revises into a new, linked version, and the reviewer is asked to look again.
 
-Anyone who owns, reviewed, used, or follows a learning hears when it is revised, promoted, newly checked, or contested. A decision that relied on something now contested becomes its maker's next step.
+Anyone who owns, reviewed, used, or follows a learning hears when it is revised, promoted, newly checked, or contested. A decision that relied on something now contested becomes its maker's next step. The same goes for one that relied on something now retired.
+
+A conflict is settled by a person, with a reason, in one of four ways: one holds (the other is retired), both hold in their own scope (each gets a new version), not a conflict, or can't tell yet (an open sub-question goes into the plan and both stay contested). See [GLOSSARY.md](GLOSSARY.md#conflicts).
 
 ## 4. Setting it up: a framework powered by your team
 

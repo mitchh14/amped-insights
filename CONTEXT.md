@@ -64,7 +64,9 @@ When an AI makes a block, it states its confidence (low, medium, high), a one li
 - Each learning carries: who stated it, whether an AI drafted it and whether its owner confirmed it, what evidence backs it, and each review with who gave it, their role, whether they are an SME, and how they checked.
 - Multiple reviewers are allowed and expected. Their reviews stay visible individually, never collapsed. The learning shows one trust state, worked out from them: Not reviewed, Needs changes, Checked by peers, Checked by an SME, or Contested.
 - If a new learning conflicts with a checked one, a person can confirm the conflict and both become Contested rather than silently favoring one.
-- Resolution updates the record but never erases the prior state. The history of "this used to be believed, here is why it changed" is part of what makes the source of truth credible over time.
+- A person settles a conflict, with a reason: one holds (the other is retired), both hold in their own scope (each gets a new version), not a conflict, or can't tell yet (it becomes an open sub-question). Settling updates the record but never erases the prior state. The history of "this used to be believed, here is why it changed" is part of what makes the source of truth credible over time.
+- Nothing is deleted. A block that no longer belongs is retired, with a reason, and can be brought back.
+- Sources that live elsewhere are kept as links, and each observation says the spot in its source, so anyone can open it there and check. ANCHOR never opens links itself, which keeps it free of outbound calls: people, or their AI tools, say what they found.
 
 ## Architecture shape
 
