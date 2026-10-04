@@ -45,29 +45,59 @@
 <header class="bar">
   <span class="brand">ANCHOR</span>
   <span class="wsname">Prototypes for big workspaces</span>
-  <nav class="protos" aria-label="Prototypes"><a href="focus.html">Focus</a><a href="map.html">Map</a><a href="flow.html">Flow</a><a href="desk.html">Desk</a></nav>
+  <a class="btn primary" href="workbench.html" style="margin-left:auto;text-decoration:none">Open the Workbench</a>
 </header>
 <main class="page">
   <section class="intro">
     <h1>Workspace at Scale</h1>
-    <p>When a workspace grows past a few dozen blocks, the Build view turns into a wall of boxes and lines. It gets hard to see where the data flows, which findings rest on what, and what to check next. Below are four ways to handle that, all on the same big sample workspace. The newest, Focus Map, mixes the Map and Flow ideas, and shows how conflicts get settled and how blocks get retired.</p>
+    <p>When a workspace grows past a few dozen blocks, the Build view turns into a wall of boxes and lines. It gets hard to see where the data flows, which findings rest on what, and what to check next. The Workbench at the top is where this landed: two views of the same work, Map or Flow, so each person can pick the one that suits them. It also shows how sources work as links, how conflicts get settled, and how blocks get retired. The earlier ideas are further down, all on the same big sample workspace.</p>
     <div class="facts"><span><b>253</b> blocks</span><span><b>17</b> sources</span><span><b>6</b> sub-questions</span><span><b>1</b> decision</span><span>You are <b>Sam</b>, an SME</span></div>
     <p class="note">Each one is clickable and works on a phone. Checks you make stay until you reload. Nothing talks to the real core.</p>
   </section>
 
-  <section class="idea new" aria-labelledby="i4">
+  <section class="idea new" aria-labelledby="wb">
     <div class="txt">
-      <span class="num">Idea 4 · Map and Flow together</span>
-      <h2 id="i4">Focus Map</h2>
-      <p>The map is where you look around. The lens docked under it is where you work: what this block is built on, the block itself, and what it holds up, like three flow columns. Tap a step in the lens and the map flies there, drawing your trail.</p>
-      <h3>Getting in the zone</h3>
-      <ul><li><b>Where to start</b> offers a few goals: settle conflicts, shore up the insight with the weakest ground, or tidy up.</li><li>Zoom into a sub-question and a <b>Go in</b> button appears.</li><li>Going in hides the tool bars, fades every block that is not part of the goal, and shows one quiet line: the goal and a row of dots. Arrow keys walk down and up the chain. Your notes stay private.</li><li>When you finish, your trail stays lit on the map.</li></ul>
-      <a class="btn primary try" href="focus.html">Try the Focus Map</a>
+      <span class="num">Where it landed</span>
+      <h2 id="wb">The Workbench: Map or Flow</h2>
+      <p>One workspace, two views you pick between at the top. Your pick is remembered. Switching keeps your place: the block you have open, your trail, and any session you are in.</p>
+      <h3>Map</h3>
+      <ul><li>See the whole shape. Zoom from the plan down to single blocks.</li><li>Tap a block to light its line. The lens under the map shows what it is built on, the block, and what it holds up.</li></ul>
+      <h3>Flow</h3>
+      <ul><li>Follow the data left to right, from sources to the decision.</li><li>Pick a block and every column pulls what is linked to it to the top. The path bar says what is picked at each level.</li><li>The detail sits on the right, or slides up on a phone. Search works across every block.</li></ul>
+      <h3>The same in both</h3>
+      <ul><li><b>Where to start</b> and <b>Go in</b> for focused sessions, with a Map or Flow switch inside the session.</li><li>Your trail, conflicts, retiring, tidy up, and sources.</li></ul>
+      <a class="btn primary try" href="workbench.html">Open the Workbench</a>
     </div>
     <div class="shots">
-      <figure class="ph"><img src="shots/phone-focus-start.jpg" alt="Focus Map on a phone: the plan with places to start below" loading="lazy"><figcaption>Where to start</figcaption></figure>
-      <figure class="ph"><img src="shots/phone-focus-zone.jpg" alt="Focus Map on a phone in focus mode: one block, the rest faded" loading="lazy"><figcaption>Gone in: one goal, one block</figcaption></figure>
-      <figure class="dk"><img src="shots/desktop-focus-zone.jpg" alt="Focus Map on a desktop in focus mode: map above, three-column lens below" loading="lazy"><figcaption>Desktop: map above, the lens below</figcaption></figure>
+      <figure class="ph"><img src="shots/wb-phone-map.jpg" alt="Workbench Map view on a phone" loading="lazy"><figcaption>Map view</figcaption></figure>
+      <figure class="ph"><img src="shots/wb-phone-flow.jpg" alt="Workbench Flow view on a phone with a finding picked" loading="lazy"><figcaption>Flow view</figcaption></figure>
+      <figure class="ph"><img src="shots/wb-phone-flowzone.jpg" alt="A focused session in Flow view on a phone" loading="lazy"><figcaption>Gone in, in Flow</figcaption></figure>
+      <figure class="dk"><img src="shots/wb-desk-flow.jpg" alt="Workbench Flow view on a desktop" loading="lazy"><figcaption>Desktop: Flow</figcaption></figure>
+      <figure class="dk"><img src="shots/wb-desk-map.jpg" alt="Workbench Map view on a desktop" loading="lazy"><figcaption>Desktop: Map</figcaption></figure>
+    </div>
+  </section>
+
+  <section class="idea" aria-labelledby="src">
+    <div class="txt">
+      <span class="num">How it works</span>
+      <h2 id="src">Sources are links, not copies</h2>
+      <p>A source is a link to where the information really lives: a dashboard, a sheet, a query, a recording, a doc. ANCHOR never keeps a pasted copy. Each observation says the exact spot it comes from, like "S7 at 18:02", "Row 4", or a dashboard tile. <b>Open at this spot</b> takes you there, and <b>Matches the source</b> checks the block against the real thing.</p>
+      <ul>
+        <li><b>Why:</b> the source stays clear and open to anyone with access, and there is no copy for a person or an AI to misquote or quietly change.</li>
+        <li><b>No exact spot:</b> an AI block that does not say where it comes from is flagged, because nobody can check it. Anyone can add the spot.</li>
+        <li><b>Source health:</b> the Sources button counts links that need a look: changed since checked, no access (ask the owner), broken (fix the link once, every block keeps its spot), or not opened in a while.</li>
+        <li><b>Add a source</b> by pasting a link. ANCHOR works out what kind it is. An AI tool adds sources the same way over MCP.</li>
+      </ul>
+      <h3>Three ways to keep them, to compare</h3>
+      <ul><li><b>Link only:</b> just the link and the spot.</li><li><b>Link and a receipt:</b> the tool also captures the exact words or number at the spot, with a fingerprint, so you can see when the source changed. Nobody types it.</li><li><b>Live link:</b> for dashboards and queries, today's value sits next to the value when it was checked.</li></ul>
+      <p class="small">Suggested: a link and a receipt for everything, plus live values for dashboards and queries. Switch between them in the Sources panel.</p>
+    </div>
+    <div class="shots">
+      <figure class="ph"><img src="shots/wb-phone-receipt.jpg" alt="An observation citing a dashboard tile, with a receipt that no longer matches" loading="lazy"><figcaption>A link, a spot, and a receipt</figcaption></figure>
+      <figure class="ph"><img src="shots/wb-phone-preview.jpg" alt="The source opened at the spot the block cites" loading="lazy"><figcaption>Open at this spot</figcaption></figure>
+      <figure class="ph"><img src="shots/wb-phone-library.jpg" alt="The Sources panel with three ways to keep sources" loading="lazy"><figcaption>Sources panel</figcaption></figure>
+      <figure class="dk"><img src="shots/wb-desk-live.jpg" alt="A live link showing today's value next to the checked value" loading="lazy"><figcaption>Live link: the number moved</figcaption></figure>
+      <figure class="dk"><img src="shots/wb-desk-source.jpg" alt="A source and every observation that cites it, with its spot" loading="lazy"><figcaption>A source and what cites it</figcaption></figure>
     </div>
   </section>
 
@@ -112,7 +142,22 @@
     </div>
   </section>
 
-  <h2 class="earlier">The first three ideas</h2>
+  <h2 class="earlier">Earlier ideas</h2>
+  <section class="idea" aria-labelledby="i4">
+    <div class="txt">
+      <span class="num">Idea 4 · Map and Flow in one screen</span>
+      <h2 id="i4">Focus Map</h2>
+      <p>The map is where you look around. The lens docked under it is where you work: what this block is built on, the block itself, and what it holds up, like three flow columns. Tap a step in the lens and the map flies there, drawing your trail.</p>
+      <h3>Getting in the zone</h3>
+      <ul><li><b>Where to start</b> offers a few goals: settle conflicts, shore up the insight with the weakest ground, or tidy up.</li><li>Zoom into a sub-question and a <b>Go in</b> button appears.</li><li>Going in hides the tool bars, fades every block that is not part of the goal, and shows one quiet line: the goal and a row of dots. Arrow keys walk down and up the chain. Your notes stay private.</li><li>When you finish, your trail stays lit on the map.</li></ul>
+      <a class="btn primary try" href="focus.html">Try the Focus Map</a>
+    </div>
+    <div class="shots">
+      <figure class="ph"><img src="shots/phone-focus-start.jpg" alt="Focus Map on a phone: the plan with places to start below" loading="lazy"><figcaption>Where to start</figcaption></figure>
+      <figure class="ph"><img src="shots/phone-focus-zone.jpg" alt="Focus Map on a phone in focus mode: one block, the rest faded" loading="lazy"><figcaption>Gone in: one goal, one block</figcaption></figure>
+      <figure class="dk"><img src="shots/desktop-focus-zone.jpg" alt="Focus Map on a desktop in focus mode: map above, three-column lens below" loading="lazy"><figcaption>Desktop: map above, the lens below</figcaption></figure>
+    </div>
+  </section>
   <section class="idea" aria-labelledby="i1">
     <div class="txt">
       <span class="num">Idea 1</span>
