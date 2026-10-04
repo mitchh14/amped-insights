@@ -13,9 +13,8 @@ The rule: each thing gets one word, and each word means one thing.
 | **Plan** | The question, the decision it serves, and a few sub-questions. |
 | **Sub-question** | Something we need to know to make the decision. It can say what we expect to find. A finding or insight says which sub-question it **answers**. |
 | **Already known** | Checked blocks from other workspaces that speak to a sub-question. |
-| **Source** | One piece of context in a workspace. Something that lives elsewhere (a doc, sheet, dashboard, query, recording) is a **link** to it, never a pasted copy, so it stays clear, open to anyone with access, and hard to misquote. A note written in ANCHOR, or pasted AI text, keeps its text. |
+| **Source** | One piece of context in a workspace. Something that lives elsewhere (a doc, sheet, dashboard, query, recording) is a **link** you open. A note written in ANCHOR, or pasted AI text, keeps its text. |
 | **Spot** | Where in a source an observation comes from: "S7 at 18:02", "Row 4", a dashboard tile. Anyone can open the source there and check. |
-| **Receipt** | The exact words or number at a spot, as whoever opened the source saw them. It shows when a source has changed. It is never what you check against: you open the source. |
 | **Package** | The insights a workspace shares together, in order. |
 
 ## The thing we check
@@ -49,7 +48,6 @@ Level says how far a block goes, not how far to trust it.
 | **Built on** | What is under a block. An observation is built on sources. A finding or insight is built on other blocks. |
 | **Rests on nothing** | A block with nothing under it: an observation with no source, or a finding or insight built on no blocks. Shown so it gets looked at. |
 | **Built on unchecked** | Shown with ⚠ on a block when something directly under it still needs a check, needs changes, or has a disagreement. You can still build on it. The flag stays until those parts are checked. |
-| **Rests on a retired block** | Something under it was retired. Move it onto what replaced it, or check it again. |
 | **No exact spot** | An observation cites a linked source but does not say where in it, so nobody can check it there. Anyone can add the spot. |
 
 ### Origin: who made it
@@ -76,7 +74,6 @@ One block shows one check state. The first that applies wins.
 
 | Check state | Means |
 |---|---|
-| **Retired** | Taken out of use, with a reason. Never deleted: it keeps its history and can be brought back. |
 | **Disagreement** | Someone disagrees, or it is in a conflict with another block that nobody has settled yet. |
 | **Needs changes** | Someone asked for changes. |
 | **Needs a check** | Made with AI, and its owner has not checked it yet. |
@@ -84,7 +81,7 @@ One block shows one check state. The first that applies wins.
 | **Checked by peers** | Someone other than the owner said it looks right. |
 | **Checked by owner** | Its owner stands behind it, and nobody else has checked it yet. |
 
-In the app, how full a block looks says how far it has been checked: hollow, then light, then mid, then solid. Only trouble gets words and color: Disagreement, Needs changes, and Retired.
+In the app, how full a block looks says how far it has been checked: hollow, then light, then mid, then solid. Only trouble gets words and color: Disagreement and Needs changes.
 
 ### Conflicts
 
@@ -92,23 +89,13 @@ A **conflict** is two blocks that cannot both be true. The conflict check only s
 
 | Ending | Means |
 |---|---|
-| **One holds** | One block holds. The other is retired, as replaced by it, and what was built on it can move across. |
+| **One holds** | One block holds. The other is deleted, and what was built on it can move across. |
 | **Both hold, each in its own scope** | Both are true for different people, places, or times. Each gets a new version that says when it holds. |
 | **Not a conflict** | They fit together after all. |
 | **Can't tell yet** | We need to find out. An open sub-question goes into the plan, and both stay marked Disagreement until it is settled. |
 
-Settling always says why. Nothing is erased, and a settled conflict can be flagged again.
+Settling always says why.
 
-### What someone found when opening a source
-
-| Source status | Means |
-|---|---|
-| **Opens fine** | It opened, and it still says what was checked. |
-| **Changed since it was checked** | It no longer says what the blocks citing it say. Check them again. |
-| **Some people cannot open it** | Ask its owner for access. |
-| **The link is broken** | Fix the link once; every block keeps its spot. |
-
-ANCHOR never opens links itself. A person, or their AI tool, says what they found.
 
 ## What we do
 
@@ -120,10 +107,10 @@ ANCHOR never opens links itself. A person, or their AI tool, says what they foun
 | **Break down** | anyone | Take a long piece of AI text apart into blocks, one claim each. |
 | **Add to package** | anyone | Put an insight in the workspace's package. |
 | **Plan** | anyone | Add, change, or remove the sub-questions, and say which one a finding or insight answers. |
-| **Retire** | anyone | Take a block out of use, and say why: out of date, out of scope, wrong, a mistake, or replaced by another block. Its owner and checkers hear about it. **Bring back** puts it back in use. Nothing is ever deleted. |
+| **Delete** | anyone | Remove a block that no longer belongs, with its earlier versions and checks. What was built on it can move onto another block. Its owner and checkers hear that it went. |
 | **Settle** | anyone | End a conflict, in one of the four ways above, and say why. |
 | **Add the spot** | anyone | Say where in a source an observation comes from. |
-| **Report a source** | anyone | Say what you found when you opened it: changed, some people cannot open it, or broken. Or fix its link. |
+| **Fix a link** | anyone | Change a source's link when it moved. Every block keeps its spot. |
 
 **How I checked:** **Read the evidence**, **Checked the source data**, **Reran it**, **Expert judgment**. Teams can change these.
 
@@ -157,10 +144,10 @@ The code keeps some older names. This is how they map.
 | Check, by anyone else | review (verdicts approve, changes, disagree) |
 | New version | revise, and the old one is Replaced |
 | Disagreement | contested |
-| Retire, Bring back | `retire`, `bring_back`; stage retired |
+| Delete | `delete`, `delete_source` |
 | Conflict, Settle | `conflicts_with` link; `settle_conflict` (one_holds, both_hold, not_a_conflict, cant_tell_yet) |
-| Spot, Receipt | `spots` on a block; `set_spot` |
-| Report a source | `update_source` (status ok, changed, no_access, broken) |
+| Spot | `spots` on a block; `set_spot` |
+| Fix a link | `update_source` |
 
 ## Words we do not use
 
@@ -175,7 +162,7 @@ The code keeps some older names. This is how they map.
 | contested | Disagreement |
 | evidence (in the app) | built on |
 | unsupported | rests on nothing |
-| delete, archive, remove | retire |
+| archive, retire, remove | delete |
 | resolve (a conflict) | settle |
-| snippet, excerpt, pasted copy (of a source) | link, spot, receipt |
+| snippet, excerpt (of a source) | link, spot |
 | trusted reviewer | SME |

@@ -28,7 +28,7 @@ Researcher roles are shifting from executing every study personally to orchestra
 2. Transparency over authority. The system does not grant credibility by role. It makes the basis for credibility visible: who stated something, what evidence backs it, who reviewed it. Trust is earned by the work, not handed out by a badge.
 3. Not all learnings are equal, and the system should never pretend they are. An observation, a finding, and an insight are different things, and one that nobody has reviewed looks different from one an SME has checked.
 4. More than one person can review a learning. Reviews are shown individually, not merged into a single verdict, so agreement and disagreement are both visible.
-5. Contradictions get surfaced, not hidden or silently overwritten. When a new learning conflicts with a checked one, both stay visible as Contested and the conflict triggers a re-evaluation, with the history of what changed and why kept intact.
+5. Contradictions get surfaced, not hidden or silently overwritten. When a new learning conflicts with a checked one, both stay visible as Contested and the conflict triggers a re-evaluation that a person settles, with a reason everyone involved can see.
 6. Framework over system. This should be a small set of primitives (add, confirm, review, query, check for conflicts) that teams can run and adapt themselves, not a heavy platform people have to migrate into.
 7. Data stays where the org already trusts it, self-hosted by default, no required outbound calls, storage that stays boring and inspectable so the data always stays yours. See PRINCIPLES.md for the full reasoning.
 8. Everyone generates insights, by design. Review is open to everyone, with varied trust: the most trusted reviews come from the SMEs the team names, from any team. Roles inform, they never block.
@@ -64,9 +64,9 @@ When an AI makes a block, it states its confidence (low, medium, high), a one li
 - Each learning carries: who stated it, whether an AI drafted it and whether its owner confirmed it, what evidence backs it, and each review with who gave it, their role, whether they are an SME, and how they checked.
 - Multiple reviewers are allowed and expected. Their reviews stay visible individually, never collapsed. The learning shows one trust state, worked out from them: Not reviewed, Needs changes, Checked by peers, Checked by an SME, or Contested.
 - If a new learning conflicts with a checked one, a person can confirm the conflict and both become Contested rather than silently favoring one.
-- A person settles a conflict, with a reason: one holds (the other is retired), both hold in their own scope (each gets a new version), not a conflict, or can't tell yet (it becomes an open sub-question). Settling updates the record but never erases the prior state. The history of "this used to be believed, here is why it changed" is part of what makes the source of truth credible over time.
-- Nothing is deleted. A block that no longer belongs is retired, with a reason, and can be brought back.
-- Sources that live elsewhere are kept as links, and each observation says the spot in its source, so anyone can open it there and check. ANCHOR never opens links itself, which keeps it free of outbound calls: people, or their AI tools, say what they found.
+- A person settles a conflict, with a reason: one holds (the other is deleted), both hold in their own scope (each gets a new version), not a conflict, or can't tell yet (it becomes an open sub-question).
+- A block that no longer belongs is deleted. Keeping only what is in use keeps the workspace clean and easy to trust.
+- Sources that live elsewhere are kept as links, and each observation says the spot in its source, so anyone can open it there and check.
 
 ## Architecture shape
 

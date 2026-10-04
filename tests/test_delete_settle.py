@@ -1,4 +1,4 @@
-"""Retiring blocks, settling conflicts, and sources kept as links with a spot."""
+"""Deleting blocks, settling conflicts, and sources kept as links with a spot."""
 
 import pytest
 
@@ -22,77 +22,56 @@ def block(s, sid, text, level="observation", owner="Priya", **kw):
     return s.add(text, level, owner, study_id=sid, **kw)["learning"]["id"]
 
 
-# -- retiring ---------------------------------------------------------------
+# -- deleting ---------------------------------------------------------------
 
-def test_retire_takes_a_block_out_of_use_without_erasing_it(ws):
+def test_delete_removes_a_block_and_what_rests_on_it_loses_it(ws):
     s, sid = ws
     o = block(s, sid, "Mobile conversion is 38 percent")
-    f = block(s, sid, "Mobile shoppers convert less than desktop shoppers", "finding", evidence=[o])
-    with pytest.raises(CoreError, match="say why"):
-        s.retire(o, "Lee")
-    out = s.retire(o, "Lee", "Out of date")
-    assert out["learning"]["stage"] == "retired" and out["learning"]["check"]["state"] == "retired"
-    assert out["learning"]["retired"]["reason"] == "Out of date"
-    assert "rest on a retired block" in out["warnings"][0]
-    # Still in the workspace, marked, so it can be shown and brought back.
-    blocks = {b["id"]: b for b in s.get_workspace(sid)["blocks"]}
-    assert blocks[o]["check"]["state"] == "retired"
-    assert blocks[f]["rests_on_retired"] == [o]
-    # Out of searches, and nothing new can rest on it or check it.
-    assert all(x["id"] != o for x in s.query("conversion"))
-    assert [x["id"] for x in s.query("conversion", trust="retired")] == [o]
-    with pytest.raises(CoreError, match="retired"):
-        s.add("Desktop converts better", "finding", "Priya", evidence=[o], study_id=sid)
-    with pytest.raises(CoreError, match="retired"):
-        s.check(o, "Sam")
-    with pytest.raises(CoreError, match="retired"):
-        s.revise(o, "Priya", "Mobile conversion is 39 percent")
-    with pytest.raises(CoreError, match="already retired"):
-        s.retire(o, "Lee", "Wrong")
-    assert any(e["kind"] == "retired" for e in s.history(o))
+    keep = block(s, sid, "39 percent leave at the address form")
+    f = block(s, sid, "Mobile shoppers drop off at the address form", "finding", evidence=[o, keep])
+    s.check(o, "Sam", "needs_changes", note="Old number")
+    new_o = s.revise(o, "Priya", "Mobile conversion is 42 percent")["learning"]["id"]
+    s.set_package(sid, "Lee", [])
+    out = s.delete(new_o, "Lee")
+    assert out["deleted"] == new_o
+    for gone in (o, new_o):  # the block and its earlier version
+        with pytest.raises(CoreError, match="does not exist"):
+            s.get(gone)
+    assert s.get(f)["evidence_ids"] == [keep]
+    assert all(b["id"] not in (o, new_o) for b in s.get_workspace(sid)["blocks"])
+    assert "deleted" in [e["kind"] for e in s.activity()]
+    assert any("deleted" in i["text"] for i in s.digest("Priya")["items"])  # its owner hears
 
 
-def test_retire_with_a_replacement_can_move_what_rests_on_it(ws):
+def test_delete_can_move_what_rests_on_it(ws):
     s, sid = ws
-    old = block(s, sid, "Mobile conversion is 38 percent")
-    new = block(s, sid, "Mobile conversion is 42 percent")
-    f = block(s, sid, "Mobile shoppers convert less than desktop shoppers", "finding", evidence=[old])
-    with pytest.raises(CoreError, match="say which block replaces it"):
-        s.retire(old, "Lee", "Out of date", move=True)
-    out = s.retire(old, "Lee", replaced_by=new, move=True)
-    assert out["learning"]["retired"]["reason"] == f"Replaced by #{new}"
-    assert out["moved"] == [f] and out["warnings"] == []
-    got = s.get(f)
-    assert got["evidence_ids"] == [new] and got["rests_on_retired"] == []
+    dup = block(s, sid, "39 percent leave at the address form", owner="Jordan")
+    orig = block(s, sid, "39 percent of shoppers leave the address form")
+    f = block(s, sid, "The address form loses the most shoppers", "finding", evidence=[dup])
+    with pytest.raises(CoreError, match="cannot take its place"):
+        s.delete(dup, "Lee", move_to=dup)
+    assert s.delete(dup, "Lee", move_to=orig)["moved"] == [f]
+    assert s.get(f)["evidence_ids"] == [orig]
 
 
-def test_bring_back_restores_the_stage_it_had(ws):
+def test_deleting_an_earlier_version_points_at_the_latest(ws):
     s, sid = ws
-    draft = block(s, sid, "Shoppers hate the zip field", owner="Jordan", origin="ai_agent",
-                  confidence="low", why="One quote")
-    s.retire(draft, "Jordan", "A mistake")
-    assert s.bring_back(draft, "Jordan")["learning"]["stage"] == "draft"
-    with pytest.raises(CoreError, match="not retired"):
-        s.bring_back(draft, "Jordan")
+    o = block(s, sid, "Conversion is 38 percent")
+    s.revise(o, "Priya", "Conversion is 42 percent")
+    with pytest.raises(CoreError, match="earlier version"):
+        s.delete(o, "Lee")
 
 
-def test_retiring_a_block_used_in_a_decision_warns_the_decision(ws):
+def test_deleting_a_block_used_in_a_decision_warns_the_decision(ws):
     s, sid = ws
     i = block(s, sid, "Address entry is our biggest fixable loss", "insight",
               evidence=[block(s, sid, "39 percent leave at the address form")])
     s.check(i, "Sam")
-    s.log_decision("Fund autofill", "Jordan", [i])
-    s.retire(i, "Lee", "Wrong")
-    assert any(item["kind"] == "decision_at_risk" for item in s.digest("Jordan")["items"])
-
-
-def test_a_retired_insight_leaves_the_package(ws):
-    s, sid = ws
-    i = block(s, sid, "Address entry is our biggest fixable loss", "insight",
-              evidence=[block(s, sid, "39 percent leave at the address form")])
     s.set_package(sid, "Lee", [i])
-    s.retire(i, "Lee", "Out of scope")
+    s.log_decision("Fund autofill", "Jordan", [i])
+    s.delete(i, "Lee")
     assert s.get_workspace(sid)["package"] == []
+    assert any(item["kind"] == "decision_at_risk" for item in s.digest("Jordan")["items"])
 
 
 # -- settling conflicts -----------------------------------------------------
@@ -119,21 +98,18 @@ def test_an_open_conflict_shows_in_the_workspace(clash):
     assert s.get(a)["conflicts"][0]["id"] == cid
 
 
-def test_settle_one_holds_retires_the_other(clash):
+def test_settle_one_holds_deletes_the_other(clash):
     s, sid, a, b, up, cid = clash
     with pytest.raises(CoreError, match="note is required"):
         s.settle_conflict(cid, "Sam", "one_holds", "", keep=b)
     with pytest.raises(CoreError, match="keep must be"):
         s.settle_conflict(cid, "Sam", "one_holds", "Funnel wins", keep=up)
-    out = s.settle_conflict(cid, "Sam", "one_holds", "The funnel is 30 days of data", keep=b)
-    assert out["retired"] == a and out["conflict"]["status"] == "settled"
+    out = s.settle_conflict(cid, "Sam", "one_holds", "The funnel is 30 days of data", keep=b, move=True)
+    assert out["deleted"] == a and out["conflict"]["status"] == "settled"
     assert out["conflict"]["outcome_label"] == "One holds"
-    assert state(s, a) == "retired" and state(s, b) == "checked_by_sme"
-    assert s.get(a)["retired"]["replaced_by"] == b
-    assert s.get(up)["rests_on_retired"] == [a]
+    assert state(s, b) == "checked_by_sme"
+    assert s.get(up)["evidence_ids"] == [b]
     assert s.get_workspace(sid)["conflicts"] == []
-    with pytest.raises(CoreError, match="already settled"):
-        s.settle_conflict(cid, "Sam", "not_a_conflict", "x")
 
 
 def test_settle_both_hold_writes_scoped_versions(clash):
@@ -174,7 +150,7 @@ def test_settle_cant_tell_yet_adds_a_question_and_stays_open(clash):
 def test_a_source_is_a_link_or_a_note(ws):
     s, sid = ws
     link = s.add_source(sid, "Priya", "Checkout funnel", url="https://looker.example/dash/funnel")["source"]
-    assert link["kind"] == "link" and link["body"] is None and link["status"] == "ok"
+    assert link["kind"] == "link" and link["body"] is None
     note = s.add_source(sid, "Sam", "Interview notes", "S1: Typing my address is a pain")["source"]
     assert note["kind"] == "note"
     with pytest.raises(CoreError, match="give a link"):
@@ -188,10 +164,9 @@ def test_observations_say_the_spot_in_a_linked_source(ws):
     assert any("say where in the linked source" in w for w in out["warnings"])
     lid = out["learning"]["id"]
     assert s.get(lid)["no_spot"] == [src]
-    s.set_spot(lid, "Sam", src, "Tile Funnel, row 6", receipt="Paid 5,040 (42%)")
+    s.set_spot(lid, "Sam", src, "Tile Funnel, row 6")
     got = s.get(lid)
-    assert got["no_spot"] == [] and got["sources"][0]["spot"]["spot"] == "Tile Funnel, row 6"
-    assert got["sources"][0]["spot"]["receipt"] == "Paid 5,040 (42%)" and got["sources"][0]["spot"]["by"] == "Sam"
+    assert got["no_spot"] == [] and got["sources"][0]["spot"] == "Tile Funnel, row 6"
     assert any(e["kind"] == "spot_set" for e in s.history(lid))
 
 
@@ -204,20 +179,20 @@ def test_spots_can_be_given_when_adding_and_survive_a_new_version(ws):
     assert got["source_ids"] == [src] and got["no_spot"] == []
     s.check(ids[0], "Jordan")
     new = s.revise(ids[0], "Jordan", "12 of 40 replays show the keyboard covering the next field")["learning"]["id"]
-    assert s.get(new)["sources"][0]["spot"]["spot"] == "Playlist note 1"
+    assert s.get(new)["sources"][0]["spot"] == "Playlist note 1"
     with pytest.raises(CoreError, match="say where"):
         s.add("x is 1 here", "observation", "Priya", study_id=sid, spots={src: ""})
 
 
-def test_people_report_what_they_found_at_a_link(ws):
+def test_fix_a_link_or_delete_a_source(ws):
     s, sid = ws
     src = s.add_source(sid, "Priya", "Teardown", url="https://figma.example/f/teardown")["source"]["id"]
-    with pytest.raises(CoreError, match="status must be"):
-        s.update_source(src, "Sam", status="gone")
-    out = s.update_source(src, "Sam", status="broken", note="404")["source"]
-    assert out["status"] == "broken" and out["status_by"] == "Sam"
+    o = s.add("3 of 5 competitors offer address lookup", "observation", "Priya", study_id=sid,
+              spots={src: "Frame 2"})["learning"]["id"]
     fixed = s.update_source(src, "Priya", url="https://figma.example/f/teardown-v2")["source"]
-    assert fixed["status"] == "ok" and fixed["url"].endswith("v2")
-    assert s.get_workspace(sid)["sources"][0]["url"].endswith("v2")
+    assert fixed["url"].endswith("v2") and s.get(o)["sources"][0]["spot"] == "Frame 2"
     with pytest.raises(CoreError, match="nothing to change"):
         s.update_source(src, "Priya")
+    assert s.delete_source(src, "Lee")["cited_by"] == [o]
+    got = s.get(o)
+    assert got["source_ids"] == [] and got["rests_on_nothing"]
