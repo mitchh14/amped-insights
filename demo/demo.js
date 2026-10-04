@@ -135,10 +135,9 @@ open_store()
     banner.innerHTML = `
       <div><b>Demo.</b> This runs entirely in your browser. Nothing you type leaves your device.
         <span id="demo-status">Loading (the first visit takes a few seconds)...</span></div>
-      <div class="demo-tips">Try it: open the workspace and hover a block to trace what it rests on.
-        Be Jordan to check your AI drafts, or Sam (an SME) to check other people's blocks. Press
-        "Break down AI text" and try the sample to see a long AI answer taken apart, with the claims
-        that rest on nothing flagged. Switch person any time at the top.</div>
+      <div class="demo-tips">Try it: open the workspace and pick Map or Flow at the top. Tap a block to see
+        what it is based on. Under To do, start a Focus session to resolve a conflict or check blocks.
+        Be Jordan to check your AI drafts, or Sam (an SME) to check other people's blocks. Switch person any time at the top.</div>
       <div class="row"><button id="demo-reset" type="button">Reset demo</button>
         <a href="https://github.com/mitchh14/amped-insights">Source on GitHub</a></div>`;
     document.body.prepend(banner);

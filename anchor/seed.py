@@ -144,6 +144,8 @@ def seed(s: Store) -> None:
                assumes=["What one shopper wants, most shoppers want"])
     s.check(f3, "Jordan")
     s.check(f3, "Dana", "disagree", note="One quote cannot carry this. The funnel says the loss is at the address step.")
+    s.link(f3, f1, "conflicts_with", "Dana",
+           note="Both say what causes most of the drop-off. They point at different steps.")
 
     f2 = block("Not having to type an address roughly doubles the chance a shopper pays", "finding", "Priya",
                on=[o5, o6], answers=typing)

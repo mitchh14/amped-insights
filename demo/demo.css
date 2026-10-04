@@ -1,3 +1,12 @@
 .demo-banner { border-bottom: 1px solid var(--line); background: var(--accent-soft); padding: 10px 20px; font-size: 14px; }
 .demo-banner .demo-tips { color: var(--muted); margin-top: 4px; }
 .demo-banner .row { margin-top: 6px; }
+/* The app fills the screen; the banner takes its own row above it. */
+body { display: flex; flex-direction: column; }
+.demo-banner { flex: none; }
+body.zone .demo-banner { display: none; }
+body > .app { flex: 1; min-height: 0; height: auto; }
+@media (max-width: 899px) {
+  .demo-banner { padding: 8px 12px; font-size: 13px; }
+  .demo-banner .demo-tips { display: none; }
+}
