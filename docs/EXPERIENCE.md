@@ -1,97 +1,129 @@
 # The experience: the workbench
 
-How the app shows the work, and why. The goal: open a workspace, see how the insights are built and what still needs a check, and check it in a few clicks. The words are defined in [GLOSSARY.md](GLOSSARY.md).
+How the app shows the work, and why. The goal: open a workspace, see how the insights are built and what still needs a check, and check it in a few clicks, even when the workspace holds hundreds of blocks. The words are defined in [GLOSSARY.md](GLOSSARY.md).
 
 ## Design rules
 
 1. One idea per element. A block shows its statement. How full it looks says how far it has been checked.
-2. Only trouble gets words and color: Needs changes, Disagree, Unsupported, and ⚠ for something unchecked underneath. A block that needs a check is dashed, with no words.
-3. Show what is under everything. Lines connect each block to what it is based on, down to the sources. They stay faint until you trace one.
+2. Only trouble gets words and color: Needs changes, Disagreement, Unsupported, ⚡ for a conflict, and ⚠ for something unchecked underneath. A block that needs a check is dashed, with no words.
+3. Show what is under everything. Each block connects to what it is based on, down to the sources, and to what it supports, up to the decision.
 4. What the AI says (confidence, why, assumes) sits apart from the check, and never counts as one.
 5. Ask for the least first. Pick a verdict, then say how you checked or why.
-6. Never get lost. The cabinet on the right always says where you are, and the detail lives there, not in a new page.
-7. One primary button per screen: **Check N blocks**.
+6. Never get lost. The details panel always says where you are, and the detail lives there, not in a new page.
+7. Say the plain thing. Buttons say what they do: Check, Resolve, Retire, Delete for good.
 
-The workbench is built for a desktop, side by side with your AI tool (paired over MCP), or inside it. On a phone the cabinet slides over the work.
+It works on a phone and on a desktop. On a desktop the details panel sits on the right. On a phone it is a sheet at the bottom that you pull up (peek, open, full).
 
 ## Home
 
-A card per workspace: its question, the decision it serves, a strip of small squares (one per block, filled by how far it is checked), how many blocks wait on you, and how far the plan has got ("1 of 4 answered"). Below: **New workspace** asks for the question and the decision it will inform, then opens the plan so the first thing you do is say what you need to know.
+A card per workspace: its question, the decision it serves, a strip of small squares (one per block, filled by how far it is checked), how many blocks wait on you, and how far the plan has got ("1 of 4 answered"). **New workspace** asks for the question and the decision it will inform, then opens the plan.
 
-## A workspace
+## Map or Flow
+
+A workspace opens in one of two views. The switch sits at the top and the app remembers your pick. Both show the same blocks and use the same details panel, so you can switch at any time, even in the middle of a Focus session.
 
 ```
-+--------------------------------------------------+------------------------------+
-| Why do mobile shoppers leave checkout...?        | Workspace › Insight #11 ›    |
-| For the decision: fund address autofill in Q3    |   Finding #8        Wider  x |
-| [Check 3 blocks] [Break down AI text] [Build|List]| Checking 2 of 3  Skip  Stop |
-|                    Lines: Faint · Traced only ·  | Finding #8                   |
-|                    Connect blocks                | Shoppers leave mobile ...    |
-|  INSIGHTS      [ solid, glowing ] [ dashed ]     | Checked by an SME · Jordan   |
-|  FINDINGS   [ solid ⚠ ] [ mid ] [ red, Disagree ]| Based on: 3 blocks           |
-|  OBSERVATIONS [light][mid][dashed][solid]...     | AI says (apart from checks)  |
-|  BASE          (source) (source) (source)        | Your check                   |
-|  [The plan][Context][Method][Notes]              | > Things to consider         |
-|                                                  | > Supports · History · Ask AI|
-+--------------------------------------------------+------------------------------+
+ ANCHOR [Map|Flow]  Why do mobile shoppers leave checkout...?        You are [Sam]
+ [Everything][Waiting on you 1][Trouble 2][Conflicts 1][Retired 1]  [Check 1 block] [Connect blocks] [Break down AI text]
++------------------------------------------------------------+-----------------------------+
+|  Map: one area per sub-question, zoom to read              | Workspace › Finding #10     |
+|  Flow: Sources | Observations | Findings | Insights | Decision                            |
++------------------------------------------------------------+-----------------------------+
 ```
 
-The work is on the left, the cabinet on the right. The header holds the question, the decision, and three controls: **Check N blocks**, **Break down AI text**, and **Build | List**.
+### Map
 
-## Build
+The whole workspace as one picture you zoom into.
 
-- Blocks build up from the base: sources, then observations, findings, and insights. Lines show what each block is based on. Dashed amber lines lead into parts that still need a check.
-- Lines are faint. Hover a block, or open it, to trace its whole line: everything under it, down to the sources, and everything based on it. The rest fades. **Traced only** hides every other line.
-- A thin base shows. A part of the base that is empty is striped, with "+ add".
-- An insight glows once someone other than its owner has checked it.
-- **Connect blocks**: click blocks to pick them, then write the finding or insight they add up to, or copy a prompt for your AI tool. Pick the sub-question it answers; starting from a sub-question picks it for you.
+- Each sub-question in the plan gets its own area. Blocks that answer nothing sit in "Not tied to a sub-question". The decision sits on top.
+- Inside an area, blocks stack by level: insights at the top, then findings, observations, and sources at the bottom.
+- Zoomed out, each area shows as a card: the sub-question, a bar of how far its blocks are checked, how many wait on you, and how many are in a conflict. Tap a card to zoom into it.
+- Zoomed in, blocks show their words. Pinch, drag, scroll, or use + and −. The ⤢ button fits everything.
+- Tap a block to open it. Its whole line lights up: everything under it, down to the sources, and everything it supports. The rest fades.
+- A conflict is a red zigzag between two blocks, with a ⚡ badge on each.
+- The blocks you opened leave a trail line, so you can see the path you took.
 
-## List
+### Flow
 
-The same blocks as rows, for working through checks.
+The same work as columns, left to right: **Sources**, **Observations**, **Findings**, **Insights**, **Decision**.
 
-- **Waiting on you** (with why: your AI draft, changes asked, asked of you, or nobody else has checked it), **Needs attention** (changes asked, a disagreement, or resting on nothing), and **Everything else** (folded).
-- Each row: a level shape (square: observation, dashed circle: finding, diamond: insight), the statement, its number, who made it, and only trouble on the right.
-- J and K move through the list.
+- Pick a block, and every column pulls the blocks linked to it to the top under "Linked to #10". The rest fold under "Not linked".
+- With nothing picked, each column groups its blocks by sub-question.
+- The path bar above the columns shows what is picked at each level. Tap a step to jump to that column. On a phone the columns swipe.
+- **Find a block** searches every column.
+- On a desktop, lines join the linked blocks across columns.
 
-## The cabinet
+### Show
 
-The panel on the right. Beside a workspace it is always open.
+The chips under the bar narrow what you see in either view: **Everything**, **Waiting on you**, **Trouble** (changes asked, a disagreement, unsupported, based on a retired block, or a link source with no spot), **Conflicts**, and **Retired** (hidden unless you turn it on).
 
-- **The trail** at the top says where you are: `Workspace › Insight #11 › Finding #8`. Picking something in the work starts a new trail. Following a link inside the cabinet adds a step. Click any step to go back. **Wider** makes room to think. **×** goes back to the workspace.
-- **Nothing picked**: the workspace. The plan, with each sub-question's state (Open, In progress, Answered) and a note when something is already known. What waits on you, with **Start**. What needs attention. The package. The base, folded. How to pair your AI tool, folded.
+## The details panel
+
+- **The trail** at the top says where you are: `Workspace › Insight #13 › Finding #10`. Picking something in the work starts a new trail. Following a link inside the panel adds a step. Tap any step to go back. **Wider** makes room to think. **×** goes back to the workspace.
+- **Nothing picked**: the workspace.
+  - **To do**: what needs you, as cards. Resolve conflicts, Waiting on you, Check the evidence for an insight, and Tidy up. Each starts a Focus session.
+  - The plan, with each sub-question's state (Open, In progress, Answered).
+  - The package. The base, folded. How to work with your AI tool, folded.
 - **A block**:
   1. The statement, its check state, and who made it.
-  2. **From** (an observation's sources, with the matching lines marked) or **Based on** (the blocks under it, each with its state).
-  3. **AI says**, for blocks made with AI: confidence, why, and what it assumes. "This is the AI's own view. It never counts as a check."
-  4. **Answers**, on a finding or insight when the workspace has a plan: pick the sub-question it answers. It is not a check.
-  5. **Your check**:
+  2. Any conflict it is in, with **Resolve it**, and any block it might conflict with, with **Mark as a conflict**.
+  3. **From** (an observation's sources) or **Based on** (the blocks under it, each with its state). A link source shows **Open ↗** and the **spot**: where in the source this comes from ("S7 at 18:02", "Row 4", "page 12"). If the spot is missing, it says so and lets you add it.
+  4. **AI says**, for blocks made with AI: confidence, why, and what it assumes. "This is the AI's own view. It never counts as a check."
+  5. **Check**:
      - The owner of an AI draft reads it, fixes the wording if needed, and says **Looks right**.
-     - When changes were asked for, the owner changes the wording, which saves a new version.
+     - When someone asked for changes or disagrees, the owner can **change the wording** (a new version), **add what it is based on**, **keep as is** (with a reason, and an SME is asked to look), or **retire it**.
      - Anyone else picks **Looks right**, **Needs changes**, or **Disagree**, then says how they checked or why.
-     - A draft is checked by its owner first. Others see who it is waiting on.
-  6. Folded: **Things to consider** (questions for this level, and private notes kept in your browser, open when the cabinet is wider), **Supports** (what is based on it), **History** (each check, and the AI's original wording if the owner changed it), and **Ask your AI about it** (a prompt for your AI tool to test the block against what it rests on, without checking it for you).
-- **Check N blocks** steps through what waits on you, in the cabinet: "Checking 2 of 3", **Skip**, **Stop**. The block is lit up on the left with its line. After each check the next one opens.
+  6. **Answers**: pick the sub-question it answers. It is not a check.
+  7. Folded: **Things to consider** (questions for this level, and private notes kept in your browser), **Supports**, **History**, **Ask your AI about it**, and **Clean up** (Retire, It conflicts with, and Delete for good for the person who made it).
+- **A source**: its link with **Open the source ↗**, **Change the link**, the observations that cite it with their spots, **Add an observation from it** (with its spot), and **Delete source**.
+
+## Focus
+
+Tap a card in **To do**, or **Check N blocks**, to start a Focus session. A bar at the top replaces the toolbar: what you are working through, "2 of 5", ← and → to walk the chain, the Map or Flow switch, and **←** to leave (or Esc). Everything that is not part of the session fades.
+
+- **Waiting on you** goes from the bottom up, so what you check first supports what comes next.
+- **Check the evidence for** walks everything under one insight that still needs a check.
+- **Resolve conflicts** opens each conflict in turn.
+- After each check or resolve, the next item opens. **Skip** moves on without doing anything.
+- At the end a short summary says how many you worked through.
+
+## Conflicts
+
+Anyone can mark two blocks as a conflict: they can't both be true. Both show Disagreement until someone resolves it. The conflict panel shows both side by side (A vs B) with what each is based on and what it supports, then asks **How should it end?**
+
+- **Pick one**: keep one. The other is retired, and the blocks based on it can move onto the one you keep.
+- **Keep both, narrow each**: rewrite each so it says when it is true. Each gets a new version.
+- **Not a conflict**: they fit together.
+- **Not sure yet**: add an open question to the plan. Both stay marked until someone resolves it.
+
+Every outcome needs a short **why**. The owners and everyone who checked either block hear about it.
+
+## Retire and delete
+
+- **Retire** (anyone): takes a block out of the live work with a reason (Out of date, Out of scope, Wrong, Replaced by another block, Duplicate of another block). It keeps its history and can be brought back. Blocks based on it show "Based on a retired block", and can move onto the replacement. Retired blocks leave the counts, the plan, and the package.
+- **Delete for good** (only the person who made it): removes the block, its earlier versions, and its checks. It asks first. Blocks based on it lose it.
+- **Tidy up** finds duplicates, loose ends (AI drafts nobody checked and nothing is based on), and blocks based on retired ones, and retires the ones you pick in one go.
+
+## Connect blocks
+
+Tap **Connect blocks**, then pick blocks in either view. Write the finding or insight they add up to, or copy a prompt for your AI tool. Starting from a sub-question in the plan picks it for you.
 
 ## Break down AI text
 
-It opens in the work area. Paste a long AI answer and **Break it down**. The built-in splitter shows the pieces first, one per sentence, with a guessed level, and writes nothing yet. A summary line counts them: how many rest on nothing, how many take things as given, how many look clean. Filter by **All**, **Needs a look**, or **Clean**. Fix a level or the wording, or remove a piece; the flags update from the core. The cabinet shows the pasted text with the row you are on marked. **Add N draft blocks** keeps the text as a source and adds exactly the pieces you kept, as AI drafts for you to check first. Claims with nothing under them are flagged as resting on nothing, and words like "most", "clearly", or "because" are listed as what the block assumes. Nothing leaves the app. **Copy prompt for your AI** hands the same job to your own AI tool over MCP, which can cite the right sources, build findings on observations, and say how sure it is.
+It opens in the work area. Paste a long AI answer and **Break it down**. The built-in splitter shows the pieces first, one per sentence, with a guessed level, and writes nothing yet. A summary counts how many are unsupported, how many take things as given, and how many look clean. Fix a level or the wording, or remove a piece. The panel shows the pasted text with the row you are on marked. **Add N draft blocks** keeps the text as a source and adds the pieces you kept, as AI drafts for you to check first. **Copy prompt for your AI** hands the same job to your own AI tool over MCP.
 
 ## The plan
 
 The first part of the base. Blocks build up from the bottom; the plan breaks the question down from the top, and the two meet at insights.
 
-- **Sub-questions**: what you need to know to make the decision, each with what you expect to find. A few sharp ones beat many. Each one folds open to show:
-  - **Answered by**: the findings and insights that answer it, with their check state, and **Connect blocks to answer it**.
-  - **Already known**: up to three checked blocks from other workspaces that share its words, most checked first. Opening one shows it in the cabinet, marked as from elsewhere, with a link to its workspace. You can check it there.
-  - The wording and what you expect, to change, and **Remove**. Blocks that answered a removed sub-question stay, and answer nothing.
-- **Add a sub-question**, and **Copy prompt for your AI**, which asks your AI tool to draft sub-questions and say what is already known about each.
-- Folded at the bottom: the question and the decision, to change.
+- **Sub-questions**: what you need to know to make the decision, each with what you expect to find. Each one folds open to show what answers it, what is **already known** in other workspaces, and its wording to change or **Remove**.
+- **Add a sub-question**, and **Copy prompt for your AI**.
+- Folded at the bottom: the question and the decision.
 
 ## The base
 
-Click a part of the base to fill it in: the plan, the sources (add one, or copy a prompt for your AI to draft observations from them), the method, and notes for checkers.
+The plan, the sources, the method, and notes for checkers. A source is added as a **Link** (a title and the URL) or a **Note** (a title and the text). Links are the default: the source stays where it lives, and each observation says the spot in it.
 
 ## The package
 
-Insights added to the package show at the top. Opened, the package groups them by the sub-question they answer, and each shows what it is based on (blocks, observations, sources) and how much of that still needs a check, plus any observations two insights share. Narratives come later.
+The checked insights the workspace shares for the decision, grouped by sub-question. Each shows what it is based on (blocks, observations, sources) and how much of that still needs a check, plus any observations two insights share.
