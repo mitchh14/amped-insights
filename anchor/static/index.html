@@ -8,7 +8,7 @@
 <style>
   /* The workbench. Blocks build up from a base of context and method.
      How full a block is says how checked it is. Only trouble gets words and
-     color: needs a check, needs changes, disagreement, rests on nothing.
+     color: needs a check, needs changes, disagreement, unsupported.
      System fonts only: the app makes no outside calls. */
   :root {
     --bg: #ECEFF3; --surface: #FFFFFF; --ink: #15202C; --muted: #5A6776; --line: #C4CDD8;
@@ -299,7 +299,7 @@ const UNCHECKED = new Set(["needs_check", "needs_changes", "disagreement"]);
 const VERDICT = { looks_right: "Looks right", needs_changes: "Needs changes", disagree: "Disagree" };
 const REVIEW_SAID = { approve: "Looks right", changes: "Needs changes", disagree: "Disagree" };
 const TAG = { needs_check: "Needs a check", needs_changes: "Needs changes", disagreement: "Disagree" };
-// Questions a checker can ask, by level, in "Think it through".
+// Questions a checker can ask, by level, in "Things to consider".
 const ASKS = {
   observation: ["Does the source say exactly this, no more and no less?", "If there is a number, does it match the source?"],
   finding: ["Do the blocks under it really add up to this?", "Would a skeptic read them the same way?"],
@@ -405,6 +405,7 @@ async function renderHome() {
 // ---------- Workspace ----------
 async function fetchWorkspace(id) {
   const [ws, q] = await Promise.all([api("workspaces/" + id), api(`needs-check?who=${encodeURIComponent(S.me)}&study_id=${id}`)]);
+  ws.blocks = ws.blocks.filter(b => b.stage !== "retired");  // retired blocks are out of the live work
   S.ws = ws; S.queue = q.items;
 }
 async function openWorkspace(id) {
@@ -529,7 +530,7 @@ function renderBuild() {
   S.ws.blocks.forEach(b => {
     const p = pos[b.id]; if (!p) return;
     const st = b.check.state;
-    const tags = tag(st) + (b.rests_on_nothing ? `<span class="tag t-nothing">Rests on nothing</span>` : "");
+    const tags = tag(st) + (b.rests_on_nothing ? `<span class="tag t-nothing">Unsupported</span>` : "");
     const cls = ["brick", b.level, "s-" + st];
     if (TAG[st] && b.rests_on_nothing) cls.push("two");
     else if (tags || madeWithAI(b) || b.unchecked_parts) cls.push("foot");
@@ -561,7 +562,7 @@ function renderBuild() {
   highlight();
 }
 
-// Trace a block's whole line: what it rests on, and what rests on it.
+// Trace a block's whole line: what it is based on, and what is based on it.
 function below(id, out = new Set()) { (byId(id)?.built_on || []).forEach(x => { if (!out.has(x)) { out.add(x); below(x, out); } }); return out; }
 function above(id, out = new Set()) { S.ws.blocks.filter(b => b.built_on.includes(id)).forEach(p => { if (!out.has(p.id)) { out.add(p.id); above(p.id, out); } }); return out; }
 function trace(id) {
@@ -588,7 +589,7 @@ function renderList() {
   const row = b => {
     const st = b.check.state;
     const trouble = (["needs_changes", "disagreement"].includes(st) ? tag(st) : "")
-      + (b.rests_on_nothing ? `<span class="tag t-nothing">Rests on nothing</span>` : "")
+      + (b.rests_on_nothing ? `<span class="tag t-nothing">Unsupported</span>` : "")
       + (b.unchecked_parts ? `<span class="warn" title="Built on something unchecked">⚠</span>` : "");
     return `<button class="rrow${b.id === sel ? " sel" : ""}" data-open="${b.id}">
       <i class="shape ${b.level}" title="${LEVEL[b.level]}"></i>
@@ -625,13 +626,13 @@ function renderBreakdown() {
   const inFilter = (p, k) => k === "all" || (k === "look" ? bdLook(p) : !bdLook(p));
   const shown = d.pieces.map((p, i) => [p, i]).filter(([p]) => inFilter(p, S.bdFilter));
   $("view").innerHTML = `<div class="bd">
-    <div class="summary"><span><b>${keep.length}</b> draft blocks</span><span class="amber"><b>${keep.filter(p => p.rests_on_nothing).length}</b> rest on nothing</span><span class="amber"><b>${keep.filter(p => p.assumes.length).length}</b> take things as given</span><span><b>${keep.filter(p => !bdLook(p)).length}</b> look clean</span></div>
+    <div class="summary"><span><b>${keep.length}</b> draft blocks</span><span class="amber"><b>${keep.filter(p => p.rests_on_nothing).length}</b> unsupported</span><span class="amber"><b>${keep.filter(p => p.assumes.length).length}</b> take things as given</span><span><b>${keep.filter(p => !bdLook(p)).length}</b> look clean</span></div>
     <div class="filters">${[["all", "All"], ["look", "Needs a look"], ["clean", "Clean"]].map(([k, l]) => `<button class="chipbtn" data-bdf="${k}" aria-pressed="${S.bdFilter === k}">${l} ${d.pieces.filter(p => inFilter(p, k)).length}</button>`).join("")}</div>
     <div class="bdrows">${shown.map(([p, i]) => `<div class="bdrow${p.removed ? " removed" : ""}${S.bdOn === i ? " on" : ""}" data-bdrow="${i}">
       <select data-bdlevel="${i}" aria-label="Level"${p.removed ? " disabled" : ""}>${Object.entries(LEVEL).map(([k, l]) => `<option value="${k}"${p.level === k ? " selected" : ""}>${l}</option>`).join("")}</select>
       <textarea data-bdtext="${i}" rows="2" aria-label="Statement"${p.removed ? " disabled" : ""}>${esc(p.statement)}</textarea>
       <button class="x" data-bdx="${i}" aria-label="${p.removed ? "Put it back" : "Remove"}">${p.removed ? "↺" : "×"}</button>
-      <div class="flags">${p.rests_on_nothing ? `<span class="tag t-nothing">Rests on nothing</span>` : `<span>From the pasted text</span>`}${p.assumes.map(a => `<span class="amber">${esc(a)}</span>`).join("")}</div>
+      <div class="flags">${p.rests_on_nothing ? `<span class="tag t-nothing">Unsupported</span>` : `<span>From the pasted text</span>`}${p.assumes.map(a => `<span class="amber">${esc(a)}</span>`).join("")}</div>
     </div>`).join("") || `<div class="bdrow note">Nothing in this filter.</div>`}</div>
     <div class="row"><button class="btn primary" id="bd-add"${keep.length ? "" : " disabled"}>Add ${plural(keep.length, "draft block")}</button><button class="btn ghost" id="bd-again">Start over</button></div>
   </div>`;
@@ -782,8 +783,8 @@ function panelBlock(d) {
   h += `<div class="meta"><span class="status t-${st}">${esc(d.check.label)}</span> · ${originText(d)}</div>`;
   if (!here && d.study) h += `<div class="note">From another workspace: <a href="#w/${d.study.id}">${esc(d.study.question)}</a></div>`;
 
-  // What it rests on
-  h += `<div><h3>${d.level === "observation" ? "From" : "Built on"}</h3><div class="under">`;
+  // What it is based on
+  h += `<div><h3>${d.level === "observation" ? "From" : "Based on"}</h3><div class="under">`;
   if (d.level === "observation") d.sources.forEach(s => {
     h += `<button class="under-item" data-open-src="${s.id}"><span class="r">${esc(s.title)}</span><span class="q">${quoteFor(s.body, d.statement)}</span></button>`;
   });
@@ -808,7 +809,7 @@ function panelBlock(d) {
   // The checkpoint
   h += `<div><h3>Your check</h3>`;
   if (mine) {
-    const intro = d.stage === "draft" ? "An AI drafted this for you. Read it against what it rests on, fix the wording if needed, then stand behind it."
+    const intro = d.stage === "draft" ? "An AI drafted this for you. Read it against what it is based on, fix the wording if needed, then say it looks right."
       : st === "needs_changes" ? "Changes were asked for. Change the wording to answer them. This saves a new version and keeps the old one."
       : "You stand behind this. Someone else can check it next. To change it, edit the wording to save a new version.";
     h += `<div class="note" style="margin-bottom:8px">${intro}</div>
@@ -839,18 +840,18 @@ function panelBlock(d) {
     h += `<div class="row">${inPkg ? `<button class="btn" data-unpkg="${d.id}">Remove from package</button>` : `<button class="btn" data-pkg="${d.id}">Add to package</button>`}</div>`;
   }
 
-  h += `<details${S.wide ? " open" : ""}><summary>Think it through</summary><div class="stack" style="margin-top:8px">
+  h += `<details${S.wide ? " open" : ""}><summary>Things to consider</summary><div class="stack" style="margin-top:8px">
     <ul class="asks">${ASKS[d.level].map(a => `<li>${esc(a)}</li>`).join("")}</ul>
     <label class="note" for="think">Your notes. Only you see these, in this browser.</label>
     <textarea id="think" data-think="${d.id}" rows="${S.wide ? 6 : 3}">${esc(local.get("think-" + d.id, ""))}</textarea></div></details>`;
   const ups = here ? S.ws.blocks.filter(x => x.built_on.includes(d.id)) : [];
-  if (ups.length) h += `<details><summary>Holds up ${ups.length}</summary><div class="under" style="margin-top:8px">${ups.map(u => `<button class="under-item" data-open="${u.id}"><span class="q">${esc(u.statement)}</span><span class="r">${LEVEL[u.level]}</span></button>`).join("")}</div></details>`;
+  if (ups.length) h += `<details><summary>Supports ${ups.length}</summary><div class="under" style="margin-top:8px">${ups.map(u => `<button class="under-item" data-open="${u.id}"><span class="q">${esc(u.statement)}</span><span class="r">${LEVEL[u.level]}</span></button>`).join("")}</div></details>`;
   const history = [];
   if (d.confirmed) history.push(`<div><b>Checked by owner</b> · ${esc(d.confirmed.by)}${d.confirmed.edited ? ` · changed the AI's wording<br><span class="meta">AI wrote: "${esc(d.confirmed.before)}"</span>` : ""}${d.confirmed.note ? `<br><span class="meta">${esc(d.confirmed.note)}</span>` : ""}</div>`);
   d.reviews.forEach(r => history.push(`<div><b class="${r.verdict === "changes" ? "amber" : ""}" style="${r.verdict === "disagree" ? "color:var(--red)" : ""}">${r.current ? "" : "<s>"}${REVIEW_SAID[r.verdict]}${r.current ? "" : "</s>"}</b> · ${esc(r.by)}${r.sme ? " (SME)" : ""}${r.how ? " · " + esc((S.config?.checks || {})[r.how] || r.how).toLowerCase() : ""}${r.note ? `<br><span class="meta">${esc(r.note)}</span>` : ""}</div>`));
   if (d.revises) history.push(`<div><b>New version</b> of <button class="linkbtn" data-open-any="${d.revises.id}">an earlier wording</button><br><span class="meta">"${esc(d.revises.statement)}"</span></div>`);
   if (history.length) h += `<details><summary>History ${history.length}</summary><div class="checks">${history.join("")}</div></details>`;
-  h += `<details><summary>Ask your AI about it</summary><div class="stack" style="margin-top:8px"><div class="note">Your AI tool reads this block, what it rests on, and its sources, and tells you if the evidence supports it as worded. It does not check it for you.</div><div class="row"><button class="btn" data-ask="${d.id}">Copy prompt for your AI</button></div></div></details>`;
+  h += `<details><summary>Ask your AI about it</summary><div class="stack" style="margin-top:8px"><div class="note">Your AI tool reads this block, what it is based on, and its sources, and tells you if the evidence supports it as worded. It does not check it for you.</div><div class="row"><button class="btn" data-ask="${d.id}">Copy prompt for your AI</button></div></div></details>`;
   return h;
 }
 
@@ -919,7 +920,7 @@ function panelBreakdown() {
   const d = S.bd;
   if (!d?.pieces) return `${head("Break down AI text", "Turn a long AI answer into blocks you can check")}
     <div class="note">The text is kept as a source. Each claim becomes a draft block for you. You see the pieces first, and can fix a level or the wording, or drop a piece, before anything is added. Claims with nothing under them are flagged, and words that take things as given are listed.</div>
-    <div><h3>Or let your AI tool do it</h3><div class="note" style="margin-bottom:8px">It does a smarter split over MCP: each block cites a source, is built on the right parts, and says how sure the AI is and why.</div>
+    <div><h3>Or let your AI tool do it</h3><div class="note" style="margin-bottom:8px">It does a smarter split over MCP: each block cites a source, is based on the right parts, and says how sure the AI is and why.</div>
     <button class="btn" id="bd-prompt">Copy prompt for your AI</button></div>`;
   const r = d.pieces[S.bdOn];
   const at = r ? d.text.indexOf(r.statement.replace(/[.!?]$/, "")) : -1;
@@ -932,7 +933,7 @@ function panelBreakdown() {
 function panelPackage() {
   const items = S.ws.package.map(byId).filter(Boolean);
   let h = head("Package", S.ws.question);
-  h += `<div class="note">The insights this workspace shares together. Each shows what it rests on, down to the sources.</div>`;
+  h += `<div class="note">The insights this workspace shares together. Each shows what it is based on, down to the sources.</div>`;
   const leaves = id => new Set([id, ...below(id)].filter(x => byId(x)?.level === "observation"));
   const groups = [...S.ws.plan.map(q => [q.text, items.filter(b => b.question_id === q.id)]),
     ["Not tied to a sub-question", items.filter(b => !qById(b.question_id))]].filter(([, xs]) => xs.length);
@@ -943,13 +944,13 @@ function panelPackage() {
     const weak = [...below(b.id)].filter(x => UNCHECKED.has(byId(x)?.check.state)).length;
     h += `<div class="pkg-item"><div class="t">${esc(b.statement)}</div>
       <div class="meta">${esc(b.check.label)}</div>
-      <div class="meta">Rests on ${plural(b.built_on.length, "block")}, ${plural(lv.length, "observation")}, ${plural(srcs.size, "source")}.${weak ? ` <span class="amber">${weak} still need a check.</span>` : " All checked."}</div>
+      <div class="meta">Based on ${plural(b.built_on.length, "block")}, ${plural(lv.length, "observation")}, ${plural(srcs.size, "source")}.${weak ? ` <span class="amber">${weak} still need a check.</span>` : " All checked."}</div>
       <div><button class="linkbtn" data-open="${b.id}">Open</button></div></div>`;
   }
   for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) {
     const a = leaves(items[i].id), c = leaves(items[j].id);
     const shared = [...a].filter(x => c.has(x)).length;
-    if (shared) h += `<div class="note">"${esc(items[i].statement)}" and "${esc(items[j].statement)}" rest on ${plural(shared, "shared observation")}.</div>`;
+    if (shared) h += `<div class="note">"${esc(items[i].statement)}" and "${esc(items[j].statement)}" are both based on ${plural(shared, "shared observation")}.</div>`;
   }
   h += `<div class="note" style="border-top:1px solid var(--line);padding-top:10px">Next: a narrative that turns this package into a story you can follow back to the parts. Coming later.</div>`;
   return h;
@@ -959,7 +960,7 @@ function panelPackage() {
 const planPrompt = () => `Use the ANCHOR prompt "plan_analysis" with study_id=${S.ws.id}, or: call get_workspace(study_id=${S.ws.id}) and read the question, the decision, and the sources. Draft 2 to 5 sub-questions the decision turns on, each with what we expect to find. For each, query it and tell me what other workspaces already know, with each block's check state. Let me keep, change, or drop each one, then add the ones I keep with add_question.`;
 const obsPrompt = () => `Use the ANCHOR prompt "break_down_text", or: call get_workspace(study_id=${S.ws.id}) and read every source. Write observations: only what was seen or measured, one claim each, citing the source id. Then findings built on them, then insights built on findings. Give every block confidence (low, medium, high), why in one line, and what it assumes. Add them with add_blocks as drafts for me to check.`;
 const breakdownPrompt = text => `Take this AI text apart into building blocks in ANCHOR workspace ${S.ws.id}. Call add_source with it (kind "ai_text"), then add_blocks: one claim per block, observations citing sources, findings and insights built on the blocks that show them. Give every block confidence (low, medium, high), why, and what it assumes. Tell me which claims rest on nothing.\n\n${text || "<paste the text here>"}`;
-const askPrompt = id => `In ANCHOR workspace ${S.ws.id}, read block #${id} with get, then what it is built on and its sources. Tell me if the evidence supports it as worded, what it takes as given, and what would make it wrong. Do not check it for me.`;
+const askPrompt = id => `In ANCHOR workspace ${S.ws.id}, read block #${id} with get, then what it is based on and its sources. Tell me if the evidence supports it as worded, what it takes as given, and what would make it wrong. Do not check it for me.`;
 const connectPrompt = (ids, target) => `In ANCHOR workspace ${S.ws.id}, read blocks ${ids.map(i => "#" + i).join(", ")} with get. Write one ${target} they add up to, as one sentence. Add it with add(level="${target}", evidence=[${ids.join(", ")}], study_id=${S.ws.id}, origin="person_with_ai") and give confidence, why, and what it assumes.`;
 
 // ---------- Actions ----------

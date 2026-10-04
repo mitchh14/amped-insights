@@ -22,7 +22,7 @@ That drift isn't something to fight. It's an opening. Research's highest-value m
 
 ## Slow and steady
 
-Speed is good. But a claim that moves fast and rests on parts nobody looked at is not fast, it is a delay you have not paid for yet. It gets built on, shared, and decided on, and then someone has to take it apart.
+Speed is good. But a claim that moves fast and is based on parts nobody looked at is not fast, it is a delay you have not paid for yet. It gets built on, shared, and decided on, and then someone has to take it apart.
 
 Taking the time to check each part and understand how it fits the whole is what gets you to the right outcome. Slow can be fast. It is faster to check a small block now than to unwind a decision later.
 

@@ -25,12 +25,12 @@ store = Store(DEFAULT_DB_PATH)
 mcp = _Server(
     "anchor",
     instructions=(
-        "ANCHOR governs insights, not people: it checks the claims AI helps make and every part they rest on. "
+        "ANCHOR governs insights, not people: it checks the claims AI helps make and every part they are based on. "
         "Work happens in workspaces (the tools call them studies): a question, the decision it serves, and "
         "sources of context. Break work into small blocks instead of long text, because long text hides "
         "assumptions. Every block you make states confidence (low, medium, high), why, and what it assumes; "
         "that is your judgment and never counts as a check. Observations cite sources; findings and insights "
-        "are built on other blocks. get_workspace shows a workspace; add_blocks adds your blocks; check is how "
+        "are based on other blocks. get_workspace shows a workspace; add_blocks adds your blocks; check is how "
         "people check them. A shared layer of team learnings. Each learning has a level (observation: what we saw; "
         "finding: what we think it means, not yet an insight; insight: what it means for us, not what to do; "
         "the call goes in a decision), an origin (person, person_with_ai, ai_agent), a stage (draft, shared, replaced), and "
@@ -132,7 +132,7 @@ def get(learning_id: int) -> dict[str, Any]:
 @mcp.tool()
 def history(learning_id: int) -> dict[str, Any]:
     """Every change to a learning, oldest first, each as a plain sentence.
-    Nothing is erased, so this shows what used to be believed and why it changed."""
+    Earlier versions stay, so this shows what used to be believed and why it changed."""
     return _call(lambda: {"history": store.history(learning_id)})
 
 
@@ -178,21 +178,25 @@ def add(
     why: str | None = None,
     assumes: list[str] | None = None,
     question_id: int | None = None,
+    spots: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write down one block (a learning). level is observation, finding, or insight.
 
     origin is who made it: person (the person wrote it), person_with_ai (you
     helped write it), or ai_agent (you made it on your own). Anything made
     with AI starts as a draft until its owner checks it. evidence is the ids
-    of blocks it is built on; source_ids the workspace sources it came from.
+    of blocks it is based on; source_ids the workspace sources it came from.
     study_id places it in a workspace. When you made it, give confidence
     (low, medium, high), why in one line, and assumes: what you took as given.
     A finding or insight can say which sub-question of the plan it answers
-    (question_id). The response includes checked blocks that may conflict with it. owner
-    defaults to this session's identity. To add several at once, use add_blocks.
+    (question_id). An observation says where in each source it comes from:
+    spots maps a source id to the spot, like {"3": "S7 at 18:02"}. Open the
+    source and cite the exact spot; never quote from memory. The response includes
+    checked blocks that may conflict with it. owner defaults to this session's
+    identity. To add several at once, use add_blocks.
     """
     return _call(lambda: store.add(statement, level, _who(owner), evidence, study_id, origin,
-                                   source_ids, confidence, why, assumes, question_id))
+                                   source_ids, confidence, why, assumes, question_id, spots))
 
 
 @mcp.tool()
@@ -200,17 +204,78 @@ def get_workspace(study_id: int) -> dict[str, Any]:
     """One workspace: its question, the decision it serves, the plan
     (sub-questions, whether each is Open, In progress, or Answered, and
     checked blocks other workspaces already have on each), its base (context,
-    method, notes), every source with its full text, every current block with
-    its check state and what it rests on, and the package. Read this before
+    method, notes), every source (a link to where it lives, or the text of a
+    note), every block with its check state, what it is based on, and the spot in
+    each source, the open conflicts, and the package. Read this before
     making blocks, so you work from the sources."""
     return _call(store.get_workspace, study_id)
 
 
 @mcp.tool()
-def add_source(study_id: int, title: str, body: str, kind: str = "note", url: str | None = None) -> dict[str, Any]:
-    """Add context to a workspace. kind is note, quote, data, query, link, file,
-    or ai_text (pasted AI output). Observations cite sources by id."""
+def add_source(study_id: int, title: str, url: str | None = None, body: str | None = None,
+               kind: str | None = None) -> dict[str, Any]:
+    """Add context to a workspace. Anything that lives elsewhere (a doc, sheet,
+    dashboard, query, recording) goes in as a link: give its url. A note written here, or pasted AI output (kind ai_text), goes
+    in as body. kind is note, quote, data, query, link, file, or ai_text.
+    Observations cite sources by id, with the spot in each."""
     return _call(lambda: store.add_source(study_id, _who(None), title, body, kind, url))
+
+
+@mcp.tool()
+def update_source(source_id: int, title: str | None = None, url: str | None = None) -> dict[str, Any]:
+    """Change a source's title or link, for example when a file moved."""
+    return _call(lambda: store.update_source(source_id, _who(None), title, url))
+
+
+@mcp.tool()
+def delete_source(source_id: int) -> dict[str, Any]:
+    """Delete a source. Only when the person asks."""
+    return _call(lambda: store.delete_source(source_id, _who(None)))
+
+
+@mcp.tool()
+def set_spot(learning_id: int, source_id: int, spot: str) -> dict[str, Any]:
+    """Say where in a source a block comes from, like "S7 at 18:02", "Row 4",
+    or a dashboard tile. Open the source first; never guess a spot."""
+    return _call(lambda: store.set_spot(learning_id, _who(None), source_id, spot))
+
+
+@mcp.tool()
+def retire(learning_id: int, reason: str | None = None, replaced_by: int | None = None,
+           move: bool = False) -> dict[str, Any]:
+    """Take a block out of use, with the person's reason: out of date, out of
+    scope, wrong, or replaced by another block (replaced_by). It keeps its
+    history and can be brought back. With move, what was based on it moves
+    onto the replacement. Only when the person asks."""
+    return _call(lambda: store.retire(learning_id, _who(None), reason, replaced_by, move))
+
+
+@mcp.tool()
+def bring_back(learning_id: int, note: str | None = None) -> dict[str, Any]:
+    """Put a retired block back into use, as it was."""
+    return _call(lambda: store.bring_back(learning_id, _who(None), note))
+
+
+@mcp.tool()
+def delete(learning_id: int, move_to: int | None = None) -> dict[str, Any]:
+    """Delete a block for good, with its earlier versions and checks. Only
+    the person who made it can. With move_to, blocks based on it are based on
+    that block instead. Only when the person asks; otherwise retire it."""
+    return _call(lambda: store.delete(learning_id, _who(None), move_to))
+
+
+@mcp.tool()
+def resolve_conflict(conflict_id: int, outcome: str, note: str, keep: int | None = None,
+                     statements: dict[str, str] | None = None, question: str | None = None,
+                     move: bool = False) -> dict[str, Any]:
+    """Record how the person resolves a conflict between two blocks, and why.
+    outcome is pick_one (keep is the block to keep; the other is retired),
+    keep_both (statements gives narrower wording for "a" and/or "b" saying
+    when each is true), not_a_conflict, or not_sure_yet (adds an open
+    sub-question to the plan, and both stay marked as a disagreement). Help
+    the person work through it, but the decision is theirs."""
+    return _call(lambda: store.resolve_conflict(conflict_id, _who(None), outcome, note, keep, statements,
+                                                question, move))
 
 
 @mcp.tool()
@@ -218,11 +283,13 @@ def add_blocks(study_id: int, blocks: list[dict[str, Any]], origin: str = "perso
     """Add several blocks to a workspace in one go, as drafts the person checks.
 
     Each block: {"ref": "o1", "level": "observation", "statement": "...",
-    "sources": [source ids], "built_on": [block ids or earlier refs],
+    "sources": [source ids], "spots": {"<source id>": "where in it"},
+    "built_on": [block ids or earlier refs],
     "answers": sub-question id (findings and insights only),
     "confidence": "low|medium|high", "why": "one line", "assumes": ["..."]}.
-    Put observations first (each citing a source), then findings built on
-    them, then insights built on findings. Keep each statement to one claim.
+    Put observations first (each citing a source and the spot in it), then
+    findings based on them, then insights based on findings. Keep each
+    statement to one claim.
     """
     return _call(lambda: store.add_blocks(study_id, _who(None), blocks, origin))
 
@@ -574,7 +641,7 @@ def prompt_synthesize_notes(notes: str, study_id: str = "") -> str:
         "3. Show me the draft list: statement, level, evidence, and any duplicates or conflicts found.\n"
         "4. For the ones I keep, call add_blocks"
         + (f" with study_id={study_id}" if study_id else "")
-        + ", observations first so findings can be built on them. Give each confidence, why, and assumes.\n"
+        + ", observations first so findings can be based on them. Give each confidence, why, and assumes.\n"
         "5. Then walk me through confirming each draft: ask what I checked or changed, and call confirm.",
     )
 
@@ -590,12 +657,12 @@ def prompt_break_down_text(text: str, study_id: str = "") -> str:
          "1. Ask which workspace this belongs to, then call get_workspace.\n")
         + "2. Call add_source with the text (kind=\"ai_text\") so the blocks can point back to it.\n"
         "3. Split it into one claim per block. Observations: only what was seen or measured, each citing the "
-        "source it came from. Findings: what observations mean, built on them. Insights: what it means for us, built on "
+        "source it came from. Findings: what observations mean, based on them. Insights: what it means for us, based on "
         "findings. Leave out recommendations, they belong in a decision.\n"
         "4. For every block give confidence (low, medium, high), why in one line, and assumes: anything the "
         "text takes as given. If a claim has nothing under it, still add it, and say so in assumes.\n"
         "5. Show me the list first. Then call add_blocks with origin=\"person_with_ai\".\n"
-        "6. Tell me which claims rest on nothing or on low confidence, so I check those first.",
+        "6. Tell me which claims are unsupported or low confidence, so I check those first.",
     )
 
 
